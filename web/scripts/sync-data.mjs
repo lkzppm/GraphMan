@@ -1,12 +1,13 @@
 // Copies the latest case-study results next to the observatory data and
 // writes a manifest of every exported graph, so the app never hard-codes
 // what is available.
-import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = new URL('..', import.meta.url).pathname;
 const dataDir = join(root, 'public', 'data');
 const results = join(root, '..', 'studies', 'results.json');
+mkdirSync(dataDir, { recursive: true });
 
 if (existsSync(results)) {
   copyFileSync(results, join(dataDir, 'results.json'));
