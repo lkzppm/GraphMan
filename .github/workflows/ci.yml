@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust · fmt, clippy, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Tests
+        run: cargo test --all-features
+      - name: Docs
+        run: cargo doc --no-deps -p graphman
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - name: Smoke test the CLI
+        run: |
+          cargo build --release -p graphman-cli
+          printf '5\n1 2\n2 5\n5 3\n4 5\n1 5\n' > figure1.txt
+          ./target/release/graphman -q info figure1.txt -o figure1.summary.txt
+          ./target/release/graphman -q diameter figure1.txt -m exact | grep -q '^diameter 2 '
+          cat figure1.summary.txt
+
+  web:
+    name: Web · typecheck, lint, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
