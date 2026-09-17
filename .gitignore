@@ -1,0 +1,18 @@
+# Rust
+/target
+**/*.rs.bk
+
+# Node
+node_modules/
+web/dist/
+web/.vite/
+
+# Large inputs (course graphs, hundreds of MB) and generated observatory data
+/graphs/
+/web/public/data/*.gmo
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.log
