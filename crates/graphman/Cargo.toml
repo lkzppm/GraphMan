@@ -1,0 +1,28 @@
+[package]
+name = "graphman"
+description = "GraphMan: a fast, representation-agnostic graph library (COS 242 / UFRJ)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["mmap", "parallel"]
+# Memory-mapped, zero-copy loading of graph files from disk.
+mmap = ["dep:memmap2"]
+# Multi-threaded diameter computation (rayon).
+parallel = ["dep:rayon"]
+# `serde::Serialize` on result types (stats, components, diameter...).
+serde = ["dep:serde"]
+
+[dependencies]
+memchr.workspace = true
+memmap2 = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+thiserror.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true

@@ -1,0 +1,23 @@
+[package]
+name = "graphman-cli"
+description = "Command-line interface and case-study runner for GraphMan"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "graphman"
+path = "src/main.rs"
+
+[dependencies]
+graphman = { workspace = true, features = ["serde"] }
+anyhow.workspace = true
+clap.workspace = true
+indicatif.workspace = true
+owo-colors.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
