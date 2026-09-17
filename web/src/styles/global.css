@@ -63,8 +63,12 @@ a:focus-visible {
 /* ---------- layout primitives ---------- */
 
 .tile {
-  padding: var(--space-section) var(--space-lg);
+  padding: 64px var(--space-lg);
   scroll-margin-top: var(--nav-height);
+  min-height: calc(100svh - var(--nav-height));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .tile--light {
@@ -87,6 +91,7 @@ a:focus-visible {
 }
 
 .tile__inner {
+  width: 100%;
   max-width: var(--grid-max);
   margin: 0 auto;
 }
@@ -98,7 +103,7 @@ a:focus-visible {
 .tile__head {
   text-align: center;
   max-width: 760px;
-  margin: 0 auto var(--space-xxl);
+  margin: 0 auto var(--space-xl);
 }
 
 .eyebrow {
@@ -257,6 +262,15 @@ a:focus-visible {
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-lg);
   padding: var(--space-lg);
+  transition:
+    transform 0.4s var(--ease-out),
+    border-color 0.4s var(--ease-out),
+    background 0.4s var(--ease-out);
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(0, 102, 204, 0.35);
 }
 
 .tile--dark .card {
@@ -312,6 +326,7 @@ a:focus-visible {
   }
   .tile {
     padding: var(--space-xxl) var(--space-md);
+    min-height: 0;
   }
 }
 

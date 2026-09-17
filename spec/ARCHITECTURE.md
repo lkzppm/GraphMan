@@ -81,13 +81,15 @@ available) so the commands compose.
 
 ## Web (`web/`)
 
-Vite + React 19 + TypeScript, `motion` for transitions, a hand-written
-WebGL2 renderer for the observatory (millions of points and tree edges in
-two draw calls). No chart library: charts are small React/SVG components
-following the dataviz guidance and the design tokens.
+Vite + React 19 + TypeScript, `motion` for transitions, `liquid-gooey` for
+liquid indicators, `metal-fx` for metal rings, and a hand-written WebGL2
+renderer for the observatory (millions of points and tree edges in two draw
+calls). No chart library: charts are small React/HTML components following
+the dataviz guidance and the design tokens in `spec/DESIGN.md`.
 
-Sections (one page, alternating tiles): Hero → Observatory (dark) → Anatomy
-(parchment) → Case studies (white) → Footer (parchment).
+Scenes (one page, each at least a viewport tall): Hero (paper, logo loop) →
+Observatory (graphite console) → Anatomy (parchment) → Case studies (paper)
+→ Footer (parchment).
 
 ### `.gmo` layout format (little endian)
 

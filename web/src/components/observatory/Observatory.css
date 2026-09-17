@@ -1,5 +1,11 @@
 .observatory {
   scroll-margin-top: var(--nav-height);
+  padding-top: 40px;
+  padding-bottom: 40px;
+}
+
+.console__head {
+  margin-bottom: var(--space-lg);
 }
 
 /* ---------- console layout ---------- */
@@ -30,7 +36,6 @@
   border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--color-black);
-  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .stage:fullscreen {
@@ -100,9 +105,15 @@
 }
 
 .side__help {
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.45;
   letter-spacing: -0.12px;
+  color: var(--color-muted-on-dark);
+}
+
+.side__help + .side__help {
   color: var(--color-ink-48);
+  font-size: 12px;
 }
 
 .glist {

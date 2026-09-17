@@ -19,8 +19,8 @@ English.
   the design decisions worth presenting, and the data formats.
 - `spec/WORKFLOW.md` — git flow, commit style, CI, how to run studies and
   regenerate the web data.
-- `spec/DESIGN.md` — the visual design system the web app follows (Apple-style
-  tokens: single blue accent, tight display type, alternating light/dark tiles).
+- `spec/DESIGN.md` — GraphMan's own design system: paper/graphite scenes, one
+  signal blue, liquid and metal motion, chart rules.
 
 ## Layout
 
