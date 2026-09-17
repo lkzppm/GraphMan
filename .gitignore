@@ -8,8 +8,10 @@ web/dist/
 web/.vite/
 
 # Large inputs (course graphs, hundreds of MB) and generated observatory data
+# (regenerate with `graphman export` and `npm run data`)
 /graphs/
-/web/public/data/*.gmo
+/web/public/data/
+*.tsbuildinfo
 
 # OS / editor
 .DS_Store
