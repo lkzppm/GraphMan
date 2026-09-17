@@ -1,0 +1,36 @@
+.anatomy__diagram {
+  padding: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+.anatomy__diagram svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.anatomy__label {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  fill: var(--color-ink);
+}
+
+.anatomy__label--accent {
+  fill: #fff;
+}
+
+.anatomy__sub {
+  font-family: var(--font-text);
+  font-size: 12.5px;
+  fill: var(--color-ink-48);
+}
+
+.anatomy__diagram .anatomy__label--accent + .anatomy__sub {
+  fill: rgba(255, 255, 255, 0.85);
+}
+
+.anatomy__cards .card__body {
+  font-size: 15px;
+  line-height: 1.5;
+}

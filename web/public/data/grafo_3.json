@@ -1,0 +1,26 @@
+{
+  "name": "grafo_3",
+  "vertices": 375000,
+  "edges": 765615,
+  "root": 1,
+  "degree": {
+    "min": 1,
+    "max": 15,
+    "mean": 4.08328,
+    "median": 4.0
+  },
+  "components": 2,
+  "largest_component": 250000,
+  "bfs": {
+    "file": "grafo_3.bfs.gmo",
+    "max_level": 17,
+    "reached": 125000,
+    "bytes": 4500024
+  },
+  "dfs": {
+    "file": "grafo_3.dfs.gmo",
+    "max_level": 79304,
+    "reached": 125000,
+    "bytes": 4500024
+  }
+}

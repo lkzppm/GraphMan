@@ -1,0 +1,160 @@
+{
+  "graphs": [
+    {
+      "name": "grafo_1",
+      "vertices": 10000,
+      "edges": 109921,
+      "root": 1,
+      "degree": {
+        "min": 8,
+        "max": 43,
+        "mean": 21.9842,
+        "median": 22
+      },
+      "components": 1,
+      "largest_component": 10000,
+      "bfs": {
+        "file": "grafo_1.bfs.gmo",
+        "max_level": 4,
+        "reached": 10000,
+        "bytes": 120024
+      },
+      "dfs": {
+        "file": "grafo_1.dfs.gmo",
+        "max_level": 9276,
+        "reached": 10000,
+        "bytes": 120024
+      }
+    },
+    {
+      "name": "grafo_2",
+      "vertices": 49948,
+      "edges": 1298710,
+      "root": 1,
+      "degree": {
+        "min": 1,
+        "max": 112,
+        "mean": 52.00248258188516,
+        "median": 55
+      },
+      "components": 10,
+      "largest_component": 25000,
+      "bfs": {
+        "file": "grafo_2.bfs.gmo",
+        "max_level": 5,
+        "reached": 3125,
+        "bytes": 599400
+      },
+      "dfs": {
+        "file": "grafo_2.dfs.gmo",
+        "max_level": 2688,
+        "reached": 3125,
+        "bytes": 599400
+      }
+    },
+    {
+      "name": "grafo_3",
+      "vertices": 375000,
+      "edges": 765615,
+      "root": 1,
+      "degree": {
+        "min": 1,
+        "max": 15,
+        "mean": 4.08328,
+        "median": 4
+      },
+      "components": 2,
+      "largest_component": 250000,
+      "bfs": {
+        "file": "grafo_3.bfs.gmo",
+        "max_level": 17,
+        "reached": 125000,
+        "bytes": 4500024
+      },
+      "dfs": {
+        "file": "grafo_3.dfs.gmo",
+        "max_level": 79304,
+        "reached": 125000,
+        "bytes": 4500024
+      }
+    },
+    {
+      "name": "grafo_4",
+      "vertices": 375000,
+      "edges": 8186986,
+      "root": 1,
+      "degree": {
+        "min": 9,
+        "max": 89,
+        "mean": 43.66392533333333,
+        "median": 47
+      },
+      "components": 2,
+      "largest_component": 250000,
+      "bfs": {
+        "file": "grafo_4.bfs.gmo",
+        "max_level": 4,
+        "reached": 250000,
+        "bytes": 4500024
+      },
+      "dfs": {
+        "file": "grafo_4.dfs.gmo",
+        "max_level": 242143,
+        "reached": 250000,
+        "bytes": 4500024
+      }
+    },
+    {
+      "name": "grafo_5",
+      "vertices": 4843750,
+      "edges": 13168911,
+      "root": 1,
+      "degree": {
+        "min": 1,
+        "max": 22,
+        "mean": 5.437485832258065,
+        "median": 5
+      },
+      "components": 5,
+      "largest_component": 2500000,
+      "bfs": {
+        "file": "grafo_5.bfs.gmo",
+        "max_level": 10,
+        "reached": 2500000,
+        "bytes": 58125024
+      },
+      "dfs": {
+        "file": "grafo_5.dfs.gmo",
+        "max_level": 1966082,
+        "reached": 2500000,
+        "bytes": 58125024
+      }
+    },
+    {
+      "name": "grafo_6",
+      "vertices": 4843750,
+      "edges": 46469479,
+      "root": 1,
+      "degree": {
+        "min": 2,
+        "max": 56,
+        "mean": 19.18739778064516,
+        "median": 20
+      },
+      "components": 5,
+      "largest_component": 2500000,
+      "bfs": {
+        "file": "grafo_6.bfs.gmo",
+        "max_level": 7,
+        "reached": 1250000,
+        "bytes": 58125024
+      },
+      "dfs": {
+        "file": "grafo_6.dfs.gmo",
+        "max_level": 1111266,
+        "reached": 1250000,
+        "bytes": 58125024
+      }
+    }
+  ]
+}

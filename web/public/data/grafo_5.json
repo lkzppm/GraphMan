@@ -1,0 +1,26 @@
+{
+  "name": "grafo_5",
+  "vertices": 4843750,
+  "edges": 13168911,
+  "root": 1,
+  "degree": {
+    "min": 1,
+    "max": 22,
+    "mean": 5.437485832258065,
+    "median": 5.0
+  },
+  "components": 5,
+  "largest_component": 2500000,
+  "bfs": {
+    "file": "grafo_5.bfs.gmo",
+    "max_level": 10,
+    "reached": 2500000,
+    "bytes": 58125024
+  },
+  "dfs": {
+    "file": "grafo_5.dfs.gmo",
+    "max_level": 1966082,
+    "reached": 2500000,
+    "bytes": 58125024
+  }
+}
