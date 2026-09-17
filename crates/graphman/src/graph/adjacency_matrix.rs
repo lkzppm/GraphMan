@@ -12,8 +12,8 @@ use core::mem::size_of;
 /// absent neighbours per word with a single `trailing_zeros`.
 ///
 /// It is still `Θ(n²)`: 12.5 MB for 10 000 vertices, 312 MB for 50 000 and
-/// 17.6 GB for 375 000, which is why builders check a [`MemoryBudget`]
-/// (see [`super::MemoryBudget`]) first.
+/// 17.6 GB for 375 000, which is why builders check a
+/// [`MemoryBudget`](super::MemoryBudget) first.
 #[derive(Debug, Clone)]
 pub struct AdjacencyMatrix {
     vertex_count: usize,

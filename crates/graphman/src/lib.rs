@@ -10,10 +10,10 @@
 //!   [`AdjacencyList`], [`AdjacencyMatrix`] (a packed bitset) and [`Csr`]
 //!   (compressed sparse row). Swapping the representation never changes a
 //!   result, only the memory footprint and the running time.
-//! * **Traversals are observable.** [`bfs`](algo::bfs) and [`dfs`](algo::dfs)
-//!   accept a [`Visitor`](algo::Visitor); everything from early termination
+//! * **Traversals are observable.** [`bfs`] and [`dfs`]
+//!   accept a [`Visitor`]; everything from early termination
 //!   (`distance`) to animation frames is a listener on the traversal.
-//! * **Nothing is allocated twice.** A [`SearchTree`](algo::SearchTree) is
+//! * **Nothing is allocated twice.** A [`SearchTree`] is
 //!   reusable across traversals and only resets what the previous traversal
 //!   touched, which is what makes the eccentricity-heavy diameter algorithms
 //!   affordable on graphs with millions of vertices.

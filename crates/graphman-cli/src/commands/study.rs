@@ -527,9 +527,12 @@ pub fn markdown(studies: &[GraphStudy]) -> String {
     let _ = writeln!(md, "\n## 7. Diameter\n");
     let _ = writeln!(
         md,
-        "| Graph | 4-sweep bound | iFUB (exact) | iFUB BFS runs | iFUB time | Brute force | Brute-force BFS runs | Brute-force time |"
+        "| Graph | 4-sweep bound | iFUB (exact) | iFUB BFS runs | iFUB time | Bounding (exact) | Bounding BFS runs | Bounding time | Brute force | Brute-force BFS runs | Brute-force time |"
     );
-    let _ = writeln!(md, "|---|---:|---:|---:|---:|---:|---:|---:|");
+    let _ = writeln!(
+        md,
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+    );
     for s in studies {
         let find = |m: DiameterMethod| s.diameters.iter().find(|d| d.method == m);
         let fmt_time = |d: &DiameterAnswer| {
