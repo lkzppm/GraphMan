@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { BorderBeam } from 'border-beam';
 import { Liquid } from 'liquid-gooey';
-import { ThinkingOrb } from 'thinking-orbs';
+import { MetalFx } from 'metal-fx';
 import { dataUrl, prettyName, type GraphMeta } from '../../lib/data.ts';
 import { formatBytes, formatCompact, formatInt } from '../../lib/format.ts';
 import { loadTree, type TreeLayout } from './gmo.ts';
@@ -274,13 +273,9 @@ export default function Observatory({ graphs }: Props) {
   return (
     <section id="observatory" className="tile tile--dark observatory">
       <div className="tile__inner">
-        <div className="tile__head">
+        <div className="tile__head console__head">
           <p className="eyebrow">Observatory</p>
-          <h2 className="display-lg">The search tree is the layout.</h2>
-          <p className="lead">
-            Each ring is one BFS level; each wedge is one subtree. No force simulation, just the
-            parent and level arrays the library already computes, drawn in one pass.
-          </p>
+          <h2 className="display-md">The search tree is the layout.</h2>
         </div>
 
         <div className="console">
@@ -387,42 +382,44 @@ export default function Observatory({ graphs }: Props) {
               </div>
             )}
 
+            <p className="side__help">
+              Each ring is one BFS level and each wedge one subtree; DFS is drawn as a spiral in
+              discovery order. No force simulation, just the parent and level arrays the library
+              already computes.
+            </p>
             <p className="side__help">Scroll to zoom · drag to pan · double-click to reset</p>
           </aside>
 
           <div className="console__stage">
-            <BorderBeam
-              size="pulse-inner"
-              colorVariant="ocean"
-              theme="dark"
-              strength={0.55}
-              borderRadius={18}
-              duration={3.2}
-            >
+            <div className="stage__ring">
               <div ref={frameRef} className="stage">
                 <canvas
                   ref={canvasRef}
                   className="stage__canvas"
                   aria-label="Search tree of the selected graph"
                 />
-                <button
-                  type="button"
-                  className="icon-btn stage__fullscreen"
-                  onClick={toggleFullscreen}
-                  aria-label="Toggle fullscreen"
-                  title="Fullscreen"
-                >
-                  <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
-                    <path
-                      d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
+                <div className="stage__fullscreen">
+                  <MetalFx variant="circle" preset="silver" theme="dark" strength={0.8}>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={toggleFullscreen}
+                      aria-label="Toggle fullscreen"
+                      title="Fullscreen"
+                    >
+                      <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+                        <path
+                          d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </MetalFx>
+                </div>
                 <AnimatePresence>
                   {(loading || error) && (
                     <motion.div
@@ -440,12 +437,7 @@ export default function Observatory({ graphs }: Props) {
                         </span>
                       ) : (
                         <>
-                          <ThinkingOrb
-                            state="connecting"
-                            size={64}
-                            theme="dark"
-                            aria-label="Loading the search trees"
-                          />
+                          <span className="stage__pulse" aria-hidden="true" />
                           <span className="stage__status-text">
                             {progress && progress.name === selected
                               ? `Loading ${formatBytes(progress.loaded, 1)}${progress.total > 0 ? ` of ${formatBytes(progress.total, 1)}` : ''}`
@@ -457,7 +449,7 @@ export default function Observatory({ graphs }: Props) {
                   )}
                 </AnimatePresence>
               </div>
-            </BorderBeam>
+            </div>
             <div className="stagebar">
               <div className="stagebar__wave">
                 <div className="transport">

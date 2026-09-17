@@ -1,4 +1,5 @@
 import { motion } from 'motion/react';
+import { MetalFx } from 'metal-fx';
 import type { GraphMeta, GraphStudy } from '../lib/data.ts';
 import { formatCompact, formatMs } from '../lib/format.ts';
 import './Hero.css';
@@ -9,7 +10,7 @@ interface Props {
 }
 
 const rise = {
-  hidden: { opacity: 0, y: 18 },
+  hidden: { opacity: 0, y: 22 },
   show: { opacity: 1, y: 0 },
 };
 
@@ -25,65 +26,82 @@ export default function Hero({ graphs, studies }: Props) {
       value: largest ? formatCompact(largest.edges) : '46.5M',
       label: largest
         ? `edges parsed in ${formatMs(largest.parse_ms)}`
-        : 'edges in the largest course graph',
+        : 'edges in the largest graph',
     },
-    { value: '3', label: 'storage strategies behind one trait' },
-    { value: '4', label: 'diameter algorithms, all cancellable' },
+    { value: '3', label: 'storage strategies, one trait' },
+    { value: '4', label: 'diameter algorithms' },
     {
-      value: observatoryMax ? formatCompact(observatoryMax) : '375K',
-      label: 'vertices drawn live in the observatory',
+      value: observatoryMax ? formatCompact(observatoryMax) : '4.8M',
+      label: 'vertices drawn live',
     },
   ];
 
   return (
-    <section id="top" className="tile tile--light hero">
-      <motion.div
-        className="tile__inner hero__inner"
-        initial="hidden"
-        animate="show"
-        transition={{ staggerChildren: 0.12, delayChildren: 0.1 }}
-      >
-        <motion.p className="eyebrow" variants={rise} transition={{ duration: 0.6 }}>
-          COS 242 · Graph Theory · Part 1
-        </motion.p>
-        <motion.h1 className="hero__title" variants={rise} transition={{ duration: 0.7 }}>
-          Graphs, manipulated.
-        </motion.h1>
-        <motion.p className="lead hero__lead" variants={rise} transition={{ duration: 0.7 }}>
-          GraphMan is a Rust graph library that measures itself. One trait, three ways to store a
-          graph, four ways to find its diameter, and an observatory that draws millions of vertices
-          from the search tree alone.
-        </motion.p>
-        <motion.div className="hero__cta" variants={rise} transition={{ duration: 0.7 }}>
-          <a className="pill" href="#observatory">
-            Open the observatory
-          </a>
-          <a className="pill pill--ghost" href="#studies">
-            Read the case studies
-          </a>
-        </motion.div>
+    <section id="top" className="hero">
+      <div className="hero__inner">
         <motion.div
-          className="hero__product"
-          initial={{ opacity: 0, scale: 0.94, y: 24 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1], delay: 0.35 }}
+          className="hero__copy"
+          initial="hidden"
+          animate="show"
+          transition={{ staggerChildren: 0.1, delayChildren: 0.15 }}
         >
-          <img
-            src="/brand/graphman-1024.png"
-            alt="GraphMan logo: a figure pushing a network inside a hexagon"
-            width={420}
-            height={420}
+          <motion.p className="eyebrow" variants={rise} transition={{ duration: 0.6 }}>
+            COS 242 · Graph Theory · Part 1
+          </motion.p>
+          <motion.h1 className="hero__title" variants={rise} transition={{ duration: 0.7 }}>
+            Graphs,
+            <br />
+            manipulated.
+          </motion.h1>
+          <motion.p className="hero__lead" variants={rise} transition={{ duration: 0.7 }}>
+            A Rust graph library that measures itself. One trait, three ways to store a graph, four
+            ways to find its diameter, and an observatory that draws millions of vertices from the
+            search tree alone.
+          </motion.p>
+          <motion.div className="hero__cta" variants={rise} transition={{ duration: 0.7 }}>
+            <MetalFx
+              variant="button"
+              preset="silver"
+              theme="light"
+              strength={0.8}
+              normalizeHostStyles={false}
+            >
+              <a className="pill" href="#observatory">
+                Open the observatory
+              </a>
+            </MetalFx>
+            <a className="pill pill--ghost" href="#studies">
+              Read the case studies
+            </a>
+          </motion.div>
+          <motion.dl className="hero__facts" variants={rise} transition={{ duration: 0.7 }}>
+            {facts.map((fact) => (
+              <div key={fact.label} className="hero__fact">
+                <dt className="mono">{fact.value}</dt>
+                <dd>{fact.label}</dd>
+              </div>
+            ))}
+          </motion.dl>
+        </motion.div>
+
+        <motion.div
+          className="hero__stage"
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1], delay: 0.3 }}
+        >
+          <video
+            className="hero__video"
+            src="/brand/graphman-loop.mp4"
+            poster="/brand/graphman-1024.png"
+            autoPlay
+            muted
+            loop
+            playsInline
+            aria-label="GraphMan logo animation"
           />
         </motion.div>
-        <motion.dl className="hero__facts" variants={rise} transition={{ duration: 0.7 }}>
-          {facts.map((fact) => (
-            <div key={fact.label} className="hero__fact">
-              <dt className="mono">{fact.value}</dt>
-              <dd>{fact.label}</dd>
-            </div>
-          ))}
-        </motion.dl>
-      </motion.div>
+      </div>
     </section>
   );
 }

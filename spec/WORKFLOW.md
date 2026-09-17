@@ -67,8 +67,6 @@ npm run dev          # http://localhost:5173
 npm run build        # dist/
 ```
 
-Design rules live in `spec/DESIGN.md`. In short: one accent colour
-(`#0066cc`, `#2997ff` on dark tiles), display type at weight 600 with tight
-tracking, body at 17px, alternating white/parchment/near-black tiles, pill
-CTAs, no decorative gradients, a single drop-shadow reserved for the product
-image.
+Design rules live in `spec/DESIGN.md`: full-height paper/graphite scenes, one
+signal blue, tight display type, liquid indicators (`liquid-gooey`) and metal
+rings (`metal-fx`) as the only effects, dataviz-validated chart colours.
