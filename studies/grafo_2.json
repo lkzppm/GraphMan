@@ -1,0 +1,325 @@
+{
+  "name": "grafo_2",
+  "file": "graphs/grafo_2.txt",
+  "vertices": 49948,
+  "edges": 1298710,
+  "self_loops_dropped": 65,
+  "duplicates_dropped": 1019,
+  "parse_ms": 54.624,
+  "degree": {
+    "min": 1,
+    "max": 112,
+    "mean": 52.00248258188516,
+    "median": 55.0
+  },
+  "representations": [
+    {
+      "representation": "adjacency_list",
+      "memory": {
+        "representation": "adjacency_list",
+        "feasible": true,
+        "required_bytes": 11588456,
+        "accounted_bytes": 11588456,
+        "baseline_resident_bytes": 2310144,
+        "resident_bytes": 15482880,
+        "footprint_bytes": 14319952,
+        "peak_resident_bytes": 27787264,
+        "build_ms": 7.989458,
+        "error": null
+      },
+      "bfs": {
+        "runs": 100,
+        "mean_ms": 0.9061262800000001,
+        "median_ms": 1.345896,
+        "min_ms": 0.009292,
+        "max_ms": 1.559625,
+        "stddev_ms": 0.568224869917935,
+        "total_ms": 90.612628
+      },
+      "dfs": {
+        "runs": 100,
+        "mean_ms": 2.4282750099999997,
+        "median_ms": 3.7183335,
+        "min_ms": 0.017042,
+        "max_ms": 4.241042,
+        "stddev_ms": 1.5835332773642075,
+        "total_ms": 242.82750099999996
+      }
+    },
+    {
+      "representation": "adjacency_matrix",
+      "memory": {
+        "representation": "adjacency_matrix",
+        "feasible": true,
+        "required_bytes": 312281148,
+        "accounted_bytes": 312281148,
+        "baseline_resident_bytes": 2310144,
+        "resident_bytes": 314720256,
+        "footprint_bytes": 313721408,
+        "peak_resident_bytes": 325124096,
+        "build_ms": 26.818041,
+        "error": null
+      },
+      "bfs": {
+        "runs": 100,
+        "mean_ms": 12.001163689999998,
+        "median_ms": 17.230666499999998,
+        "min_ms": 0.08795900000000001,
+        "max_ms": 21.05225,
+        "stddev_ms": 7.043825125896714,
+        "total_ms": 1200.1163689999998
+      },
+      "dfs": {
+        "runs": 100,
+        "mean_ms": 16.736204569999998,
+        "median_ms": 24.3478745,
+        "min_ms": 0.09754199999999999,
+        "max_ms": 26.58,
+        "stddev_ms": 9.878166118348856,
+        "total_ms": 1673.620457
+      }
+    },
+    {
+      "representation": "csr",
+      "memory": {
+        "representation": "csr",
+        "feasible": true,
+        "required_bytes": 10589480,
+        "accounted_bytes": 10589480,
+        "baseline_resident_bytes": 2326528,
+        "resident_bytes": 13484032,
+        "footprint_bytes": 12337512,
+        "peak_resident_bytes": 27803648,
+        "build_ms": 5.272875,
+        "error": null
+      },
+      "bfs": {
+        "runs": 100,
+        "mean_ms": 0.9312370899999997,
+        "median_ms": 1.335833,
+        "min_ms": 0.010459,
+        "max_ms": 2.0495,
+        "stddev_ms": 0.6052687794267682,
+        "total_ms": 93.12370899999996
+      },
+      "dfs": {
+        "runs": 100,
+        "mean_ms": 2.3966271199999998,
+        "median_ms": 3.6348545,
+        "min_ms": 0.013917,
+        "max_ms": 4.444583000000001,
+        "stddev_ms": 1.5791426792992551,
+        "total_ms": 239.662712
+      }
+    }
+  ],
+  "parents": [
+    {
+      "algorithm": "bfs",
+      "root": 1,
+      "vertex": 10,
+      "parent": null,
+      "level": null
+    },
+    {
+      "algorithm": "bfs",
+      "root": 1,
+      "vertex": 20,
+      "parent": null,
+      "level": null
+    },
+    {
+      "algorithm": "bfs",
+      "root": 1,
+      "vertex": 30,
+      "parent": null,
+      "level": null
+    },
+    {
+      "algorithm": "dfs",
+      "root": 1,
+      "vertex": 10,
+      "parent": null,
+      "level": null
+    },
+    {
+      "algorithm": "dfs",
+      "root": 1,
+      "vertex": 20,
+      "parent": null,
+      "level": null
+    },
+    {
+      "algorithm": "dfs",
+      "root": 1,
+      "vertex": 30,
+      "parent": null,
+      "level": null
+    },
+    {
+      "algorithm": "bfs",
+      "root": 2,
+      "vertex": 10,
+      "parent": 1351,
+      "level": 3
+    },
+    {
+      "algorithm": "bfs",
+      "root": 2,
+      "vertex": 20,
+      "parent": null,
+      "level": null
+    },
+    {
+      "algorithm": "bfs",
+      "root": 2,
+      "vertex": 30,
+      "parent": null,
+      "level": null
+    },
+    {
+      "algorithm": "dfs",
+      "root": 2,
+      "vertex": 10,
+      "parent": 3946,
+      "level": 138
+    },
+    {
+      "algorithm": "dfs",
+      "root": 2,
+      "vertex": 20,
+      "parent": null,
+      "level": null
+    },
+    {
+      "algorithm": "dfs",
+      "root": 2,
+      "vertex": 30,
+      "parent": null,
+      "level": null
+    },
+    {
+      "algorithm": "bfs",
+      "root": 3,
+      "vertex": 10,
+      "parent": null,
+      "level": null
+    },
+    {
+      "algorithm": "bfs",
+      "root": 3,
+      "vertex": 20,
+      "parent": 46738,
+      "level": 3
+    },
+    {
+      "algorithm": "bfs",
+      "root": 3,
+      "vertex": 30,
+      "parent": 12999,
+      "level": 3
+    },
+    {
+      "algorithm": "dfs",
+      "root": 3,
+      "vertex": 10,
+      "parent": null,
+      "level": null
+    },
+    {
+      "algorithm": "dfs",
+      "root": 3,
+      "vertex": 20,
+      "parent": 217,
+      "level": 45
+    },
+    {
+      "algorithm": "dfs",
+      "root": 3,
+      "vertex": 30,
+      "parent": 3513,
+      "level": 190
+    }
+  ],
+  "distances": [
+    {
+      "from": 10,
+      "to": 20,
+      "distance": null
+    },
+    {
+      "from": 10,
+      "to": 30,
+      "distance": null
+    },
+    {
+      "from": 20,
+      "to": 30,
+      "distance": 3
+    }
+  ],
+  "components": {
+    "count": 10,
+    "largest": 25000,
+    "smallest": 48,
+    "elapsed_ms": 2.1845
+  },
+  "diameters": [
+    {
+      "method": "sweep",
+      "value": 20,
+      "is_exact": false,
+      "cancelled": false,
+      "bfs_count": 40,
+      "endpoints": [
+        26772,
+        47761
+      ],
+      "elapsed_ms": 10.650292
+    },
+    {
+      "method": "i_fub",
+      "value": 20,
+      "is_exact": true,
+      "cancelled": false,
+      "bfs_count": 39949,
+      "endpoints": [
+        26772,
+        47761
+      ],
+      "elapsed_ms": 6769.514042
+    },
+    {
+      "method": "bounds",
+      "value": 20,
+      "is_exact": true,
+      "cancelled": false,
+      "bfs_count": 16147,
+      "endpoints": [
+        26772,
+        47761
+      ],
+      "elapsed_ms": 2175.334083
+    },
+    {
+      "method": "exact",
+      "value": 20,
+      "is_exact": true,
+      "cancelled": false,
+      "bfs_count": 49988,
+      "endpoints": [
+        26772,
+        47761
+      ],
+      "elapsed_ms": 8411.680584000002
+    }
+  ],
+  "machine": {
+    "os": "macos",
+    "arch": "aarch64",
+    "cpu": "Apple M5",
+    "total_memory_bytes": 17179869184,
+    "threads": 10
+  },
+  "generated_at_unix": 1789609263
+}
