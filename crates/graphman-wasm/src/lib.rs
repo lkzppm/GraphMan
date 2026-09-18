@@ -37,6 +37,20 @@ pub enum SearchKind {
     Dfs = 1,
 }
 
+/// How [`WasmGraph::layout`] arranges the vertices.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutKind {
+    /// BFS levels from the root as evenly spaced rings, subtrees in wedges;
+    /// the other components packed around.
+    Radial = 0,
+    /// BFS levels from the root as rows, level 0 on top, subtrees kept
+    /// together; the other components packed around.
+    Layered = 1,
+    /// Every vertex on one circle, sorted by degree (highest first).
+    Degree = 2,
+}
+
 /// Which diameter strategy to run (see the library's `DiameterMethod`).
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -416,67 +430,174 @@ impl WasmGraph {
         let n = self.graph.vertex_count();
         let mut positions = vec![0f32; 2 * (n + 1)];
         let components = self.components().clone();
-
-        // Disc radius of a component: area proportional to its size.
-        let disc_radius = |size: usize| EDGE_LENGTH * (size as f64 / 2.0).sqrt() + EDGE_LENGTH;
-
-        // Pack the discs largest-first: the first at the origin, the rest on
-        // concentric rings, each ring filled before the next one starts.
-        // Sizes are descending, so the first disc of a ring is its thickest.
-        let gap = EDGE_LENGTH;
-        let mut ring = 0.0f64; // centre line of the current ring
-        let mut outer = 0.0f64; // outer edge of everything placed, plus the gap
-        let mut angle = 0.0f64;
+        let radii: Vec<f64> = components.sizes().map(disc_radius).collect();
+        let centres = pack_discs(&radii, 0);
         for (index, members) in components.iter().enumerate() {
-            let radius = disc_radius(members.len());
-            let (cx, cy) = if index == 0 {
-                outer = radius + gap;
-                (0.0, 0.0)
-            } else {
-                let width = |ring: f64| 2.2 * (radius / ring).min(1.0).asin();
-                if ring == 0.0 || angle + width(ring) > TAU {
-                    ring = outer + radius;
-                    outer = ring + radius + gap;
-                    angle = 0.0;
-                }
-                let a = angle + width(ring) / 2.0;
-                angle += width(ring);
-                (ring * a.cos(), ring * a.sin())
-            };
-
-            let root = members[0];
-            bfs_into(&self.graph, root, &mut self.tree, &mut ());
-            let layout = radial_layout(&self.tree);
-
-            // `before[l]` counts the vertices on levels below `l`. A vertex on
-            // level `l` sits at the radius where the fraction of the component
-            // inside it equals the fraction discovered up to the middle of its
-            // level, so each ring's area matches the number of vertices on it.
-            let depth = self.tree.depth() as usize;
-            let mut before = vec![0f64; depth + 2];
-            for &v in self.tree.order() {
-                before[self.tree.level(v).expect("reached") as usize + 1] += 1.0;
-            }
-            for l in 1..before.len() {
-                before[l] += before[l - 1];
-            }
-            let total = members.len() as f64;
-            let spread = radius - EDGE_LENGTH;
-            for &v in self.tree.order() {
-                let l = self.tree.level(v).expect("reached") as usize;
-                let fraction = (before[l] + (before[l + 1] - before[l]) / 2.0) / total;
-                let r = if l == 0 {
-                    0.0
-                } else {
-                    spread * fraction.sqrt()
-                };
-                let a = layout.angle[v as usize] as f64;
-                positions[2 * v as usize] = (cx + r * a.cos()) as f32;
-                positions[2 * v as usize + 1] = (cy + r * a.sin()) as f32;
-            }
+            let (cx, cy) = centres[index];
+            self.disc_layout(members, cx, cy, radii[index], &mut positions);
         }
         self.tree.reset();
         positions
+    }
+
+    /// Positions for every vertex (same shape as [`initialLayout`](Self::initial_layout))
+    /// arranged by `kind`. Every component gets the layout: the level ones
+    /// start at `root` in its component and at the smallest vertex in the
+    /// others. Radial components are packed as discs, the root's at the
+    /// origin; layered components stand side by side, level 0 on one line.
+    /// `O(n + m)`.
+    pub fn layout(&mut self, kind: LayoutKind, root: u32) -> Result<Vec<f32>, JsError> {
+        self.check(root)?;
+        let n = self.graph.vertex_count();
+        let mut positions = vec![0f32; 2 * (n + 1)];
+
+        if kind == LayoutKind::Degree {
+            let mut order: Vec<Vertex> = self.graph.vertices().collect();
+            order.sort_by_key(|&v| core::cmp::Reverse(self.graph.degree(v)));
+            let radius = (n as f64 * SPACING / TAU).max(EDGE_LENGTH);
+            for (i, &v) in order.iter().enumerate() {
+                let a = TAU * i as f64 / n as f64;
+                positions[2 * v as usize] = (radius * a.cos()) as f32;
+                positions[2 * v as usize + 1] = (radius * a.sin()) as f32;
+            }
+            return Ok(positions);
+        }
+
+        // Each component around its own origin first: the root's, then the
+        // rest largest first. `extent` is a disc radius (radial) or a block
+        // width (layered); layered rows are shared so levels line up.
+        let components = self.components().clone();
+        let home = (components.component_of(root) - 1) as usize;
+        let order: Vec<usize> = core::iter::once(home)
+            .chain((0..components.count()).filter(|&c| c != home))
+            .collect();
+        let mut extent = vec![0f64; components.count()];
+        let mut depths = vec![0usize; components.count()];
+        for &c in &order {
+            let members = components.members(c as u32 + 1);
+            let start = if c == home { root } else { members[0] };
+            bfs_into(&self.graph, start, &mut self.tree, &mut ());
+            let layout = radial_layout(&self.tree);
+            let depth = self.tree.depth() as usize;
+            let mut counts = vec![0f64; depth + 1];
+            for &v in self.tree.order() {
+                counts[self.tree.level(v).expect("reached") as usize] += 1.0;
+            }
+            depths[c] = depth;
+            match kind {
+                LayoutKind::Radial => {
+                    // Rings far enough apart that the fullest one has room.
+                    let gap = counts
+                        .iter()
+                        .enumerate()
+                        .skip(1)
+                        .map(|(l, &count)| count * SPACING / (TAU * l as f64))
+                        .fold(2.0 * EDGE_LENGTH, f64::max);
+                    for &v in self.tree.order() {
+                        let l = self.tree.level(v).expect("reached") as f64;
+                        let a = layout.angle[v as usize] as f64;
+                        positions[2 * v as usize] = (l * gap * a.cos()) as f32;
+                        positions[2 * v as usize + 1] = (l * gap * a.sin()) as f32;
+                    }
+                    extent[c] = depth as f64 * gap + EDGE_LENGTH;
+                }
+                LayoutKind::Layered => {
+                    // Rows as wide as the fullest level; a vertex's x comes
+                    // from its wedge angle, so every subtree is a contiguous
+                    // block. y is the level for now, scaled by `row` below.
+                    let width = counts
+                        .iter()
+                        .fold(4.0 * EDGE_LENGTH, |w, &count| w.max(count * SPACING));
+                    for &v in self.tree.order() {
+                        let l = self.tree.level(v).expect("reached") as f32;
+                        let t = layout.angle[v as usize] as f64 / TAU;
+                        positions[2 * v as usize] = ((t - 0.5) * width) as f32;
+                        positions[2 * v as usize + 1] = l;
+                    }
+                    extent[c] = width;
+                }
+                LayoutKind::Degree => unreachable!("handled above"),
+            }
+        }
+
+        // Then move each component to its place.
+        match kind {
+            LayoutKind::Radial => {
+                let centres = pack_discs(&extent, home);
+                for (c, members) in components.iter().enumerate() {
+                    let (cx, cy) = centres[c];
+                    for &v in members {
+                        positions[2 * v as usize] += cx as f32;
+                        positions[2 * v as usize + 1] += cy as f32;
+                    }
+                }
+            }
+            LayoutKind::Layered => {
+                // Side by side in `order`, level 0 on one line, centred as a
+                // whole. One row height for every component, so levels line
+                // up, chosen so the whole picture is about 2.5:1.
+                let gap = 4.0 * EDGE_LENGTH;
+                let total: f64 = extent.iter().sum::<f64>() + gap * (extent.len() - 1) as f64;
+                let deepest = depths.iter().copied().max().unwrap_or(0);
+                let row = (total / (2.5 * deepest.max(1) as f64)).max(2.0 * EDGE_LENGTH);
+                let height = deepest as f64 * row;
+                let mut x = -total / 2.0;
+                for &c in &order {
+                    let cx = x + extent[c] / 2.0;
+                    x += extent[c] + gap;
+                    for &v in components.members(c as u32 + 1) {
+                        positions[2 * v as usize] += cx as f32;
+                        let l = positions[2 * v as usize + 1] as f64;
+                        positions[2 * v as usize + 1] = (l * row - height / 2.0) as f32;
+                    }
+                }
+            }
+            LayoutKind::Degree => unreachable!("handled above"),
+        }
+        self.tree.reset();
+        Ok(positions)
+    }
+
+    /// Lays one component out radially from its smallest vertex inside the
+    /// disc at `(cx, cy)`: BFS levels become rings whose area is proportional
+    /// to the number of vertices on them, so density is uniform.
+    fn disc_layout(
+        &mut self,
+        members: &[Vertex],
+        cx: f64,
+        cy: f64,
+        radius: f64,
+        positions: &mut [f32],
+    ) {
+        bfs_into(&self.graph, members[0], &mut self.tree, &mut ());
+        let layout = radial_layout(&self.tree);
+
+        // `before[l]` counts the vertices on levels below `l`. A vertex on
+        // level `l` sits at the radius where the fraction of the component
+        // inside it equals the fraction discovered up to the middle of its
+        // level, so each ring's area matches the number of vertices on it.
+        let depth = self.tree.depth() as usize;
+        let mut before = vec![0f64; depth + 2];
+        for &v in self.tree.order() {
+            before[self.tree.level(v).expect("reached") as usize + 1] += 1.0;
+        }
+        for l in 1..before.len() {
+            before[l] += before[l - 1];
+        }
+        let total = members.len() as f64;
+        let spread = radius - EDGE_LENGTH;
+        for &v in self.tree.order() {
+            let l = self.tree.level(v).expect("reached") as usize;
+            let fraction = (before[l] + (before[l + 1] - before[l]) / 2.0) / total;
+            let r = if l == 0 {
+                0.0
+            } else {
+                spread * fraction.sqrt()
+            };
+            let a = layout.angle[v as usize] as f64;
+            positions[2 * v as usize] = (cx + r * a.cos()) as f32;
+            positions[2 * v as usize + 1] = (cy + r * a.sin()) as f32;
+        }
     }
 
     fn components(&mut self) -> &Components {
@@ -500,6 +621,40 @@ impl WasmGraph {
 /// Target edge length of the initial layout, in world units. The GPU
 /// simulation on the web side uses the same constant as its rest length.
 pub const EDGE_LENGTH: f64 = 24.0;
+
+/// Room given to each vertex along a ring or a row in the level layouts.
+const SPACING: f64 = EDGE_LENGTH / 2.0;
+
+/// Disc radius of a component: area proportional to its size.
+fn disc_radius(size: usize) -> f64 {
+    EDGE_LENGTH * (size as f64 / 2.0).sqrt() + EDGE_LENGTH
+}
+
+/// Packs discs of the given radii (in size order, largest first): `first`
+/// at the origin, the rest on concentric rings around it, each ring filled
+/// before the next one starts. Returns the centre of each disc.
+fn pack_discs(radii: &[f64], first: usize) -> Vec<(f64, f64)> {
+    let gap = EDGE_LENGTH;
+    let mut centres = vec![(0.0, 0.0); radii.len()];
+    let mut ring = 0.0f64; // centre line of the current ring
+    let mut outer = radii.get(first).copied().unwrap_or(0.0) + gap; // outer edge placed, plus the gap
+    let mut angle = 0.0f64;
+    for (index, &radius) in radii.iter().enumerate() {
+        if index == first {
+            continue;
+        }
+        let width = |ring: f64| 2.2 * (radius / ring).min(1.0).asin();
+        if ring == 0.0 || angle + width(ring) > TAU {
+            ring = outer + radius;
+            outer = ring + radius + gap;
+            angle = 0.0;
+        }
+        let a = angle + width(ring) / 2.0;
+        angle += width(ring);
+        centres[index] = (ring * a.cos(), ring * a.sin());
+    }
+    centres
+}
 
 /// The rest length the web renderer should use, exposed for the JS side.
 #[wasm_bindgen(js_name = edgeLength)]
