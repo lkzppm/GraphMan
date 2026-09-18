@@ -96,10 +96,20 @@ copies in `globals.css` are only reachable from global classes.
 One sticky nav, like Golem's: the mark + wordmark on the left is the home
 link (the wordmark turns blue on the home page), then a tab per other page
 — **Observatory** (`/observatory`), **Library** (`/library`, the six
-decisions), **Case studies** (`/studies`, the tables) — and a bordered
-GitHub button on the right. The current tab is marked in blue: blue text,
-a blue-muted pill and a 2 px underline; the pill slides between tabs (a
-measured indicator, spring easing) and fades out on the home page.
+decisions), **Case studies** (`/studies`, the tables), **Presentation**
+(`/presentation`, the five slides) — then, on the right, the language
+switch (two mono tags, `pt` · `en`, the current one in the blue-muted
+pill) and a bordered GitHub button. The current tab is marked in blue:
+blue text, a blue-muted pill and a 2 px underline; the pill slides between
+tabs (a measured indicator, spring easing) and fades out on the home page.
+
+**Language.** The interface is Portuguese by default (the course's
+language) with English one tap away; the choice is remembered
+(`localStorage`) and sets `<html lang>`. Every string the visitor reads
+lives in one typed dictionary per language (`web/src/i18n/en.tsx` is the
+schema, `pt.tsx` must match it), reached through `useT()`; components hold
+no prose. Numbers keep one convention in both languages: mono, `1,298,710`,
+`0.906 ms` — the tables read the same whichever language is on.
 `scrollbar-gutter:
 stable` keeps the nav the same width on pages with and without a scrollbar.
 
@@ -185,6 +195,16 @@ the WebGPU one, drawn only when discs are at least 5 px.
 - **Nav**: sticky, blurred; links are tracked capitals that get a grey pill
   and a blue underline on hover; the bar slides in on load.
 - **Notice**: floating bar bottom-centre, rises in.
+- **Presentation** (`/presentation`, `Deck`): five slides, each filling the
+  viewport under the nav — cover (the mark, the wordmark, the tagline, the
+  stack), architecture (the `Graph` trait beside the three crates),
+  decisions (five numbered cards), case studies (one dense table fed by
+  `results.json`: memory of the list and the matrix, BFS/DFS on the list,
+  components, the best diameter answer with `≥` for bounds), the
+  observatory (four fact tiles and the call to action). ← → / space /
+  PageUp-Down move, Home/End jump, F is full screen (the bar fades unless
+  hovered); a thin bar holds prev/next, dots, the counter and the hint.
+  Slides rise in; the hidden ones are `inert`.
 
 ## The canvas
 

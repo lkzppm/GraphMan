@@ -120,11 +120,13 @@ libraries. Deployed on Vercel with the root directory set to
 `web/`; `web/vercel.json` pins the install and build commands.
 
 ```
-src/app/layout.tsx, globals.css   fonts, metadata, the shared tabbed Nav, design tokens
+src/app/layout.tsx, globals.css   fonts, metadata, the LocaleProvider, the shared tabbed Nav, design tokens
 src/app/page.tsx                  Home tab: Hero + Pipeline
 src/app/library/, studies/        Library tab (Decisions), Case studies tab (tables)
+src/app/presentation/             Presentation tab: the five slides (Deck)
 src/app/observatory/              the tool, client-only (dynamic import, ssr: false)
-src/components/                   Nav, Logo, BrandIcon, Reveal, page sections + CSS modules
+src/components/                   Nav, Logo, BrandIcon, Reveal, Deck, page sections + CSS modules
+src/i18n/                         en.tsx (the schema), pt.tsx, LocaleProvider (useT / useLocale)
 src/lib/graphman.ts               loads the wasm glue once
 src/lib/studies.ts                types of studies/results.json (synced into src/data)
 src/lib/format.ts                 number formatting
@@ -132,6 +134,20 @@ src/observatory/Observatory.tsx   state, file loading, pointer interaction, pane
 src/observatory/renderer.ts       vgpu: buffers, compute step, node + edge draws
 src/observatory/shaders.ts        WGSL (plain strings, reflected by vgpu)
 ```
+
+### Languages
+
+The site speaks Portuguese by default and English on request. All prose is
+in `src/i18n/`: `en.tsx` is a plain object (strings, small JSX fragments
+where a sentence carries a `<code>`, and functions where a sentence takes
+a value, so word order stays the language's business); `Dictionary =
+typeof en`, and `pt.tsx` is typed as one, so a missing key is a type error.
+`LocaleProvider` keeps the choice in `localStorage` behind
+`useSyncExternalStore` (the server and the hydrating client render the
+default, the stored choice applies right after, no mismatch) and sets
+`<html lang>`; components call `useT()` and hold no text of their own.
+Page `metadata` (titles, descriptions) is static and Portuguese. Code,
+comments, docs and commits stay English.
 
 ### The observatory
 
