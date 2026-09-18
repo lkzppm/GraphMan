@@ -1,0 +1,55 @@
+.logo {
+  display: inline-block;
+  flex: none;
+  line-height: 0;
+  color: var(--accent);
+  transform-origin: 50% 60%;
+}
+
+.logo img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.mask {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
+.shake:hover {
+  animation: shake 0.7s ease-in-out;
+}
+
+/* Shared keyframes, redeclared here: CSS modules scope animation names,
+   so the copies in globals.css are not reachable from a module. */
+@keyframes shake {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+
+  15% {
+    transform: rotate(-8deg);
+  }
+
+  35% {
+    transform: rotate(7deg);
+  }
+
+  55% {
+    transform: rotate(-5deg);
+  }
+
+  75% {
+    transform: rotate(3deg);
+  }
+}
