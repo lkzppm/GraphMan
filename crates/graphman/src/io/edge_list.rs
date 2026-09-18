@@ -10,6 +10,7 @@
 //! ```
 
 use crate::graph::Vertex;
+#[cfg(feature = "mmap")]
 use core::mem::size_of;
 use memchr::memchr_iter;
 
@@ -274,8 +275,10 @@ impl EdgeList {
         }
         let duplicates_dropped = before - kept;
         raw.truncate(kept);
-        if let EdgeStore::Heap(vec) = &mut raw {
-            vec.shrink_to_fit();
+        match &mut raw {
+            EdgeStore::Heap(vec) => vec.shrink_to_fit(),
+            #[cfg(feature = "mmap")]
+            EdgeStore::Mapped { .. } => {}
         }
         Self {
             vertex_count,
