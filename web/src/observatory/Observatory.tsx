@@ -2,6 +2,9 @@
 
 import {
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleDashed,
   CircleHelp,
   Download,
   Expand,
@@ -9,6 +12,9 @@ import {
   Focus,
   Hash,
   Magnet,
+  Orbit,
+  Rows3,
+  Shapes,
   Maximize2,
   Minimize2,
   Minus,
@@ -76,6 +82,11 @@ interface GraphMeta {
   smallest: number;
   degrees: Uint32Array;
   componentSizes: Uint32Array;
+  /** Component id per vertex (1 = largest, ranked by size). */
+  componentLabels: Uint32Array;
+  /** Edges, minimum and maximum degree per component (index = id, 0 unused). */
+  componentEdges: Uint32Array;
+  componentDegree: { min: Uint32Array; max: Uint32Array };
   parseMs: number;
 }
 
@@ -126,11 +137,41 @@ const CONTROLS: [string, string][] = [
   ['dbl-click', 'fit the graph'],
   ['F', 'fit the graph'],
   ['space', 'play / pause'],
-  ['← →', 'step a vertex'],
+  ['← →', 'step a vertex / component'],
   ['↑ ↓', 'step a level'],
-  ['esc', 'clear the origin'],
+  ['esc', 'clear the origin / component'],
   ['drop file', 'load a graph'],
 ];
+
+type LayoutId = 'force' | 'radial' | 'layered' | 'degree';
+
+/** The layouts of the canvas menu; the level-based ones start at the origin. */
+const LAYOUTS: { id: LayoutId; label: string; hint: string; icon: ReactNode }[] = [
+  { id: 'force', label: 'Force', hint: 'springs and repulsion', icon: <Magnet size={14} /> },
+  {
+    id: 'radial',
+    label: 'Radial levels',
+    hint: 'BFS rings around the origin',
+    icon: <Orbit size={14} />,
+  },
+  {
+    id: 'layered',
+    label: 'Layered',
+    hint: 'levels as rows, subtrees together',
+    icon: <Rows3 size={14} />,
+  },
+  {
+    id: 'degree',
+    label: 'Degree circle',
+    hint: 'sorted by degree, edges as chords',
+    icon: <CircleDashed size={14} />,
+  },
+];
+
+/** How long a layout change takes to slide into place. */
+const MORPH_MS = 700;
+/** Pointer travel (CSS px) under which a press is a click, not a drag or a pan. */
+const CLICK_SLOP = 4;
 
 /** The sample file, line by line, as the format explanation. */
 const FORMAT_LINES: [string, string][] = [
@@ -172,7 +213,21 @@ export default function Observatory() {
   const [notice, setNotice] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   /** The controls popover, top left of the stage. */
+  const metaRef = useRef<GraphMeta | null>(null);
+  metaRef.current = meta;
+  const searchRef = useRef<Search | null>(null);
+  searchRef.current = search;
   const [helpOpen, setHelpOpen] = useState(false);
+  /** The lit component (1 = largest), 0 for none. */
+  const [component, setComponent] = useState(0);
+  /** The components browser, in place of the graph summary. */
+  const [componentsOpen, setComponentsOpen] = useState(false);
+  /** The current layout and its menu. */
+  const [layout, setLayout] = useState<LayoutId>('force');
+  const [layoutOpen, setLayoutOpen] = useState(false);
+  const layoutMenuRef = useRef<HTMLDivElement>(null);
+  /** What the arrow keys drive: the search timeline or the components. */
+  const keysTarget = useRef<'search' | 'components'>('search');
   const helpRef = useRef<HTMLDivElement>(null);
   const [showLabels, setShowLabels] = useState(true);
   /** Keep the discovered part of the tree in view while the search plays or is
@@ -290,19 +345,18 @@ export default function Observatory() {
     [applyCamera],
   );
 
-  /** Frames the vertices discovered up to `rank` (rank → level colours already lit). */
-  const fitDiscovered = useCallback(
-    (ranks: Uint32Array, rank: number) => {
+  /** Glides the camera to frame the vertices `keep` accepts. */
+  const fitVertices = useCallback(
+    (keep: (v: number) => boolean) => {
       const renderer = rendererRef.current;
       if (!renderer || !renderer.hasGraph) return;
       const positions = renderer.positionsMirror;
-      const limit = Math.round(rank);
       let minX = Infinity;
       let minY = Infinity;
       let maxX = -Infinity;
       let maxY = -Infinity;
       for (let v = 1, i = 2; i < positions.length; v++, i += 2) {
-        if (ranks[v] > limit) continue;
+        if (!keep(v)) continue;
         const x = positions[i];
         const y = positions[i + 1];
         if (x < minX) minX = x;
@@ -319,6 +373,119 @@ export default function Observatory() {
       glideTo({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, zoom });
     },
     [glideTo],
+  );
+
+  /** Frames the vertices discovered up to `rank` (rank → level colours already lit). */
+  const fitDiscovered = useCallback(
+    (ranks: Uint32Array, rank: number) => {
+      const limit = Math.round(rank);
+      fitVertices((v) => ranks[v] <= limit);
+    },
+    [fitVertices],
+  );
+
+  /**
+   * Frames the positions in `positions` (flat `[x, y, ...]`, slot 0 unused),
+   * or only those of the vertices `keep` accepts, gliding.
+   */
+  const glideToFit = useCallback(
+    (positions: Float32Array, keep?: (v: number) => boolean) => {
+      const renderer = rendererRef.current;
+      if (!renderer) return;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (let v = 1, i = 2; i < positions.length; v++, i += 2) {
+        if (keep && !keep(v)) continue;
+        const x = positions[i];
+        const y = positions[i + 1];
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+      if (!Number.isFinite(minX)) return;
+      const [w, h] = renderer.cssSize;
+      const bw = Math.max(maxX - minX, 1);
+      const bh = Math.max(maxY - minY, 1);
+      glideTo({
+        x: (minX + maxX) / 2,
+        y: (minY + maxY) / 2,
+        zoom: Math.min((w * 0.86) / bw, (h * 0.86) / bh, 40),
+      });
+    },
+    [glideTo],
+  );
+
+  /**
+   * Rearranges the graph: the level layouts start at `root`, the force
+   * layout returns to the initial placement and warms the simulation up
+   * again. Vertices slide to their new places and the view follows: the
+   * whole graph, or with `frame: 'component'` only the root's component
+   * (a new search origin re-arranges that one, the rest just makes room).
+   */
+  const applyLayout = useCallback(
+    (id: LayoutId, root: number, frame: 'graph' | 'component' = 'graph') => {
+      const wasm = wasmRef.current;
+      const graph = graphRef.current;
+      const renderer = rendererRef.current;
+      if (!wasm || !graph || !renderer) return;
+      setLayout(id);
+      let positions: Float32Array;
+      try {
+        positions =
+          id === 'force'
+            ? graph.initialLayout()
+            : graph.layout(
+                id === 'radial'
+                  ? wasm.LayoutKind.Radial
+                  : id === 'layered'
+                    ? wasm.LayoutKind.Layered
+                    : wasm.LayoutKind.Degree,
+                root,
+              );
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : String(error));
+        return;
+      }
+      // The force layout is the simulation's business; the others are
+      // exact, so it stays off until asked for (a "relax" step).
+      const simulateNext = id === 'force' && graph.vertexCount <= SIMULATION_LIMIT;
+      setSimulate(simulateNext);
+      renderer.morphTo(positions, MORPH_MS);
+      renderer.setSimulate(simulateNext);
+      autoFit.current = false;
+      const labels = metaRef.current?.componentLabels;
+      const home = labels && frame === 'component' ? labels[root] : 0;
+      glideToFit(positions, labels && home ? (v) => labels[v] === home : undefined);
+    },
+    [glideToFit],
+  );
+
+  /** The level layouts follow the search: a new origin re-arranges its component. */
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const searchRoot = search?.root ?? 0;
+  useEffect(() => {
+    if (!searchRoot) return;
+    const id = layoutRef.current;
+    if (id === 'radial' || id === 'layered') applyLayout(id, searchRoot, 'component');
+  }, [searchRoot, applyLayout]);
+
+  /** Lights component `c` (0 clears), frames it, and hands the arrow keys to it. */
+  const selectComponent = useCallback(
+    (c: number) => {
+      const labels = metaRef.current?.componentLabels;
+      setComponent(c);
+      rendererRef.current?.setComponent(c);
+      keysTarget.current = c ? 'components' : 'search';
+      if (c && labels) {
+        autoFit.current = false;
+        fitVertices((v) => labels[v] === c);
+      }
+    },
+    [fitVertices],
   );
 
   const toWorld = useCallback((clientX: number, clientY: number) => {
@@ -377,11 +544,28 @@ export default function Observatory() {
         const sizes = graph.componentSizes();
         const degrees = graph.degrees();
         const labels = graph.componentLabels();
-        const positions = graph.initialLayout();
+        // Graphs too large to simulate open in the radial layout, rooted in
+        // the largest component: the force placement is only a seed for
+        // the simulation.
+        const willSimulate = graph.vertexCount <= SIMULATION_LIMIT;
+        const positions = willSimulate
+          ? graph.initialLayout()
+          : graph.layout(wasm.LayoutKind.Radial, Math.max(1, labels.indexOf(1)));
+        const edges = graph.edges();
+        // Per component: edges (by one endpoint's label) and the degree range.
+        const componentEdges = new Uint32Array(sizes.length + 1);
+        for (let i = 0; i < edges.length; i += 2) componentEdges[labels[edges[i]]] += 1;
+        const degreeMin = new Uint32Array(sizes.length + 1).fill(0xffffffff);
+        const degreeMax = new Uint32Array(sizes.length + 1);
+        for (let v = 1; v < labels.length; v++) {
+          const c = labels[v];
+          if (degrees[v] < degreeMin[c]) degreeMin[c] = degrees[v];
+          if (degrees[v] > degreeMax[c]) degreeMax[c] = degrees[v];
+        }
         renderer.load(
           {
             vertexCount: graph.vertexCount,
-            edges: graph.edges(),
+            edges,
             csrOffsets: graph.csrOffsets(),
             csrTargets: graph.csrTargets(),
             positions,
@@ -403,8 +587,14 @@ export default function Observatory() {
           smallest: sizes[sizes.length - 1] ?? 0,
           degrees,
           componentSizes: sizes,
+          componentLabels: labels,
+          componentEdges,
+          componentDegree: { min: degreeMin, max: degreeMax },
           parseMs,
         });
+        setComponent(0);
+        setComponentsOpen(false);
+        setLayout(willSimulate ? 'force' : 'radial');
         setSearch(null);
         setDiameter(null);
         setSelected(0);
@@ -412,7 +602,6 @@ export default function Observatory() {
         setRootInput('1');
         setReveal(0);
         setPlaying(false);
-        const willSimulate = graph.vertexCount <= SIMULATION_LIMIT;
         setSimulate(willSimulate);
         renderer.setSimulate(willSimulate);
         renderer.setSearch(null);
@@ -452,15 +641,19 @@ export default function Observatory() {
 
   /** Unloads the graph: back to the empty stage, memory returned to wasm. */
   const closeGraph = useCallback(() => {
-    setSearch((current) => {
-      current?.result.free();
-      return null;
-    });
+    // Freed outside the state updater: StrictMode runs updaters twice, and
+    // a wasm object freed twice is a null pointer.
+    searchRef.current?.result.free();
+    setSearch(null);
     graphRef.current?.free();
     graphRef.current = null;
     rendererRef.current?.unload();
     setMeta(null);
     setDiameter(null);
+    setComponent(0);
+    setComponentsOpen(false);
+    setLayout('force');
+    setLayoutOpen(false);
     setSelected(0);
     setHovered(0);
     setReveal(0);
@@ -490,6 +683,7 @@ export default function Observatory() {
       const graph = graphRef.current;
       const renderer = rendererRef.current;
       if (!wasm || !graph || !renderer) return;
+      keysTarget.current = 'search';
       try {
         search?.result.free();
         const result = graph.search(
@@ -513,8 +707,9 @@ export default function Observatory() {
           ranks,
           result,
         });
-        setSelected(root);
-        renderer.setSelected(root);
+        // The search picture is the tree: no selection ring or neighbourhood on the origin.
+        setSelected(0);
+        renderer.setSelected(0);
         revealRef.current = 0;
         setReveal(0);
         renderer.setReveal(0);
@@ -559,6 +754,7 @@ export default function Observatory() {
   followRef.current = follow;
 
   const scrub = (rank: number) => {
+    keysTarget.current = 'search';
     setPlaying(false);
     revealRef.current = rank;
     setReveal(rank);
@@ -675,7 +871,7 @@ export default function Observatory() {
     }
     if (g.mode === 'maybe-click') {
       const moved = Math.hypot(clientX - g.startX, clientY - g.startY);
-      if (moved > 4) {
+      if (moved > CLICK_SLOP) {
         g.mode = 'drag';
         const { x, y } = toWorld(clientX, clientY);
         renderer.beginDrag(g.vertex, x, y);
@@ -707,6 +903,14 @@ export default function Observatory() {
       setSelected(g.vertex);
       setRootInput(String(g.vertex));
       renderer?.setSelected(g.vertex);
+    }
+    // A click on the background (a pan that never moved) clears the selection.
+    if (
+      g.mode === 'pan' &&
+      Math.hypot(event.clientX - g.startX, event.clientY - g.startY) <= CLICK_SLOP
+    ) {
+      setSelected(0);
+      renderer?.setSelected(0);
     }
     if (g.mode === 'drag') {
       renderer?.endDrag();
@@ -757,14 +961,35 @@ export default function Observatory() {
   }, []);
 
   // Latest search state for the key handler, without re-subscribing every frame.
-  const keysRef = useRef({ search, revealLevel: 0, scrub, scrubToLevel });
-  keysRef.current = { search, revealLevel, scrub, scrubToLevel };
+  const keysRef = useRef({
+    search,
+    revealLevel: 0,
+    scrub,
+    scrubToLevel,
+    component,
+    selectComponent,
+  });
+  keysRef.current = { search, revealLevel, scrub, scrubToLevel, component, selectComponent };
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement)
         return;
       const k = keysRef.current;
+      const arrow =
+        event.key === 'ArrowUp' || event.key === 'ArrowRight'
+          ? 1
+          : event.key === 'ArrowDown' || event.key === 'ArrowLeft'
+            ? -1
+            : 0;
+      const count = metaRef.current?.componentSizes.length ?? 0;
+      if (arrow && k.component && (keysTarget.current === 'components' || !k.search)) {
+        // Components are ranked by size: → / ↓ go to the next smaller one.
+        event.preventDefault();
+        const dir = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
+        k.selectComponent(Math.max(1, Math.min(count, k.component + dir)));
+        return;
+      }
       if (k.search && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
         // BFS: a level up or down; DFS: ten vertices.
         event.preventDefault();
@@ -786,8 +1011,10 @@ export default function Observatory() {
       }
       if (event.key === 'Escape') {
         setHelpOpen(false);
+        setLayoutOpen(false);
         setSelected(0);
         rendererRef.current?.setSelected(0);
+        if (k.component) k.selectComponent(0);
       } else if (event.key === ' ' && search) {
         event.preventDefault();
         setPlaying((p) => !p);
@@ -828,13 +1055,14 @@ export default function Observatory() {
   };
 
   useEffect(() => {
-    if (!helpOpen) return;
+    if (!helpOpen && !layoutOpen) return;
     const onDown = (event: PointerEvent) => {
       if (!helpRef.current?.contains(event.target as Node)) setHelpOpen(false);
+      if (!layoutMenuRef.current?.contains(event.target as Node)) setLayoutOpen(false);
     };
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
-  }, [helpOpen]);
+  }, [helpOpen, layoutOpen]);
 
   useEffect(() => {
     const onChange = () => setFullscreen(document.fullscreenElement !== null);
@@ -932,7 +1160,10 @@ export default function Observatory() {
         onChange={onFileChange}
       />
 
-      <aside className={`${styles.sidebar} ${meta ? '' : styles.sidebarEmpty}`}>
+      <aside
+        className={`${styles.sidebar} ${meta ? '' : styles.sidebarEmpty}`}
+        data-search={search ? '' : undefined}
+      >
         {meta ? (
           <>
             <Panel
@@ -962,27 +1193,49 @@ export default function Observatory() {
                   {formatBytes(meta.bytes)} · parsed in {formatMs(meta.parseMs)}
                 </span>
               </div>
-              <div className={styles.tiles}>
-                <Tile label="Vertices" value={formatInt(meta.vertices)} />
-                <Tile label="Edges" value={formatInt(meta.edges)} />
-                <Tile
-                  label="Components"
-                  value={formatInt(meta.components)}
-                  hint={`largest ${formatCompact(meta.largest)}`}
+              {componentsOpen ? (
+                <ComponentsView
+                  meta={meta}
+                  current={component}
+                  onSelect={selectComponent}
+                  onClose={() => {
+                    selectComponent(0);
+                    setComponentsOpen(false);
+                  }}
                 />
-                <Tile
-                  label="Mean degree"
-                  value={meta.degree.mean.toFixed(2)}
-                  hint={`${meta.degree.min} – ${meta.degree.max} · median ${meta.degree.median}`}
-                />
-              </div>
-              <DegreeHistogram degrees={meta.degrees} max={meta.degree.max} />
-              <ComponentBar sizes={meta.componentSizes} total={meta.vertices} />
-              <div className={`${styles.chips} ${styles.shedFirst}`}>
-                <span className={styles.chip}>{meta.selfLoops} loops dropped</span>
-                <span className={styles.chip}>{meta.duplicates} duplicates dropped</span>
-                <span className={styles.chip}>CSR {formatBytes(meta.heapBytes)}</span>
-              </div>
+              ) : (
+                <>
+                  <div className={styles.tiles}>
+                    <Tile label="Vertices" value={formatInt(meta.vertices)} />
+                    <Tile label="Edges" value={formatInt(meta.edges)} />
+                    <Tile
+                      label="Components"
+                      value={formatInt(meta.components)}
+                      action={
+                        <button
+                          type="button"
+                          className={styles.tileAction}
+                          aria-label="Browse the components"
+                          title="Browse the components"
+                          onClick={() => {
+                            setComponentsOpen(true);
+                            selectComponent(1);
+                          }}
+                        >
+                          <ChevronRight size={13} />
+                        </button>
+                      }
+                    />
+                    <Tile label="Mean degree" value={meta.degree.mean.toFixed(2)} />
+                  </div>
+                  <DegreeHistogram degrees={meta.degrees} max={meta.degree.max} />
+                  <div className={`${styles.chips} ${styles.shedFirst}`}>
+                    <span className={styles.chip}>{meta.selfLoops} loops dropped</span>
+                    <span className={styles.chip}>{meta.duplicates} duplicates dropped</span>
+                    <span className={styles.chip}>CSR {formatBytes(meta.heapBytes)}</span>
+                  </div>
+                </>
+              )}
             </Panel>
 
             <Panel
@@ -1369,28 +1622,8 @@ export default function Observatory() {
             </div>
 
             {/* Layout tools, top right */}
-            <div className={`${styles.floating} ${styles.floatingTopRight}`}>
+            <div ref={layoutMenuRef} className={`${styles.floating} ${styles.floatingTopRight}`}>
               <div className={styles.cluster}>
-                <IconButton
-                  label={simulate ? 'Pause the force simulation' : 'Resume the force simulation'}
-                  pressed={simulate}
-                  onClick={() => {
-                    const next = !simulate;
-                    setSimulate(next);
-                    rendererRef.current?.setSimulate(next);
-                  }}
-                >
-                  <Magnet size={15} />
-                </IconButton>
-                <IconButton
-                  label="Reheat the simulation"
-                  onClick={() => {
-                    rendererRef.current?.reheat(1);
-                  }}
-                  disabled={!simulate}
-                >
-                  <RefreshCw size={15} />
-                </IconButton>
                 <IconButton
                   label={showLabels ? 'Hide vertex numbers' : 'Show vertex numbers'}
                   pressed={showLabels}
@@ -1413,7 +1646,68 @@ export default function Observatory() {
                 >
                   <Focus size={15} />
                 </IconButton>
+                <span className={styles.clusterRule} aria-hidden="true" />
+                <IconButton
+                  label={layoutOpen ? 'Hide the layouts' : 'Choose a layout'}
+                  pressed={layoutOpen}
+                  onClick={() => setLayoutOpen((o) => !o)}
+                >
+                  <Shapes size={15} />
+                </IconButton>
               </div>
+              {layoutOpen && (
+                <div className={`${styles.help} ${styles.menu}`} role="menu" aria-label="Layouts">
+                  <span className={`label ${styles.helpTitle}`}>Layout</span>
+                  {LAYOUTS.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={layout === item.id}
+                      className={styles.menuItem}
+                      onClick={() => {
+                        setLayoutOpen(false);
+                        applyLayout(item.id, search?.root ?? (selected || 1));
+                      }}
+                    >
+                      <span className={styles.menuIcon}>{item.icon}</span>
+                      <span className={styles.menuText}>
+                        <span>{item.label}</span>
+                        <span className={styles.menuHint}>{item.hint}</span>
+                      </span>
+                    </button>
+                  ))}
+                  {layout === 'force' && (
+                    <div className={styles.menuFooter}>
+                      <span className={`label ${styles.helpTitle}`}>Simulation</span>
+                      <span className={styles.menuButtons}>
+                        <IconButton
+                          label={
+                            simulate ? 'Pause the force simulation' : 'Resume the force simulation'
+                          }
+                          pressed={simulate}
+                          onClick={() => {
+                            const next = !simulate;
+                            setSimulate(next);
+                            rendererRef.current?.setSimulate(next);
+                          }}
+                        >
+                          <Magnet size={15} />
+                        </IconButton>
+                        <IconButton
+                          label="Reheat the simulation"
+                          onClick={() => {
+                            rendererRef.current?.reheat(1);
+                          }}
+                          disabled={!simulate}
+                        >
+                          <RefreshCw size={15} />
+                        </IconButton>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* View tools, bottom right */}
@@ -1445,6 +1739,12 @@ export default function Observatory() {
                   <span className={styles.swatchB} /> level {search.depth}
                   <span className={styles.legendSep} />
                   <span className={styles.swatchDim} /> not reached
+                </>
+              ) : component ? (
+                <>
+                  <span className={styles.swatchLit} /> component {component}
+                  <span className={styles.legendSep} />
+                  <span className={styles.swatchDim} /> the rest
                 </>
               ) : selected ? (
                 `Origin: vertex ${selected}`
@@ -1550,12 +1850,24 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Tile({
+  label,
+  value,
+  hint,
+  action,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  /** A small control in the tile's corner. */
+  action?: ReactNode;
+}) {
   return (
     <div className={styles.tile}>
       <span className={`label ${styles.tileLabel}`}>{label}</span>
       <span className={`mono ${styles.tileValue}`}>{value}</span>
       {hint && <span className={styles.tileHint}>{hint}</span>}
+      {action}
     </div>
   );
 }
@@ -1603,40 +1915,124 @@ function DegreeHistogram({ degrees, max }: { degrees: Uint32Array; max: number }
 }
 
 /** The components as proportional segments, largest first. */
-function ComponentBar({ sizes, total }: { sizes: Uint32Array; total: number }) {
+/** The components browser, in place of the graph summary: a stacked bar of
+    sizes (largest first, the tail past eight bucketed) whose pieces are
+    buttons, a previous / next navigator and the selected component's
+    numbers as tiles. */
+function ComponentsView({
+  meta,
+  current,
+  onSelect,
+  onClose,
+}: {
+  meta: GraphMeta;
+  current: number;
+  onSelect: (c: number) => void;
+  onClose: () => void;
+}) {
+  const sizes = meta.componentSizes;
+  const total = meta.vertices;
   const shown = Math.min(sizes.length, 8);
   let rest = 0;
   for (let i = shown; i < sizes.length; i++) rest += sizes[i];
+  const size = current ? sizes[current - 1] : 0;
+  const edges = current ? meta.componentEdges[current] : 0;
+  const possible = (size * (size - 1)) / 2;
   return (
-    <div className={`${styles.chart} ${styles.shedSecond}`} aria-label="Component sizes">
+    <div className={styles.chart} aria-label="Components">
       <div className={styles.chartHeader}>
-        <span className={`label ${styles.tileLabel}`}>Components</span>
+        <span className={`label ${styles.tileLabel}`}>Components · {formatInt(sizes.length)}</span>
         <span className={styles.tileHint}>
           {sizes.length === 1 ? 'connected' : `smallest ${formatInt(sizes[sizes.length - 1])}`}
         </span>
       </div>
-      <div className={styles.segments}>
+      <div className={styles.segments} role="group" aria-label="Pick a component">
         {Array.from({ length: shown }, (_, i) => (
-          <span
+          <button
             key={i}
+            type="button"
+            className={styles.piece}
             style={{ flexGrow: sizes[i], opacity: 1 - (i / Math.max(shown, 2)) * 0.7 }}
+            data-current={current === i + 1 || undefined}
             title={`component ${i + 1}: ${formatInt(sizes[i])} vertices`}
+            aria-label={`Component ${i + 1}, ${formatInt(sizes[i])} vertices`}
+            aria-pressed={current === i + 1}
+            onClick={() => onSelect(i + 1)}
           />
         ))}
         {rest > 0 && (
-          <span
-            className={styles.segmentRest}
+          <button
+            type="button"
+            className={`${styles.piece} ${styles.pieceRest}`}
             style={{ flexGrow: rest }}
+            data-current={current > shown || undefined}
             title={`${formatInt(sizes.length - shown)} more components: ${formatInt(rest)} vertices`}
+            aria-label={`${formatInt(sizes.length - shown)} smaller components`}
+            aria-pressed={current > shown}
+            onClick={() => onSelect(shown + 1)}
           />
         )}
       </div>
-      <div className={styles.axis}>
-        <span>
-          {((sizes[0] / total) * 100).toFixed(sizes[0] === total ? 0 : 1)}% in the largest
+      <div className={styles.componentRow}>
+        <button
+          type="button"
+          className={styles.stepButton}
+          aria-label="Previous (larger) component"
+          disabled={current <= 1}
+          onClick={() => onSelect(current - 1)}
+        >
+          <ChevronLeft size={12} />
+        </button>
+        <span className={`mono ${styles.componentInfo}`}>
+          component <b>{current}</b>
+          <span className={styles.componentSep}>/</span>
+          {formatInt(sizes.length)}
         </span>
-        <span>{formatInt(total)}</span>
+        <button
+          type="button"
+          className={styles.stepButton}
+          aria-label="Next (smaller) component"
+          disabled={current >= sizes.length}
+          onClick={() => onSelect(current + 1)}
+        >
+          <ChevronRight size={12} />
+        </button>
+        <button
+          type="button"
+          className={styles.stepButton}
+          aria-label="Back to the graph summary"
+          title="Back to the summary"
+          onClick={onClose}
+        >
+          <X size={12} />
+        </button>
       </div>
+      {current > 0 && (
+        <div className={styles.tiles}>
+          <Tile
+            label="Vertices"
+            value={formatInt(size)}
+            hint={`${((size / total) * 100).toFixed(size === total ? 0 : 1)}% of the graph`}
+          />
+          <Tile
+            label="Edges"
+            value={formatInt(edges)}
+            hint={`${((edges / Math.max(meta.edges, 1)) * 100).toFixed(edges === meta.edges ? 0 : 1)}% of the edges`}
+          />
+          <Tile
+            label="Degree"
+            value={`${meta.componentDegree.min[current]} – ${meta.componentDegree.max[current]}`}
+            hint={`mean ${size ? ((2 * edges) / size).toFixed(2) : '0'}`}
+          />
+          <Tile
+            label="Density"
+            value={
+              possible ? `${((edges / possible) * 100).toFixed(edges === possible ? 0 : 2)}%` : '—'
+            }
+            hint="of the possible edges"
+          />
+        </div>
+      )}
     </div>
   );
 }
