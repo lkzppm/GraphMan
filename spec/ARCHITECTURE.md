@@ -90,7 +90,12 @@ output, `distance`, `diameter(kind, bfsBudget)` (cancellable through the
 library's progress callback), degree statistics, components, and
 `initialLayout()`: a BFS-radial layout per component (rings whose area is
 proportional to the number of vertices on them), components packed largest
-first on concentric rings. Every per-vertex array is indexed by vertex id
+first on concentric rings; and `layout(kind, root)` for the canvas menu —
+`Radial` (BFS levels from `root` as evenly spaced rings, subtrees in
+wedges), `Layered` (levels as rows, level 0 on top, a vertex's x from its
+wedge angle so subtrees stay contiguous) and `Degree` (one circle, sorted
+by degree), the root's component at the origin and the others packed
+around it with the same disc packing. All O(n + m). Every per-vertex array is indexed by vertex id
 with slot 0 unused, like the library's raw arrays, so GPU buffers are
 indexed by vertex id directly. Timings use `performance.now()` around the
 traversal only.
@@ -139,6 +144,12 @@ parsed by the wasm `Graph`, and the renderer receives:
 - `edges` (`[u, v]` pairs), `csrOffsets` / `csrTargets` (the springs);
 - `levels`, `ranks`, `parents` — the current search tree, `UNREACHED`
   when there is none.
+- `labels` — the component id of every vertex, so a `component` uniform
+  can light one component and dim the rest (node and edge shaders). The
+  CSR rows are bound to the draws too: the node shader finds the
+  neighbours of the selected vertex with a binary search of its row, and
+  the edge draw appends the selected vertex's row as extra segments so
+  its edges are lit whatever the sampling stride.
 
 Per frame: if the simulation is warm or a vertex is being dragged, one
 compute dispatch (`SIM_SHADER`, 256-wide workgroups) does a d3-style step —
@@ -169,8 +180,9 @@ renderer does three things:
   the picture moves the strides come from budgets (200 000 edges, 1M
   vertices per frame); once it has been still for 120 ms a "settled" frame
   draws the resting sample. The resting sample is not always everything:
-  `measure()` estimates, from the densest big component (edges over its
-  layout disc, mean edge length), how many edges cross a pixel at the
+  `measure()` estimates, from the densest big component (edges over the
+  area its layout occupies, mean edge length; measured again for every
+  layout change), how many edges cross a pixel at the
   current zoom, and `fades()` scales the edge alpha so the pile adds up to
   a readable grey (`EDGE_COVERAGE`) instead of a black disc; edges too
   faint for half-float blending (`MIN_EDGE_ALPHA`) are instead drawn as a
@@ -184,9 +196,17 @@ a search at 60 fps; grafo_4 (105 MB) the same; grafo_5 (4.8M vertices,
 The CPU keeps a mirror of the positions (one `read()` in flight at a time
 while they change) for picking: hover and click scan for the nearest
 vertex within 10 px, drags write the pointer's world position into the
-`Params` uniform. Graphs above 30 000 vertices skip the O(n²) repulsion by
-default and keep the radial layout, but stay draggable (the compute step
-still runs in "static" mode).
+`Params` uniform. Graphs above 30 000 vertices skip the O(n²) repulsion,
+open in the `Radial` layout (rooted in the largest component) and stay
+draggable (the compute step still runs in "static" mode).
+
+A layout change (`morphTo`) uploads the target positions and slides every
+vertex there over 700 ms with a small compute pass (`MORPH_SHADER`, eased
+on the CPU), the simulation cooled meanwhile; the force layout returns to
+`initialLayout()` and warms the simulation up again, the other layouts
+switch it off (it can be turned on to relax them). The level layouts
+follow the search: a new origin re-arranges the graph around it and the
+view frames the origin's component.
 
 Searches come back from wasm as typed arrays and are uploaded as-is; the
 animation is the `reveal` uniform sweeping over discovery ranks at `rate`

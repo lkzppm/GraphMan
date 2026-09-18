@@ -207,11 +207,29 @@ the WebGPU one, drawn only when discs are at least 5 px.
   settles over 0.5 s with an expanding blue halo; its tree edge draws itself
   from the parent during the rank before discovery and stays bright for
   0.7 s. Both are pure shader functions of `reveal`, `rate` and the ranks.
-- The hovered vertex grows 1.3× with a `--fg` ring; the origin grows 1.5×
-  and keeps its ring.
+- The hovered vertex grows 1.3× with a `--fg` ring; the selected vertex
+  grows 1.5× and keeps its ring. Selecting a vertex lights its neighbourhood: the
+  neighbours grow 1.25× with the ring at half strength and the edges
+  between are drawn in the accent, at full strength whatever the fade,
+  and never dropped by the level-of-detail sampling. Running a search
+  clears the selection: the tree is the picture, the origin is just
+  level 0.
+- **Components**: the Components tile of the graph summary carries a `›`
+  button that swaps the summary for the components browser: a stacked bar
+  of sizes (largest first, the tail past eight bucketed) whose pieces are
+  buttons, a `‹ component 3 / 10 ›` navigator with ✕ back to the summary,
+  and the selected component's tiles (vertices with its share, edges with
+  their share, degree range with the mean, density). Opening lights the
+  largest component on the canvas — accent vertices and edges, everything
+  else `--node-dim` / `--edge-dim` — and glides the camera to frame it;
+  ←/→ (or ↑/↓) step to the next / previous component while the components
+  own the arrow keys (they take them on a click, the search takes them back
+  when run or scrubbed); Esc clears the highlight. The legend reads
+  `● component 3 | ● the rest`. The summary tiles carry no sub-labels.
 - The search wave reveals discovery order over 1.6–8 s; the slider scrubs
-  it, Space pauses, F fits, Esc clears the origin, ←/→ step a vertex (⇧
-  ten), ↑/↓ step a BFS level (ten vertices in a DFS).
+  it, Space pauses, F fits, Esc (or a click on the background) clears the
+  origin, ←/→ step a vertex (⇧ ten), ↑/↓ step a BFS level (ten vertices in
+  a DFS).
 - **Follow** (a `Focus` toggle in the layout cluster, always shown, off by
   default; running a search does not change it): the camera glides to frame the vertices
   discovered so far while the wave plays or the timeline is scrubbed, so a
@@ -219,7 +237,23 @@ the WebGPU one, drawn only when discs are at least 5 px.
   by hand switches it off.
 - Layout: the BFS-radial initial layout from Rust, then a d3-style force
   simulation on the GPU for graphs up to 30 000 vertices. The view follows
-  the simulation until the user pans, zooms or drags.
+  the simulation until the user pans, zooms or drags. Larger graphs open
+  in the Radial levels layout instead, rooted in the largest component
+  (the force placement is only a seed for a simulation they will not run).
+- **The top-right cluster** is split by a hairline: on the left the view
+  toggles (vertex numbers `#`, follow), on the right the layout menu
+  (`Shapes`). The menu is a popover like the help one, hung under the
+  cluster: Force (springs and repulsion), Radial levels (BFS rings around
+  the origin), Layered (levels as rows, subtrees together), Degree circle
+  (sorted by degree, edges as chords), each a `menuitemradio` with an icon,
+  name and one-line hint; while Force is current a footer row holds the
+  simulation toggle (magnet) and reheat. Picking a layout slides every
+  vertex to its new place over 700 ms and glides the view to fit; the
+  level layouts start at the search origin (or the selected vertex, else
+  1) and re-arrange when a new search runs, the view then framing the
+  origin's component only (the rest just makes room). Every component
+  gets the layout: radial components are packed as discs around the
+  origin's, layered ones stand side by side with level 0 on one line.
 
 ## Responsive rules
 
