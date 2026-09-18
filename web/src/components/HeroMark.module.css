@@ -1,0 +1,265 @@
+/* The live mark: builds itself on load, breathes while idle, runs a search
+   wave from a hovered vertex. Colours: the hexagon is grey,
+   the graph and the figure are the accent blue. */
+
+.card {
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+
+/* The glow is a soft radial gradient behind the mark (a CSS filter on the
+   SVG would be clipped to its box), brightening a little on hover. */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: -28%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    rgba(0, 112, 243, 0.16),
+    rgba(0, 112, 243, 0.05) 55%,
+    transparent 100%
+  );
+  opacity: 0.85;
+  transform: translateY(4%);
+  transition: opacity 0.5s var(--ease);
+  pointer-events: none;
+  animation: rise 1s var(--ease) 0.4s both;
+}
+
+.card:hover::before {
+  opacity: 1;
+}
+
+.svg {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Hexagon: grey, drawn in on load. The
+   drawing copy is dashed (no join at its start point), so it hands over
+   to a plain copy once drawn. */
+.hexagonDraw,
+.hexagon {
+  fill: none;
+  stroke: var(--fg-3);
+  stroke-width: 40;
+  stroke-linejoin: miter;
+}
+
+.hexagonDraw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation:
+    draw 1.1s var(--ease) 0.05s both,
+    vanish 0.01s linear 1.2s both;
+}
+
+.hexagon {
+  animation: appear 0.01s linear 1.2s both;
+}
+
+/* Edges draw from parent to child in BFS order. The dash starts a little
+   past the path's start (offset > 1, with a long gap after it), otherwise
+   the round cap of the not-yet-drawn dash shows as a dot on the parent. */
+.edge {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 22;
+  stroke-linecap: round;
+  stroke-dasharray: 1 3;
+  stroke-dashoffset: 1.1;
+  animation: draw 0.5s var(--ease) calc(0.55s + var(--d, 0s)) both;
+  transition: stroke-width 0.25s var(--ease);
+}
+
+/* Edges of the hovered vertex thicken. */
+.edgeHot {
+  stroke-width: 30;
+}
+
+/* A brighter copy of each edge, only visible during the hover wave. */
+.edgeFlash {
+  fill: none;
+  stroke: var(--accent-2);
+  stroke-width: 22;
+  stroke-linecap: round;
+  stroke-dasharray: 1 3;
+  stroke-dashoffset: 1.1;
+  opacity: 0;
+}
+
+/* The wave runs once per hovered vertex (`data-wave` on the svg). */
+.svg[data-wave='true'] .edgeFlash {
+  animation: flash 1.6s var(--ease) calc(var(--d, 0s)) 1 both;
+}
+
+/* Vertices pop in after their edge, then breathe forever. */
+.node:active {
+  cursor: grabbing;
+}
+
+.node {
+  fill: var(--accent);
+  cursor: grab;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: r 0.3s var(--ease-spring);
+  animation:
+    pop 0.6s var(--ease-spring) calc(0.9s + var(--d, 0s)) both,
+    breathe 3.6s ease-in-out calc(1.6s + var(--i, 0s)) infinite;
+}
+
+.wave {
+  pointer-events: none;
+}
+
+.halo {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 12;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.svg[data-wave='true'] .halo {
+  animation: halo 1.6s var(--ease) calc(var(--d, 0s)) 1 both;
+}
+
+/* The figure fades in last; it is otherwise still. */
+.figure {
+  fill: var(--accent);
+  transform-box: fill-box;
+  transform-origin: 40% 30%;
+  animation: rise 0.7s var(--ease) 1.3s both;
+}
+
+/* The white gap around the head where it crosses the border: as wide as
+   the keylines between the arms and the body (about 11 units). */
+.gap {
+  fill: none;
+  stroke: var(--bg);
+  stroke-width: 22;
+  stroke-linejoin: round;
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes vanish {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
+
+  30% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.14);
+  }
+}
+
+@keyframes halo {
+  0% {
+    opacity: 0;
+    transform: scale(1);
+  }
+
+  8% {
+    opacity: 0.9;
+  }
+
+  45%,
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+@keyframes flash {
+  0% {
+    stroke-dashoffset: 1.1;
+    opacity: 0;
+  }
+
+  5% {
+    opacity: 1;
+  }
+
+  30% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+
+  55%,
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hexagonDraw,
+  .edge {
+    stroke-dashoffset: 0;
+  }
+
+  .node,
+  .figure {
+    animation: none;
+  }
+}
+
+/* Shared keyframes, redeclared here: CSS modules scope animation names,
+   so the copies in globals.css are not reachable from a module. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -39,8 +39,8 @@ Design decisions worth presenting:
    macOS especially, keep freed blocks).
 3. **Traversals are observable.** `bfs_into`/`dfs_into` take a `Visitor`
    (discover / level_complete / finish, all defaulted) and return `Control`
-   to stop early. `distance` is a BFS with a `StopAt` visitor; the observatory
-   frames are another visitor. DFS is iterative with a stack of neighbour
+   to stop early. `distance` is a BFS with a `StopAt` visitor; anything else (frame
+   capture, cancellation) is another listener. DFS is iterative with a stack of neighbour
    iterators, so it produces the recursive tree with O(depth) memory.
 4. **Nothing is allocated twice.** `SearchTree::reset` only touches the
    vertices the previous search reached, so thousands of BFS runs (the
@@ -58,7 +58,8 @@ Design decisions worth presenting:
 
 Features: `mmap` (memory-mapped file loading and anonymous edge store),
 `parallel` (rayon), `serde` (serialisable results). The core has no CLI or
-terminal dependencies so that it can be compiled to WebAssembly later.
+terminal dependencies, which is what lets `graphman-wasm` compile it to
+WebAssembly with the default features off.
 
 ### `graphman-cli` (binary `graphman`)
 
@@ -73,43 +74,139 @@ src/commands/
   bench      time BFS/DFS from N distinct random roots
   memory     RSS after loading one representation (run in a subprocess by `study`)
   study      the case-study runner: JSON per graph + merged results.json + RESULTS.md
-  export     BFS/DFS layouts for the observatory (.gmo + .json)
 ```
 
 All decorative output goes to stderr; stdout carries results (`--json` where
 available) so the commands compose.
 
+### `graphman-wasm` (the library in the browser)
+
+`crates/graphman-wasm` is a thin `wasm-bindgen` layer over the core crate,
+built with `default-features = false` (no `mmap`: there are no files; no
+`parallel`: no threads without `SharedArrayBuffer`). It exposes one `Graph`
+class per uploaded file: parse + build a `Csr`, `search(kind, root)` →
+parents / levels / discovery ranks / level sizes / the assignment's text
+output, `distance`, `diameter(kind, bfsBudget)` (cancellable through the
+library's progress callback), degree statistics, components, and
+`initialLayout()`: a BFS-radial layout per component (rings whose area is
+proportional to the number of vertices on them), components packed largest
+first on concentric rings. Every per-vertex array is indexed by vertex id
+with slot 0 unused, like the library's raw arrays, so GPU buffers are
+indexed by vertex id directly. Timings use `performance.now()` around the
+traversal only.
+
+`web/scripts/build-wasm.mjs` compiles it (`--profile wasm`: release without
+debug info) and runs the `wasm-bindgen` CLI pinned to the crate version in
+`Cargo.lock` (downloaded as a prebuilt release into `web/.cache`). Output:
+`web/src/wasm/graphman.{js,d.ts}` (glue, imported by `src/lib/graphman.ts`)
+and `web/public/wasm/graphman.<hash>.wasm` (fetched at runtime; the name
+carries a content hash because `/wasm` is served as immutable, and
+`src/wasm/manifest.ts` exports the URL). All of it is
+gitignored and rebuilt by `npm run prepare-assets`, which `npm run dev` and
+`npm run build` trigger. On a machine without Rust in CI or Vercel the
+script installs a minimal toolchain with rustup first.
+
 ## Web (`web/`)
 
-Vite + React 19 + TypeScript, `motion` for transitions, `liquid-gooey` for
-liquid indicators, `metal-fx` for metal rings, and a hand-written WebGL2
-renderer for the observatory (millions of points and tree edges in two draw
-calls). No chart library: charts are small React/HTML components following
-the dataviz guidance and the design tokens in `spec/DESIGN.md`.
-
-Scenes (one page, each at least a viewport tall): Hero (paper, logo loop) →
-Observatory (graphite console) → Anatomy (parchment) → Case studies (paper)
-→ Footer (parchment).
-
-### `.gmo` layout format (little endian)
+Next.js 16 (App Router, Turbopack), React 19, TypeScript, CSS modules, the
+`geist` fonts, `lucide-react` and `simple-icons` for icons, and `vgpu`
+(Vercel's WebGPU library) for the observatory. No chart or effect
+libraries. Deployed on Vercel with the root directory set to
+`web/`; `web/vercel.json` pins the install and build commands.
 
 ```
-"GMO1"            magic
-u32 vertex_count  n
-u32 root
-u32 max_level     deepest reached level
-u32 reached       vertices reached from the root
-u32 kind          0 = BFS, 1 = DFS
-f32 angle[n]      polar angle of vertex i+1 (unreached: golden-angle hash)
-u32 level[n]      level of vertex i+1 (0xFFFFFFFF = unreached)
-u32 parent[n]     parent of vertex i+1 (0 = none)
+src/app/layout.tsx, globals.css   fonts, metadata, the shared tabbed Nav, design tokens
+src/app/page.tsx                  Home tab: Hero + Pipeline
+src/app/library/, studies/        Library tab (Decisions), Case studies tab (tables)
+src/app/observatory/              the tool, client-only (dynamic import, ssr: false)
+src/components/                   Nav, Logo, BrandIcon, Reveal, page sections + CSS modules
+src/lib/graphman.ts               loads the wasm glue once
+src/lib/studies.ts                types of studies/results.json (synced into src/data)
+src/lib/format.ts                 number formatting
+src/observatory/Observatory.tsx   state, file loading, pointer interaction, panels
+src/observatory/renderer.ts       vgpu: buffers, compute step, node + edge draws
+src/observatory/shaders.ts        WGSL (plain strings, reflected by vgpu)
 ```
 
-The renderer computes `radius = f(level / max_level)` in the vertex shader,
-so BFS (linear rings) and DFS (very deep trees, compressed radially) share
-one buffer layout, and switching between them is a shader-side morph.
+### The observatory
 
-### Data files
+Everything happens in the tab: the page starts empty, a dropped file is
+parsed by the wasm `Graph`, and the renderer receives:
 
-`web/public/data/manifest.json` (generated by `npm run data`) lists the
-exported graphs; `results.json` is a copy of `studies/results.json`.
+- `positions` — a `pingPongStorage` pair of `vec2f` per vertex, seeded with
+  the Rust initial layout; `velocities`, and `anchors` (each vertex's
+  component centre, the gravity target);
+- `edges` (`[u, v]` pairs), `csrOffsets` / `csrTargets` (the springs);
+- `levels`, `ranks`, `parents` — the current search tree, `UNREACHED`
+  when there is none.
+
+Per frame: if the simulation is warm or a vertex is being dragged, one
+compute dispatch (`SIM_SHADER`, 256-wide workgroups) does a d3-style step —
+exact many-body repulsion tiled through workgroup memory, springs along the
+CSR rows biased towards the lower-degree endpoint, weak gravity towards the
+component anchor, Verlet integration with 0.6 velocity decay, alpha cooling
+over 300 steps — and pins the dragged vertex; then the edges are drawn
+(`line-list`, endpoints looked up in storage) and the vertices (instanced
+quads, disc SDF in the fragment shader). One `uniforms()` block (`View`:
+camera, viewport, radius, reveal cursor, hovered/selected ids, theme
+colours, the level-of-detail strides and fades) feeds every draw.
+
+The course graphs have millions of edges (grafo_2: 1.3M, grafo_4: 8.2M),
+and drawing them all every frame is what used to freeze the tab, so the
+renderer does three things:
+
+- **Frames are drawn only when something changed** (a `dirty` flag set by
+  every setter; an untouched canvas keeps its last image).
+- **The edges live in their own layer**, an `rgba16float` offscreen target
+  redrawn only when the camera, the positions or the search change, and
+  composited under the vertices with a fullscreen `effect()`. Hovering or
+  selecting a vertex therefore redraws the vertices only.
+- **Level of detail.** Per frame the edge draw covers every `stride`-th
+  plain edge and every `treeStride`-th tree edge (two draws over the same
+  buffer, a `Kind` uniform telling them apart) and the vertex draw every
+  `nodeStride`-th vertex plus the hovered and the selected one; only the
+  sampled elements are submitted, so what is culled costs nothing. While
+  the picture moves the strides come from budgets (200 000 edges, 1M
+  vertices per frame); once it has been still for 120 ms a "settled" frame
+  draws the resting sample. The resting sample is not always everything:
+  `measure()` estimates, from the densest big component (edges over its
+  layout disc, mean edge length), how many edges cross a pixel at the
+  current zoom, and `fades()` scales the edge alpha so the pile adds up to
+  a readable grey (`EDGE_COVERAGE`) instead of a black disc; edges too
+  faint for half-float blending (`MIN_EDGE_ALPHA`) are instead drawn as a
+  stronger sample. Vertices that pile more than three deep on a pixel are
+  sampled too. Zooming in thins the piles and brings everything back.
+
+With this grafo_2 loads in a quarter of a second and pans, zooms and plays
+a search at 60 fps; grafo_4 (105 MB) the same; grafo_5 (4.8M vertices,
+205 MB) is usable.
+
+The CPU keeps a mirror of the positions (one `read()` in flight at a time
+while they change) for picking: hover and click scan for the nearest
+vertex within 10 px, drags write the pointer's world position into the
+`Params` uniform. Graphs above 30 000 vertices skip the O(n²) repulsion by
+default and keep the radial layout, but stay draggable (the compute step
+still runs in "static" mode).
+
+Searches come back from wasm as typed arrays and are uploaded as-is; the
+animation is the `reveal` uniform sweeping over discovery ranks at `rate`
+ranks per second: the shaders derive each vertex's age since discovery from
+those two numbers (pop + halo on vertices, draw-in + flash on tree edges).
+
+### Data
+
+`studies/results.json` is copied to `web/src/data/results.json` by
+`scripts/sync-data.mjs` (Turbopack only bundles files under `web/`) and
+rendered as tables at build time.
+
+### Timing in the browser
+
+The observatory shows the time of the single BFS/DFS run, measured in the
+wasm crate with `performance.now()` around the traversal. Browsers coarsen
+that clock unless the page is cross-origin isolated, so `next.config.ts`
+sends `Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: require-corp` on every route: the resolution
+goes from 100 µs to 5 µs in Chrome and from 1 ms to 20 µs in Safari and
+Firefox. Everything the site loads is same-origin, so nothing is blocked
+by it; a future cross-origin embed (analytics, images) would need CORP
+headers or `crossorigin` attributes.

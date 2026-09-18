@@ -1,115 +1,231 @@
 # GraphMan design system
 
-The look of GraphMan is its own: an instrument, not a brochure. The page is a
-sequence of full-height scenes that alternate between paper (white and
-parchment) and graphite (near-black), the only colour is the signal blue that
-also lights the BFS wave, and every moving thing moves like liquid or catches
-light like metal. Motion explains structure; nothing animates for its own sake.
+GraphMan's site is a white instrument panel: paper white, a scale of greys,
+hairline borders, near-square corners, and exactly one blue. The voice is
+borrowed from Golem (a sibling project, black/orange): small tracked
+capitals for every label, monospace for every number, surfaces with a
+2 px accent edge, a mark that shakes when hovered, and mono "code comment"
+captions. Here it is white and blue, because that is what the icon was
+drawn for.
 
 ## Principles
 
-1. **The data is the hero.** The observatory canvas and the logo loop are the
-   two visual anchors; chrome around them is quiet, hairline-bordered, and
-   recedes. No decorative gradients on surfaces, no drop shadows on cards.
-2. **One signal colour.** Blue means "alive": links, primary actions, the lit
-   frontier of a search, the active graph. On graphite it brightens to sky
-   blue so it stays readable. Everything else is ink, paper or graphite.
-3. **Full-screen scenes.** Every section is at least one viewport tall and
-   vertically centred, so each scroll stop reads as a complete slide. This is
-   also how the site doubles as the presentation.
-4. **Fluid, physical motion.** Hover lifts, liquid indicators that flow
-   between targets, metal rings that shimmer, a frontier wave that breathes.
-   Everything eases out (`cubic-bezier(0.22, 1, 0.36, 1)`) and respects
-   `prefers-reduced-motion`.
-5. **Honest numbers.** Charts follow the dataviz method: thin marks, direct
-   labels, a legend for every multi-series chart, validated categorical
-   colours, no dual axes. A budgeted or approximate value is always flagged.
+1. **The data is the hero.** The observatory canvas is the one visual
+   anchor; chrome around it is quiet, hairline-bordered and recedes. No
+   decorative gradients, no effect libraries.
+2. **Colour discipline.** White, greys and `--accent` blue. Blue means
+   "alive": links, buttons, the origin vertex, level 0 of a search, the
+   accent edge of a surface, flagged values. A lighter blue (`--accent-2`)
+   exists only so the level ramp has a far end. No green, no red, no amber.
+3. **Light only.** No dark theme; `color-scheme: light`. The canvas reads
+   the same CSS variables the UI uses.
+4. **Alive, not busy.** Everything actionable answers the pointer: buttons
+   lift, ghosts fill with blue, cards rise and grow an accent line, the mark
+   shakes, sections rise into view once. Motion is 150–700 ms on
+   `cubic-bezier(0.22, 1, 0.36, 1)`, springs (`--ease-spring`) only on
+   things that snap into place. Everything respects `prefers-reduced-motion`.
+5. **Honest numbers.** Tables use tabular monospace figures, direct labels,
+   and a flag (≥, in blue) on every bound or budget-limited value.
 
-## Tokens (`web/src/styles/tokens.css`)
+## Tokens (`web/src/app/globals.css`)
 
-| Role | Value | Notes |
-|---|---|---|
-| Signal blue | `#0066cc` | links, primary pills, eyebrows on paper |
-| Signal blue, focus | `#0071e3` | focus rings, hover fill |
-| Sky blue | `#2997ff` | the signal on graphite; also the lit frontier in the observatory |
-| Paper | `#ffffff` | hero, case studies |
-| Parchment | `#f5f5f7` | anatomy, footer |
-| Graphite 1 / 2 / 3 | `#272729` / `#2a2a2c` / `#252527` | observatory tile and its stat tiles |
-| Void | `#000000` | nav bar, observatory canvas |
-| Ink | `#1d1d1f` | text on paper |
-| Ink 80 / 48 | `#333333` / `#7a7a7a` | secondary and muted text |
-| Hairline | `#e0e0e0`, `rgba(0,0,0,.08)` | card borders |
-| Radii | 8 / 11 / 18 / pill | utility, list items, cards and frames, actions |
-| Spacing | 4 · 8 · 12 · 17 · 24 · 32 · 48 · 64 | 8-based with 17 for text rhythm |
-
-Chart series (validated with the dataviz palette): adjacency list `#2a78d6`,
-adjacency matrix `#eb6834`, CSR `#1baf7a`; diameter methods reuse the first
-three slots plus `#eda100` for brute force, always with direct labels.
+| Role | Value |
+|---|---|
+| `--bg` / `--bg-2` / `--bg-3` | `#fff` / `#fafafa` / `#f2f2f2` |
+| `--fg` / `--fg-2` / `--fg-3` | `#171717` / `#666` / `#8f8f8f` |
+| `--border` / `--border-2` | `#e6e6e6` / `#cfcfcf` |
+| `--accent` / `--accent-hover` / `--accent-muted` | `#0070f3` / `#0a5fd0` / blue at 12 % |
+| `--accent-2` (level ramp end) | `#a9dcff` |
+| `--level-0` (level ramp start) | `#002f66` |
+| `--node` / `--node-dim` | `#8f8f8f` / `#d6d6d6` |
+| `--edge` / `--edge-dim` | ink at 14 % / 6 % |
+| Radii | 2 / 4 / 6 px |
+| `--tracking` | `0.1em` (labels), `0.3em` (eyebrows) |
+| `--glow` | `0 6px 24px -6px var(--accent-muted)` |
+| Container | 1080 px, 24 px gutters |
 
 ## Typography
 
-System display stack (`SF Pro` on Apple platforms, `Inter` elsewhere).
-Weights 400 and 600 only. Headlines are tight: hero `clamp(44px, 6.2vw, 84px)`
-at line-height 1.02 and `-0.03em` tracking; section titles 40px; body 17px
-at 1.47; captions 14px; numbers in the monospace stack with tabular figures.
+Geist Sans and Geist Mono (the `geist` package). Weights 400, 500, 600.
 
-## Surfaces and scenes
+- **Headlines**: Sans 600, hero `clamp(40px, 5.6vw, 64px)` at 1.05 and
+  `-0.04em`, section titles 32 px at `-0.03em`. The hero title ends in a
+  blue full stop.
+- **Wordmark**: Mono `graphman` + blue `.`.
+- **Labels** (`.label`): 11–12 px, 500, uppercase, `0.1em` tracking, grey.
+  Used for nav links, buttons, table headers, panel titles, tile labels.
+- **Eyebrows** (`.eyebrow`): Mono 11 px uppercase at `0.3em`, `--fg-3`.
+- **Numbers**: Mono with `tnum` and `zero`; big tile values 28 px in blue.
+- **Comments** (`.comment`): Mono 12 px grey, written like code comments
+  (`// hover the graphman`, `// built sep 2026 · rio de janeiro`).
+- Body 16–17 px at 1.5–1.6; UI text 13–14 px.
 
-- **Hero (paper)**: two columns, copy left, the logo loop right. The loop is a
-  white-background video blended with `mix-blend-mode: multiply` so only the
-  drawing floats on the page. Facts row of four numbers under the CTAs.
-- **Observatory (graphite)**: a console. Sidebar with the graph list, the
-  liquid BFS/DFS switch, level profile and hints; the stage on the right,
-  framed by a slowly turning metallic ring, with the transport bar and three
-  stat tiles beneath it. The stage fills the viewport height minus the
-  header. Stacks on tablets and phones with the stage first.
-- **Anatomy (parchment)**: the trait diagram draws itself on scroll, then six
-  decision cards.
-- **Case studies (paper)**: small-multiple panels per graph, one legend per
-  chart family, tables for the assignment's answers.
-- **Footer (parchment)**: three link columns and a legal line.
+## The mark
+
+`web/public/brand/graphman.svg` is the logo: a grey (`--fg-3`) hexagon
+around a solid blue graph and figure. `graphman-mark.svg` is the one-colour
+version: every gap is a real hole, so it tints with `currentColor` and
+works as a CSS mask. `components/Logo.tsx` renders either (two-tone by
+default) and shakes on hover (`@keyframes shake`); the nav uses it.
+
+The hero draws the mark live instead (`components/HeroMark.tsx`): the same
+geometry as an inline SVG with one element per vertex and edge. On load the
+hexagon draws itself, the edges draw in BFS order from the top vertex and
+the vertices pop in after them; idle, the vertices breathe. Hovering a
+vertex runs one search wave (halos and light-blue edge flashes, level by
+level) from it, that vertex grows and its edges thicken; the figure itself
+is still. Every vertex — including the one tucked under the
+figure's lower hand, an ordinary vertex joined to two others — can be
+dragged and springs back home. The hexagon
+never changes colour and the mark does not float. The figure's body sits
+under the hexagon (its legs end beneath the border) and its head over it,
+with a white gap where the head crosses the band — an outline clipped to
+the band, as wide as the keylines between the arms and the body. Both
+hands are plain rounded ends (the lower one overlaps its vertex, the upper
+one holds a stub edge). The hero and the empty observatory share a
+drifting constellation background (`components/Constellation.tsx`). The
+hexagon path starts mid-edge so its draw-in has no notch at a corner. The
+static `graphman.svg` is built the same way.
+
+Keyframes used inside a CSS module (`rise`, `float`, `shake`, `bounce`)
+are redeclared in that module: CSS modules scope animation names, so the
+copies in `globals.css` are only reachable from global classes.
+
+## Pages and navigation
+
+One sticky nav, like Golem's: the mark + wordmark on the left is the home
+link (the wordmark turns blue on the home page), then a tab per other page
+— **Observatory** (`/observatory`), **Library** (`/library`, the six
+decisions), **Case studies** (`/studies`, the tables) — and a bordered
+GitHub button on the right. The current tab is marked in blue: blue text,
+a blue-muted pill and a 2 px underline; the pill slides between tabs (a
+measured indicator, spring easing) and fades out on the home page.
+`scrollbar-gutter:
+stable` keeps the nav the same width on pages with and without a scrollbar.
+
+The hero fills one viewport: the live mark on the left (360 px), and on the
+right the eyebrow, the mono wordmark `graphman.`, the brief, two buttons
+and the stack line (brand glyphs from `simple-icons`: Rust, WebAssembly,
+WebGPU, Next.js, Vercel) under a hairline. A bouncing `// discover more`
+arrow at the bottom scrolls to the "what it is" section (lead + fact tiles).
+Below 900 px the hero stacks and centres.
+
+The observatory renders under the nav (`calc(100dvh - var(--nav-height))`)
+with no header of its own: a 340 px sidebar and the stage. The sidebar never
+scrolls; it is a column of panels (Graph: file, 2 × 2 tiles, degree
+histogram, component bar, chips; Search: origin, BFS/DFS segmented control
+and a square play button, then result tiles, level profile and playback
+(replay + slider + count; download and clear live in the panel header);
+Diameter: a strip along the bottom that opens as a drawer over the panels,
+its body growing with a `grid-template-rows` transition). Search results
+are three compact stats (reached, eccentricity/depth, time) over a chart
+that depends on the traversal: a BFS shows vertices per level as
+horizontal bars, level 0 at the bottom, the index on the left a button
+that moves the timeline to that level (the list scrolls when there are
+many levels, without a scrollbar); a DFS shows the stack depth over
+discovery time as an area trace (it plunges and backtracks), blue up to
+the timeline cursor, and clicking or dragging on it scrubs. The chart
+fills the room between the stats and the playback row, which is pinned to
+the bottom of the panel. Arrow keys work anywhere on the page (Safari does
+not focus clicked buttons): ↑/↓ a level, ←/→ a vertex. On short viewports
+the sidebar sheds
+pieces instead of scrolling — chips (≤ 880 px), component bar (≤ 820),
+histogram (≤ 740), level profile (≤ 660) — and only scrolls below 580 px.
+The stage carries floating clusters: a help button top left that opens a
+controls popover (the same `kbd` cheat sheet as the empty sidebar, plus the
+stage gestures; closes on Esc, outside click or the button), layout tools
+top right (simulation on/off, reheat, vertex numbers, follow), view tools
+bottom right (zoom in/out, fit, full screen), the legend bottom left. Vertex numbers are a 2D canvas over
+the WebGPU one, drawn only when discs are at least 5 px.
+
+## Icons
+
+- UI icons come from `lucide-react` (14–24 px, `strokeWidth` 1.5–2):
+  upload, flask (sample, only while no graph is loaded), x (close the
+  graph), play/pause/replay, download, trash, ruler, magnet (force simulation),
+  refresh, hash, plus/minus, maximise, expand/minimise, arrow-right,
+  chevron-down, plus one per decision card and pipeline step.
+- Brand glyphs come from `simple-icons` through `components/BrandIcon.tsx`,
+  drawn in the current text colour.
+- Icon chips (pipeline steps, decision cards) are 30–32 px bordered squares
+  that turn blue and tilt 8° on hover.
 
 ## Components
 
-- **Pill**: 12 × 24 px, full radius, signal blue fill or ghost outline; hover
-  lifts 2 px and brightens; the primary hero pill wears a silver metal ring
-  (`metal-fx`).
-- **Icon button**: 34 px circle, translucent chip fill, silver metal ring on
-  graphite; scales 1.06 on hover.
-- **Liquid switch**: the BFS/DFS segmented control; the white thumb is a
-  `liquid-gooey` move item so it stretches and settles like a drop.
-- **Liquid nav**: the highlight behind the top links is a liquid blob that
-  flows to whatever link is hovered.
-- **Card / panel**: paper surface, hairline border, radius 18; hover lifts 4 px
-  and tints the border blue.
-- **Graph list item**: radius 11; the active one gets a translucent sky-blue
-  fill and inset ring that slides between items (`layoutId`).
-- **Stat tile**: graphite 2 surface, 11 px radius, label 11px, value 17px 600.
-- **Stage ring**: 1 px conic gradient of sky blue and white on graphite,
-  rotating over 14 s, paused under reduced motion.
-- **Loader**: a single pulsing sky-blue ring with the download progress text.
+- **Button**: 38 px (32 small), tracked uppercase 12 px, radius 4. `primary`
+  is the blue fill (hover: darker + blue glow); `secondary` is a ghost that
+  turns its border and text blue on hover. All lift 1 px on hover and press
+  to 0.97.
+- **Fact tile**: bordered grid cell, label on top, blue mono value, grey
+  hint; a 2 px blue line grows along the bottom on hover.
+- **Surface card**: 1 px border, 2 px blue left edge, radius 4; hover lifts
+  3 px, tints to `--bg-2`, and the title underlines in blue.
+- **Pipeline step**: cell in a bordered grid; hover slides the index right
+  and grows a blue edge down the left.
+- **Table**: bordered wrapper, caption band with a blue left edge, tracked
+  uppercase headers, hairline rows that tint on hover.
+- **Segmented control**: grey track with a white thumb that springs between
+  segments.
+- **Input / select**: 36 px, hairline; focus turns the border blue with a
+  soft blue ring.
+- **Panel** (observatory sidebar): tracked uppercase title with icon
+  actions on the right, hairline bottom; panels rise in with a stagger.
+  Inside: stat tiles (2 × 2 bordered grid, blue mono values), tiny bar
+  charts (32 px, blue bars on a hairline axis), mono chips.
+- **Icon button**: 30 px bordered square; hover turns it blue with a glow;
+  `aria-pressed` fills it blue-muted. In a floating **cluster** (blurred,
+  bordered pill on the stage) the borders drop and hover tints grey.
+- **Empty observatory**: the sidebar shows two starter tiles (Sample, Open
+  a file) and a cheat sheet of `kbd` chips (click, drag, scroll, F, space,
+  arrows, esc) with three-word labels; the stage draws a faint drifting
+  constellation on the label canvas (grey dots, a few blue, hairline links,
+  pushed away by the pointer; decoration only) under a compact dashed card:
+  icon, "Drop a graph file anywhere", the sample file as the format
+  explanation (a tiny file card with `// comments`), and two buttons.
+- **Nav**: sticky, blurred; links are tracked capitals that get a grey pill
+  and a blue underline on hover; the bar slides in on load.
+- **Notice**: floating bar bottom-centre, rises in.
 
-## Motion
+## The canvas
 
-| Situation | Treatment |
-|---|---|
-| Entering the page | staggered rise (22 px, 0.6–0.7 s) for hero copy; the loop scales in from 0.96 |
-| Scrolling into a section | headers and cards rise once (`whileInView`), diagram wires draw with `pathLength` |
-| Hover | lift + border tint on cards, lift + brighten on pills, scale on icon buttons, liquid blob on nav |
-| Switching BFS / DFS | shader morph between the two layouts (exponential ease, ~1 s); the wave replays after the morph |
-| The wave | frontier advances at `(maxLevel + 2) / 7 s`, holds 1.6 s at the end, loops |
-| Reduced motion | `scroll-behavior: auto`, ring rotation off; library components honour the media query |
-
-## Effects budget
-
-Two effect libraries, each with one job: `liquid-gooey` for indicators that
-move (switch thumb, nav highlight) and `metal-fx` for rings on actionable
-things (primary pill, icon buttons). Nothing else shimmers. WebGL is spent on
-the observatory; everything else is CSS and a few SVG filters.
+- Vertices are instanced discs, `3.5·√zoom` px clamped to 1.5–12 px, blue
+  (`--node` = `--accent`) without a search; during a search a three-stop
+  ramp — `--level-0` (a deep navy, the accent at 42 %) at level 0, the
+  accent halfway, `--accent-2` (light blue) at the deepest level — for
+  reached vertices whose discovery rank is at or below the reveal cursor,
+  `--node-dim` otherwise. The ramp is computed in the shader from the two
+  accent uniforms.
+- Edges are one-pixel lines: `--edge` without a search; tree edges take the
+  child's level colour, every other edge drops to `--edge-dim`. On graphs
+  with millions of edges their alpha is scaled down with the zoom so that
+  where they pile up they add to a mid grey rather than a black disc, and
+  while the picture moves only a sample of them is drawn (see
+  `ARCHITECTURE.md`, the observatory); it never looks lighter than a single
+  edge at full strength.
+- **Discovery animation**: the reveal cursor advances at `rate` ranks per
+  second (a uniform). A vertex discovered `age` seconds ago pops to 1.9× and
+  settles over 0.5 s with an expanding blue halo; its tree edge draws itself
+  from the parent during the rank before discovery and stays bright for
+  0.7 s. Both are pure shader functions of `reveal`, `rate` and the ranks.
+- The hovered vertex grows 1.3× with a `--fg` ring; the origin grows 1.5×
+  and keeps its ring.
+- The search wave reveals discovery order over 1.6–8 s; the slider scrubs
+  it, Space pauses, F fits, Esc clears the origin, ←/→ step a vertex (⇧
+  ten), ↑/↓ step a BFS level (ten vertices in a DFS).
+- **Follow** (a `Focus` toggle in the layout cluster, always shown, off by
+  default; running a search does not change it): the camera glides to frame the vertices
+  discovered so far while the wave plays or the timeline is scrubbed, so a
+  level-by-level walk stays readable on a large graph. Panning or zooming
+  by hand switches it off.
+- Layout: the BFS-radial initial layout from Rust, then a d3-style force
+  simulation on the GPU for graphs up to 30 000 vertices. The view follows
+  the simulation until the user pans, zooms or drags.
 
 ## Responsive rules
 
-Breakpoints at 1068, 834, 640 and 480 px. The hero stacks with the loop on
-top below 1068; the console stacks with the stage first below 834; grids fold
-from 4 → 2 → 1 columns; nav links shrink but never wrap; touch targets stay
-at least 34 px.
+The landing folds at 900 px (hero stacks, mark first; decisions grid
+becomes one column) and 720/640 px (mark 240 px, facts go two-up, footer
+columns stack). The observatory sheds sidebar pieces by viewport height
+(above) and stacks at 840 px: stage on top, the sidebar becomes a scrollable
+bottom sheet of at most 46 % of the viewport with every piece shown again.
+Touch targets stay at least 30 px; the stage uses `touch-action: none`.

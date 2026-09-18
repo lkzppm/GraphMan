@@ -1,0 +1,1245 @@
+.app {
+  height: calc(100dvh - var(--nav-height));
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.fullscreen {
+  height: 100dvh;
+}
+
+.dragOver::after {
+  content: 'Drop to load';
+  position: fixed;
+  inset: 12px;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  font-size: 13px;
+  color: var(--accent);
+  pointer-events: none;
+}
+
+/* Sidebar: fixed height, never scrolls; the middle panel takes the slack. */
+
+.sidebar {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--bg-2);
+  overflow: hidden;
+  /* Room for the diameter strip, which sits over the bottom edge. */
+  padding-bottom: 42px;
+}
+
+.sidebarEmpty {
+  padding-bottom: 0;
+}
+
+.panel {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+  animation: rise 0.5s var(--ease) both;
+  min-height: 0;
+}
+
+.panel:nth-child(2) {
+  animation-delay: 0.06s;
+}
+
+.panel:nth-child(3) {
+  animation-delay: 0.12s;
+}
+
+.panelGrow {
+  flex: 1 1 auto;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 16px 0;
+}
+
+.panelTitle {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.panelActions {
+  display: flex;
+  gap: 4px;
+}
+
+.panelBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 16px 14px;
+  min-height: 0;
+}
+
+/* Nothing in a panel squeezes; the sidebar sheds pieces instead (below). */
+.panelBody > * {
+  flex: none;
+}
+
+/* The growing panel's body fills it, so its result block can pin the
+   timeline to the bottom and give the chart the room in between. */
+.panelGrow .panelBody {
+  flex: 1 1 auto;
+}
+
+.panelBody > .result {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.result > .chart {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.result > .playback {
+  margin-top: auto;
+}
+
+/* The diameter section: a strip along the bottom that opens as a drawer
+   over the panels above, so the sidebar never has to make room for it. */
+.panelCollapsible {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  border-bottom: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-2);
+  transition: box-shadow 0.45s var(--ease);
+}
+
+.panelCollapsible:has(.collapse[data-open='true']) {
+  box-shadow: 0 -12px 32px -16px rgba(0, 0, 0, 0.25);
+}
+
+.panelToggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  text-align: left;
+  transition: background 0.2s var(--ease);
+}
+
+.panelToggle:hover {
+  background: var(--bg-3);
+}
+
+.panelSummary {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.chevron,
+.chevronOpen {
+  margin-left: auto;
+  color: var(--fg-3);
+  transition: transform 0.3s var(--ease);
+}
+
+.panelSummary + .chevron,
+.panelSummary + .chevronOpen {
+  margin-left: 0;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+/* The collapsible body opens by growing its grid row (height: auto cannot
+   transition); the inner box fades and rises with it. */
+.collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.45s var(--ease);
+}
+
+.collapseInner {
+  overflow: hidden;
+  min-height: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    opacity 0.3s var(--ease),
+    transform 0.4s var(--ease);
+}
+
+.collapse[data-open='true'] {
+  grid-template-rows: 1fr;
+}
+
+.collapse[data-open='true'] .collapseInner {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.08s;
+}
+
+.fileRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fileName {
+  font-size: 13px;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileMeta {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+/* Stat tiles: a bordered 2 × 2 grid with blue mono numbers. */
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 12px 10px;
+  background: var(--bg);
+  min-width: 0;
+  transition: background 0.2s var(--ease);
+}
+
+.tile:hover {
+  background: var(--bg-3);
+}
+
+.tileLabel {
+  font-size: 10px;
+}
+
+.tileValue {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+}
+
+.tileHint {
+  font-size: 11px;
+  color: var(--fg-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Compact stats: three small numbers in a row. */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px 8px;
+  background: var(--bg);
+  min-width: 0;
+}
+
+.statValue {
+  font-size: 15px;
+  line-height: 1.1;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Level profile: horizontal bars, level 0 at the bottom, the index a button. */
+.levels {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-start;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Scrolls (many levels) without a scrollbar: the bars are the picture. */
+  scrollbar-width: none;
+  /* The scroll container clips horizontally too; keep the index clear. */
+  padding: 0 2px 0 1px;
+  margin-left: -3px;
+}
+
+.levels::-webkit-scrollbar {
+  display: none;
+}
+
+/* Rows stretch a little to fill the room when there are few levels. */
+.level {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 8px;
+  flex: 1 0 15px;
+  max-height: 24px;
+}
+
+/* The index hugs the left edge; wide bucket labels widen the column. */
+.levelIndex {
+  height: 15px;
+  min-width: 22px;
+  font-size: 10px;
+  text-align: center;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-3);
+  transition:
+    color 0.15s var(--ease),
+    background 0.15s var(--ease);
+}
+
+.levelIndex:hover {
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.levelLit .levelIndex {
+  color: var(--fg-2);
+}
+
+.levelCurrent .levelIndex {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.levelTrack {
+  display: block;
+  height: 9px;
+  background: var(--bg-3);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.levelBar {
+  display: block;
+  height: 100%;
+  background: var(--node-dim);
+  transition:
+    background 0.25s var(--ease),
+    width 0.3s var(--ease);
+}
+
+.levelLit .levelBar {
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.levelCurrent .levelBar {
+  opacity: 1;
+}
+
+/* DFS depth trace: an SVG area, blue up to the timeline cursor. */
+.trace:focus-visible {
+  outline-offset: 4px;
+}
+
+.trace {
+  display: block;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 40px;
+  border-bottom: 1px solid var(--border-2);
+  border-radius: 0;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.traceDim {
+  fill: none;
+  stroke: var(--node-dim);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.traceLit {
+  fill: var(--accent-muted);
+}
+
+.traceLine {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.traceCursor {
+  stroke: var(--accent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.levelCount {
+  font-size: 10px;
+  color: var(--fg-3);
+  text-align: right;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg-2);
+  background: var(--bg);
+}
+
+/* Tiny charts */
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chartHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 32px;
+  padding: 0 1px;
+  border-bottom: 1px solid var(--border-2);
+}
+
+.bars span {
+  flex: 1;
+  min-width: 1px;
+  background: var(--accent);
+  opacity: 0.85;
+  transition: opacity 0.15s var(--ease);
+}
+
+.bars span:hover {
+  opacity: 1;
+}
+
+.segments {
+  display: flex;
+  height: 10px;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+
+.segments span {
+  background: var(--accent);
+  min-width: 2px;
+}
+
+.segmentRest {
+  background: var(--border-2) !important;
+}
+
+.axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--fg-3);
+  font-family: var(--font-mono);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.searchRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+/* The play button: a square the height of the inputs beside it. */
+.run {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  transition:
+    background 0.2s var(--ease),
+    box-shadow 0.25s var(--ease),
+    transform 0.25s var(--ease),
+    opacity 0.15s var(--ease);
+}
+
+.run svg {
+  margin-left: 1px;
+}
+
+.run:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: 0 10px 24px -8px rgba(0, 112, 243, 0.5);
+  transform: translateY(-1px);
+}
+
+.run:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.run:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.fieldNarrow {
+  flex: 0 0 110px;
+}
+
+.field label,
+.fieldLabel {
+  color: var(--fg-2);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.input,
+.select {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: 13px;
+  width: 100%;
+  min-width: 0;
+  transition:
+    border-color 0.15s var(--ease),
+    box-shadow 0.2s var(--ease);
+}
+
+.input:hover,
+.select:hover {
+  border-color: var(--fg-3);
+}
+
+.input:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-muted);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--fg-3);
+  line-height: 1.5;
+}
+
+.segmented {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 34px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+}
+
+.thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 0 0 1px var(--border);
+  transition: transform 0.35s var(--ease-spring);
+}
+
+.segmented[data-active='dfs'] .thumb {
+  transform: translateX(100%);
+}
+
+.segment,
+.segmentActive {
+  position: relative;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  color: var(--fg-2);
+  transition: color 0.2s var(--ease);
+}
+
+.segment:hover,
+.segmentActive {
+  color: var(--fg);
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  animation: rise 0.45s var(--ease) both;
+}
+
+.playback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.playback input[type='range'] {
+  flex: 1 1 0;
+  width: 100%;
+  accent-color: var(--accent);
+  min-width: 0;
+}
+
+.playback .hint {
+  min-width: 36px;
+  text-align: right;
+}
+
+.diameterResult {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.diameterValue {
+  font-size: 20px;
+  color: var(--accent);
+}
+
+/* Icon buttons, used in panel headers and the floating clusters. */
+.iconButton {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg-2);
+  transition:
+    color 0.2s var(--ease),
+    border-color 0.2s var(--ease),
+    background 0.2s var(--ease),
+    box-shadow 0.25s var(--ease),
+    transform 0.25s var(--ease);
+}
+
+.iconButton:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+  transform: translateY(-1px);
+}
+
+.iconButton:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.iconButton[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-muted);
+  border-color: var(--accent);
+}
+
+.iconButtonAccent {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.iconButtonAccent:hover:not(:disabled) {
+  color: #fff;
+  background: var(--accent-hover);
+}
+
+/* Stage */
+
+.stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.canvas,
+.labels {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.canvas {
+  transition: opacity 0.4s var(--ease);
+}
+
+.labels {
+  pointer-events: none;
+}
+
+.floating {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: rise 0.4s var(--ease) both;
+}
+
+.floatingTopRight {
+  top: 14px;
+  right: 14px;
+}
+
+.floatingTopLeft {
+  top: 14px;
+  left: 14px;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* The controls popover under the help button. */
+.help {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 232px;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.3);
+  animation: rise 0.25s var(--ease) both;
+}
+
+.helpTitle {
+  font-size: 10px;
+  color: var(--fg-3);
+}
+
+.floatingBottomRight {
+  bottom: 14px;
+  right: 14px;
+}
+
+.cluster {
+  display: flex;
+  gap: 1px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px -16px rgba(0, 0, 0, 0.25);
+}
+
+.cluster .iconButton {
+  border-color: transparent;
+  background: transparent;
+}
+
+.cluster .iconButton:hover:not(:disabled) {
+  background: var(--bg-3);
+  box-shadow: none;
+  transform: none;
+}
+
+.cluster .iconButton[aria-pressed='true'] {
+  background: var(--accent-muted);
+}
+
+.clusterVertical {
+  flex-direction: column;
+}
+
+.empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+/* Empty stage: a compact card over the ambient constellation. */
+.dropCard {
+  width: min(420px, 100%);
+  padding: 26px 26px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  border: 1px dashed var(--border-2);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--fg);
+  animation: rise 0.6s var(--ease) both;
+  transition:
+    border-color 0.25s var(--ease),
+    box-shadow 0.35s var(--ease);
+}
+
+.dragOver .dropCard {
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+}
+
+.dropIcon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--border-2);
+  background: var(--bg);
+  color: var(--accent);
+}
+
+.dropTitle {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* The sample file as the format explanation: a tiny file card. */
+.format {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1px 16px;
+  width: 100%;
+  padding: 8px 12px 9px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: 11.5px;
+  line-height: 1.55;
+  text-align: left;
+  color: var(--fg);
+}
+
+.formatName {
+  color: var(--fg-3);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  padding-bottom: 2px;
+}
+
+.formatNote {
+  color: var(--fg-3);
+}
+
+.dropActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* Empty sidebar: two starter tiles and a cheat sheet. */
+.starters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.starter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 12px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg-2);
+  text-align: left;
+  transition:
+    border-color 0.2s var(--ease),
+    color 0.2s var(--ease),
+    transform 0.25s var(--ease),
+    box-shadow 0.3s var(--ease);
+}
+
+.starter:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--glow);
+}
+
+.starter:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.starterTitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  margin-top: 2px;
+}
+
+.starterHint {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.keys {
+  list-style: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px 12px;
+  align-items: center;
+}
+
+.keys li {
+  display: contents;
+}
+
+.keys kbd {
+  display: inline-block;
+  min-width: 48px;
+  padding: 2px 7px;
+  border: 1px solid var(--border-2);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: var(--bg);
+  font-size: 10.5px;
+  text-align: center;
+  color: var(--fg-2);
+  transition:
+    color 0.2s var(--ease),
+    border-color 0.2s var(--ease);
+}
+
+.keys li:hover kbd {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.keys span {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.keysNote {
+  margin-top: auto;
+  font-size: 11px;
+}
+
+.emptyCard {
+  width: min(480px, 100%);
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--bg-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+.emptyCard h2 {
+  font-size: 17px;
+  color: var(--fg);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: 12px;
+  color: var(--fg-2);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  white-space: nowrap;
+  animation: rise 0.18s var(--ease) both;
+}
+
+.tooltip .mono {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.legend {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  font-size: 12px;
+  color: var(--fg-2);
+  pointer-events: none;
+  animation: rise 0.4s var(--ease) both;
+}
+
+.swatchA,
+.swatchB,
+.swatchDim {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.swatchA {
+  background: var(--level-0);
+}
+
+.swatchB {
+  background: var(--accent-2);
+}
+
+.swatchDim {
+  background: var(--node-dim);
+}
+
+.swatchBar {
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--level-0), var(--accent), var(--accent-2));
+}
+
+.legendSep {
+  width: 1px;
+  height: 12px;
+  background: var(--border-2);
+  margin: 0 2px;
+}
+
+.notice {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(640px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border: 1px solid var(--border-2);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  animation: noticeIn 0.35s var(--ease) both;
+}
+
+.notice button {
+  font-size: 18px;
+  line-height: 1;
+  color: var(--fg-3);
+}
+
+@keyframes noticeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* Short viewports: the sidebar never scrolls, so it sheds its least
+   important pieces one by one (chips, component bar, histogram, level
+   profile) and only scrolls as a last resort. */
+@media (max-height: 880px) {
+  .shedFirst {
+    display: none;
+  }
+}
+
+@media (max-height: 820px) {
+  .shedSecond {
+    display: none;
+  }
+}
+
+@media (max-height: 740px) {
+  .shedThird {
+    display: none;
+  }
+
+  .panelBody {
+    gap: 8px;
+    padding: 8px 16px 12px;
+  }
+}
+
+@media (max-height: 660px) {
+  .shedFourth {
+    display: none;
+  }
+}
+
+@media (max-height: 580px) {
+  .sidebar {
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 840px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .sidebar {
+    order: 2;
+    max-height: 46dvh;
+    overflow-y: auto;
+    border-right: 0;
+    border-top: 1px solid var(--border);
+    padding-bottom: 0;
+  }
+
+  .panelCollapsible {
+    position: static;
+    box-shadow: none !important;
+  }
+
+  .shedFirst,
+  .shedSecond,
+  .shedThird,
+  .shedFourth {
+    display: flex;
+  }
+}
+
+/* Shared keyframes, redeclared here: CSS modules scope animation names,
+   so the copies in globals.css are not reachable from a module. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

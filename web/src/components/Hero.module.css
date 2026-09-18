@@ -1,0 +1,282 @@
+.hero {
+  position: relative;
+  min-height: calc(100dvh - var(--nav-height));
+  display: grid;
+  place-items: center;
+  padding: 48px 0 104px;
+  overflow: hidden;
+}
+
+/* The drifting constellation behind the hero, fading towards the bottom
+   so it hands over to the plain page. */
+.stars {
+  z-index: 0;
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  animation: fadeIn 1.2s var(--ease) 0.3s both;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* The mark on the left, the words on the right; above the constellation. */
+.inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 64px;
+}
+
+.float {
+  animation: rise 0.7s var(--ease) both;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+  max-width: 600px;
+}
+
+/* Staggered entrance: each block rises in turn. */
+.text > * {
+  animation: rise 0.7s var(--ease) both;
+}
+
+.text > :nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.text > :nth-child(3) {
+  animation-delay: 0.18s;
+}
+
+.text > :nth-child(4) {
+  animation-delay: 0.26s;
+}
+
+.text > :nth-child(5) {
+  animation-delay: 0.34s;
+}
+
+.wordmark {
+  font-size: clamp(44px, 6.4vw, 72px);
+  font-weight: 500;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  margin: -4px 0 2px;
+}
+
+.brief {
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+
+.brief code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  color: var(--fg);
+}
+
+.cta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+/* Centred with auto margins, not a transform: the rise animation ends on
+   `transform: none`, which would cancel a translateX(-50%). */
+.arrow {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  bottom: 28px;
+  width: fit-content;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg-3);
+  animation: rise 0.7s var(--ease) 0.9s both;
+  transition: color 0.2s var(--ease);
+}
+
+.arrow svg {
+  animation: bounce 1.8s ease-in-out infinite;
+}
+
+.arrow:hover {
+  color: var(--accent);
+}
+
+.stack {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin-top: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  width: 100%;
+}
+
+.stackItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--fg-3);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 4px;
+  transition:
+    color 0.2s var(--ease),
+    text-decoration-color 0.2s var(--ease),
+    transform 0.25s var(--ease);
+}
+
+.stackItem:hover {
+  color: var(--accent);
+  text-decoration-color: var(--accent-2);
+  transform: translateY(-2px);
+}
+
+/* Fact tiles: bordered, a blue line grows along the bottom on hover. */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 28px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+
+.fact {
+  position: relative;
+  overflow: hidden;
+  padding: 16px 16px 18px;
+  background: var(--bg);
+  transition: background 0.25s var(--ease);
+}
+
+.fact::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.4s var(--ease);
+}
+
+.fact:hover {
+  background: var(--bg-2);
+}
+
+.fact:hover::after {
+  transform: scaleX(1);
+}
+
+.fact dt {
+  font-size: 11px;
+  line-height: 1.35;
+  min-height: 30px;
+}
+
+.fact dd {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.value {
+  font-size: 28px;
+  line-height: 1;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+@media (max-width: 900px) {
+  .inner {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 36px;
+  }
+
+  .text {
+    align-items: center;
+    text-align: center;
+  }
+
+  .cta {
+    justify-content: center;
+  }
+
+  .stack {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 720px) {
+  .facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .float > * {
+    width: 240px !important;
+    height: 240px !important;
+  }
+}
+
+/* Shared keyframes, redeclared here: CSS modules scope animation names,
+   so the copies in globals.css are not reachable from a module. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(6px);
+  }
+}
