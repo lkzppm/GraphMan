@@ -1,0 +1,19 @@
+[package]
+name = "graphman-wasm"
+description = "WebAssembly bindings of GraphMan for the web observatory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# No mmap (no files in the browser) and no rayon (no threads without
+# SharedArrayBuffer): the pure, single-threaded core is what compiles to wasm.
+graphman = { path = "../graphman", default-features = false }
+wasm-bindgen.workspace = true
