@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import ObservatoryLoader from './ObservatoryLoader';
 
 export const metadata: Metadata = {
-  title: 'Observatory',
+  title: 'Observatório',
   description:
-    'Load a graph, drag its vertices and run BFS or DFS with the GraphMan Rust library compiled to WebAssembly, drawn with WebGPU.',
+    'Carregue um grafo, arraste seus vértices e rode BFS ou DFS com a biblioteca Rust do GraphMan compilada para WebAssembly, desenhada com WebGPU.',
 };
 
 export default function ObservatoryPage() {

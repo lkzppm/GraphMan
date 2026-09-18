@@ -9,7 +9,10 @@ core, so keep the `Graph` trait small and the algorithms generic.
 
 Everything in the repo is in English. The presentation and report are in
 Portuguese (the course language), but code, comments, docs and commits are
-English.
+English. The web site's interface is bilingual (Portuguese by default,
+English by a switch): every visible string lives in `web/src/i18n/`
+(`en.tsx` is the schema, `pt.tsx` must match it), never inline in a
+component.
 
 ## Read these first
 

@@ -1,37 +1,39 @@
+'use client';
+
 import Link from 'next/link';
+import { useT } from '@/i18n/LocaleProvider';
 import styles from './Footer.module.css';
 
 export default function Footer() {
+  const t = useT();
   return (
     <footer className={styles.footer}>
       <div className={`container ${styles.inner}`}>
         <div className={styles.cols}>
           <div>
-            <h3 className={`label ${styles.heading}`}>Project</h3>
+            <h3 className={`label ${styles.heading}`}>{t.footer.project}</h3>
             <a href="https://github.com/lkzppm/GraphMan" target="_blank" rel="noreferrer">
-              Source on GitHub
+              {t.footer.source}
             </a>
-            <Link href="/observatory">Observatory</Link>
-            <Link href="/library">Library</Link>
-            <Link href="/studies">Case studies</Link>
+            <Link href="/observatory">{t.nav.observatory}</Link>
+            <Link href="/library">{t.nav.library}</Link>
+            <Link href="/studies">{t.nav.studies}</Link>
+            <Link href="/presentation">{t.nav.presentation}</Link>
           </div>
           <div>
-            <h3 className={`label ${styles.heading}`}>Stack</h3>
+            <h3 className={`label ${styles.heading}`}>{t.footer.stack}</h3>
             <span>Rust 2024 · wasm-bindgen</span>
             <span>Next.js · vgpu (WebGPU)</span>
-            <span>MIT licensed</span>
+            <span>{t.footer.licence}</span>
           </div>
           <div>
-            <h3 className={`label ${styles.heading}`}>Course</h3>
-            <span>COS 242 · Teoria dos Grafos</span>
+            <h3 className={`label ${styles.heading}`}>{t.footer.course}</h3>
+            <span>{t.footer.courseName}</span>
             <span>UFRJ · 2026/2</span>
           </div>
         </div>
-        <p className={styles.legal}>
-          Case-study timings were measured on the machine named in each study and exclude parsing
-          and output, as the course requires.
-        </p>
-        <p className={`comment ${styles.comment}`}>{'// built sep 2026 · rio de janeiro'}</p>
+        <p className={styles.legal}>{t.footer.legal}</p>
+        <p className={`comment ${styles.comment}`}>{t.footer.built}</p>
       </div>
     </footer>
   );

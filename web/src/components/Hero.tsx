@@ -1,7 +1,10 @@
+'use client';
+
 import Link from 'next/link';
 import { ArrowRight, ChevronDown } from 'lucide-react';
 import { siNextdotjs, siRust, siVercel, siWebassembly, siWebgpu } from 'simple-icons';
 import { formatCompact, formatMs } from '@/lib/format';
+import { useT } from '@/i18n/LocaleProvider';
 import type { GraphStudy } from '@/lib/studies';
 import BrandIcon from './BrandIcon';
 import Constellation from './Constellation';
@@ -18,6 +21,7 @@ const STACK = [
 ];
 
 export default function Hero({ studies }: { studies: GraphStudy[] }) {
+  const t = useT();
   const largest = studies.reduce<GraphStudy | null>(
     (best, s) => (best === null || s.edges > best.edges ? s : best),
     null,
@@ -26,12 +30,12 @@ export default function Hero({ studies }: { studies: GraphStudy[] }) {
   const facts = [
     {
       value: largest ? formatCompact(largest.edges) : '46.5M',
-      label: 'edges in the largest graph',
-      hint: largest ? `parsed in ${formatMs(largest.parse_ms)}` : undefined,
+      label: t.hero.facts.edges,
+      hint: largest ? t.hero.facts.parsedIn(formatMs(largest.parse_ms)) : undefined,
     },
-    { value: '3', label: 'representations', hint: 'one Graph trait' },
-    { value: '4', label: 'diameter methods', hint: 'all cancellable' },
-    { value: '0', label: 'servers', hint: 'the library runs in your tab' },
+    { value: '3', label: t.hero.facts.representations, hint: t.hero.facts.oneTrait },
+    { value: '4', label: t.hero.facts.methods, hint: t.hero.facts.cancellable },
+    { value: '0', label: t.hero.facts.servers, hint: t.hero.facts.inTab },
   ];
 
   return (
@@ -45,21 +49,18 @@ export default function Hero({ studies }: { studies: GraphStudy[] }) {
             <HeroMark size={360} />
           </div>
           <div className={styles.text}>
-            <p className="eyebrow">built for cos 242 · graph theory · ufrj 2026/2</p>
+            <p className="eyebrow">{t.hero.eyebrow}</p>
             <h1 className={`mono ${styles.wordmark}`}>
               graphman<span className="accent">.</span>
             </h1>
-            <p className={styles.brief}>
-              A Rust graph library that measures itself — one <code>Graph</code> trait, three ways
-              to store a graph, four ways to find its diameter — running in your browser.
-            </p>
+            <p className={styles.brief}>{t.hero.brief}</p>
             <div className={styles.cta}>
               <Link href="/observatory" className="button button--primary">
-                Open the observatory
+                {t.hero.open}
                 <ArrowRight size={14} aria-hidden="true" />
               </Link>
               <Link href="/library" className="button button--secondary">
-                The library
+                {t.hero.library}
               </Link>
             </div>
             <ul className={styles.stack}>
@@ -74,8 +75,8 @@ export default function Hero({ studies }: { studies: GraphStudy[] }) {
             </ul>
           </div>
         </div>
-        <a href="#more" className={styles.arrow} aria-label="Discover more">
-          <span className="comment">{'// discover more'}</span>
+        <a href="#more" className={styles.arrow} aria-label={t.hero.discoverLabel}>
+          <span className="comment">{t.hero.discover}</span>
           <ChevronDown size={20} aria-hidden="true" />
         </a>
       </section>
@@ -83,18 +84,12 @@ export default function Hero({ studies }: { studies: GraphStudy[] }) {
       <section className="section" id="more">
         <div className="container">
           <Reveal>
-            <p className="eyebrow">what it is</p>
+            <p className="eyebrow">{t.hero.whatEyebrow}</p>
             <h2 className="section__title">
-              One trait, three representations, four diameters
+              {t.hero.whatTitle}
               <span className="accent">.</span>
             </h2>
-            <p className="section__lead">
-              GraphMan reads the course&apos;s edge-list format into an adjacency list, a bitset
-              matrix or CSR, and runs BFS, DFS, distances, components and the diameter on any of
-              them through one small <code className="mono">Graph</code> trait. It measures its own
-              memory and time on the six course graphs, and compiled to WebAssembly it is the engine
-              of the observatory.
-            </p>
+            <p className="section__lead">{t.hero.whatLead}</p>
           </Reveal>
           <dl className={styles.facts}>
             {facts.map((fact, i) => (

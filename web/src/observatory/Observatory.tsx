@@ -59,7 +59,11 @@ import {
   type Renderer,
 } from './renderer';
 import Constellation from '@/components/Constellation';
+import { useT } from '@/i18n/LocaleProvider';
+import type { Dictionary } from '@/i18n';
 import styles from './Observatory.module.css';
+
+type Strings = Dictionary['observatory'];
 
 type Status =
   | { kind: 'booting' }
@@ -119,53 +123,19 @@ interface DiameterInfo {
   elapsedMs: number;
 }
 
-const DIAMETER_METHODS = [
-  { id: 'Sweep', label: '4-sweep (lower bound)' },
-  { id: 'IFub', label: 'iFUB (exact)' },
-  { id: 'Bounds', label: 'Takes–Kosters (exact)' },
-  { id: 'Exact', label: 'Brute force (exact)' },
-] as const;
+/** The wasm `DiameterKind` names; their labels live in the dictionary. */
+const DIAMETER_METHODS = ['Sweep', 'IFub', 'Bounds', 'Exact'] as const;
 
 const MAX_FILE_BYTES = 512 * 1024 * 1024;
 
-/** The empty sidebar's cheat sheet: gesture or key, what it does. */
-const CONTROLS: [string, string][] = [
-  ['click', 'pick the origin'],
-  ['drag', 'move a vertex'],
-  ['drag bg', 'pan'],
-  ['scroll', 'zoom'],
-  ['dbl-click', 'fit the graph'],
-  ['F', 'fit the graph'],
-  ['space', 'play / pause'],
-  ['← →', 'step a vertex / component'],
-  ['↑ ↓', 'step a level'],
-  ['esc', 'clear the origin / component'],
-  ['drop file', 'load a graph'],
-];
-
 type LayoutId = 'force' | 'radial' | 'layered' | 'degree';
 
-/** The layouts of the canvas menu; the level-based ones start at the origin. */
-const LAYOUTS: { id: LayoutId; label: string; hint: string; icon: ReactNode }[] = [
-  { id: 'force', label: 'Force', hint: 'springs and repulsion', icon: <Magnet size={14} /> },
-  {
-    id: 'radial',
-    label: 'Radial levels',
-    hint: 'BFS rings around the origin',
-    icon: <Orbit size={14} />,
-  },
-  {
-    id: 'layered',
-    label: 'Layered',
-    hint: 'levels as rows, subtrees together',
-    icon: <Rows3 size={14} />,
-  },
-  {
-    id: 'degree',
-    label: 'Degree circle',
-    hint: 'sorted by degree, edges as chords',
-    icon: <CircleDashed size={14} />,
-  },
+/** The layouts of the canvas menu (words in the dictionary); the level-based ones start at the origin. */
+const LAYOUTS: { id: LayoutId; icon: ReactNode }[] = [
+  { id: 'force', icon: <Magnet size={14} /> },
+  { id: 'radial', icon: <Orbit size={14} /> },
+  { id: 'layered', icon: <Rows3 size={14} /> },
+  { id: 'degree', icon: <CircleDashed size={14} /> },
 ];
 
 /** How long a layout change takes to slide into place. */
@@ -173,17 +143,13 @@ const MORPH_MS = 700;
 /** Pointer travel (CSS px) under which a press is a click, not a drag or a pan. */
 const CLICK_SLOP = 4;
 
-/** The sample file, line by line, as the format explanation. */
-const FORMAT_LINES: [string, string][] = [
-  ['5', '// vertices'],
-  ['1 2', '// one edge per line'],
-  ['2 5', ''],
-  ['5 3', ''],
-  ['4 5', ''],
-  ['1 5', ''],
-];
+/** The sample file's lines; the first two carry the format notes. */
+const FORMAT_LINES = ['5', '1 2', '2 5', '5 3', '4 5', '1 5'];
 
 export default function Observatory() {
+  const t = useT().observatory;
+  const tRef = useRef(t);
+  tRef.current = t;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -205,8 +171,7 @@ export default function Observatory() {
   const [playing, setPlaying] = useState(false);
   const [simulate, setSimulate] = useState(true);
   const [dragOver, setDragOver] = useState(false);
-  const [diameterMethod, setDiameterMethod] =
-    useState<(typeof DIAMETER_METHODS)[number]['id']>('IFub');
+  const [diameterMethod, setDiameterMethod] = useState<(typeof DIAMETER_METHODS)[number]>('IFub');
   const [diameterBudget, setDiameterBudget] = useState('2000');
   const [diameter, setDiameter] = useState<DiameterInfo | null>(null);
   const [diameterBusy, setDiameterBusy] = useState(false);
@@ -614,7 +579,7 @@ export default function Observatory() {
         requestAnimationFrame(fit);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        setNotice(`Could not load ${name}: ${message}`);
+        setNotice(tRef.current.couldNotLoad(name, message));
         setStatus({ kind: 'ready' });
       }
     },
@@ -625,7 +590,7 @@ export default function Observatory() {
     async (file: File) => {
       if (file.size > MAX_FILE_BYTES) {
         setNotice(
-          `${file.name} is ${formatBytes(file.size)}; the observatory accepts files up to ${formatBytes(MAX_FILE_BYTES)}.`,
+          tRef.current.tooLarge(file.name, formatBytes(file.size), formatBytes(MAX_FILE_BYTES)),
         );
         return;
       }
@@ -812,7 +777,7 @@ export default function Observatory() {
       const budget = Math.max(1, Number.parseInt(diameterBudget, 10) || 1);
       const result = graph.diameter(wasm.DiameterKind[diameterMethod], budget);
       setDiameter({
-        method: DIAMETER_METHODS.find((m) => m.id === diameterMethod)?.label ?? diameterMethod,
+        method: diameterMethod,
         value: result.value,
         from: result.from,
         to: result.to,
@@ -1167,19 +1132,16 @@ export default function Observatory() {
         {meta ? (
           <>
             <Panel
-              title="Graph"
+              title={t.graph}
               actions={
                 <>
-                  <IconButton
-                    label="Load a graph file"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
+                  <IconButton label={t.loadFile} onClick={() => fileInputRef.current?.click()}>
                     <Upload size={14} />
                   </IconButton>
-                  <IconButton label="Download the summary file" onClick={downloadSummary}>
+                  <IconButton label={t.downloadSummary} onClick={downloadSummary}>
                     <Download size={14} />
                   </IconButton>
-                  <IconButton label="Close the graph" onClick={closeGraph}>
+                  <IconButton label={t.closeGraph} onClick={closeGraph}>
                     <X size={14} />
                   </IconButton>
                 </>
@@ -1190,11 +1152,12 @@ export default function Observatory() {
                   {meta.name}
                 </span>
                 <span className={styles.fileMeta}>
-                  {formatBytes(meta.bytes)} · parsed in {formatMs(meta.parseMs)}
+                  {formatBytes(meta.bytes)} · {t.parsedIn(formatMs(meta.parseMs))}
                 </span>
               </div>
               {componentsOpen ? (
                 <ComponentsView
+                  t={t}
                   meta={meta}
                   current={component}
                   onSelect={selectComponent}
@@ -1206,17 +1169,17 @@ export default function Observatory() {
               ) : (
                 <>
                   <div className={styles.tiles}>
-                    <Tile label="Vertices" value={formatInt(meta.vertices)} />
-                    <Tile label="Edges" value={formatInt(meta.edges)} />
+                    <Tile label={t.vertices} value={formatInt(meta.vertices)} />
+                    <Tile label={t.edges} value={formatInt(meta.edges)} />
                     <Tile
-                      label="Components"
+                      label={t.components}
                       value={formatInt(meta.components)}
                       action={
                         <button
                           type="button"
                           className={styles.tileAction}
-                          aria-label="Browse the components"
-                          title="Browse the components"
+                          aria-label={t.browseComponents}
+                          title={t.browseComponents}
                           onClick={() => {
                             setComponentsOpen(true);
                             selectComponent(1);
@@ -1226,12 +1189,12 @@ export default function Observatory() {
                         </button>
                       }
                     />
-                    <Tile label="Mean degree" value={meta.degree.mean.toFixed(2)} />
+                    <Tile label={t.meanDegree} value={meta.degree.mean.toFixed(2)} />
                   </div>
-                  <DegreeHistogram degrees={meta.degrees} max={meta.degree.max} />
+                  <DegreeHistogram t={t} degrees={meta.degrees} max={meta.degree.max} />
                   <div className={`${styles.chips} ${styles.shedFirst}`}>
-                    <span className={styles.chip}>{meta.selfLoops} loops dropped</span>
-                    <span className={styles.chip}>{meta.duplicates} duplicates dropped</span>
+                    <span className={styles.chip}>{t.loopsDropped(meta.selfLoops)}</span>
+                    <span className={styles.chip}>{t.duplicatesDropped(meta.duplicates)}</span>
                     <span className={styles.chip}>CSR {formatBytes(meta.heapBytes)}</span>
                   </div>
                 </>
@@ -1239,16 +1202,16 @@ export default function Observatory() {
             </Panel>
 
             <Panel
-              title="Search"
+              title={t.search}
               grow
               actions={
                 search && (
                   <>
-                    <IconButton label="Download the tree file" onClick={downloadTree}>
+                    <IconButton label={t.downloadTree} onClick={downloadTree}>
                       <Download size={14} />
                     </IconButton>
                     <IconButton
-                      label="Clear the search"
+                      label={t.clearSearch}
                       onClick={() => {
                         search.result.free();
                         setSearch(null);
@@ -1264,7 +1227,7 @@ export default function Observatory() {
             >
               <div className={styles.searchRow}>
                 <div className={styles.field}>
-                  <label htmlFor="root">Origin</label>
+                  <label htmlFor="root">{t.origin}</label>
                   <input
                     id="root"
                     className={`mono ${styles.input}`}
@@ -1280,15 +1243,15 @@ export default function Observatory() {
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' && rootValid) runSearch(kind, root);
                     }}
-                    placeholder="click a vertex"
+                    placeholder={t.originPlaceholder}
                   />
                 </div>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Traversal</span>
+                  <span className={styles.fieldLabel}>{t.traversal}</span>
                   <div
                     className={styles.segmented}
                     role="radiogroup"
-                    aria-label="Traversal"
+                    aria-label={t.traversal}
                     data-active={kind}
                   >
                     <span className={styles.thumb} aria-hidden="true" />
@@ -1311,8 +1274,8 @@ export default function Observatory() {
                   className={styles.run}
                   disabled={!rootValid}
                   onClick={() => rootValid && runSearch(kind, root)}
-                  aria-label={`Run ${kind.toUpperCase()} from ${rootValid ? root : 'the origin'}`}
-                  title={`Run ${kind.toUpperCase()} from ${rootValid ? root : 'the origin'}`}
+                  aria-label={t.runFrom(kind.toUpperCase(), rootValid ? String(root) : t.theOrigin)}
+                  title={t.runFrom(kind.toUpperCase(), rootValid ? String(root) : t.theOrigin)}
                 >
                   <Play size={15} aria-hidden="true" />
                 </button>
@@ -1321,15 +1284,16 @@ export default function Observatory() {
               {search ? (
                 <div className={styles.result}>
                   <div className={styles.stats}>
-                    <Stat label="Reached" value={formatInt(search.reached)} />
+                    <Stat label={t.reached} value={formatInt(search.reached)} />
                     <Stat
-                      label={search.kind === 'bfs' ? 'Eccentricity' : 'Depth'}
+                      label={search.kind === 'bfs' ? t.eccentricity : t.depth}
                       value={String(search.depth)}
                     />
-                    <Stat label="Time" value={formatMs(search.elapsedMs)} />
+                    <Stat label={t.time} value={formatMs(search.elapsedMs)} />
                   </div>
                   {search.kind === 'bfs' ? (
                     <LevelProfile
+                      t={t}
                       sizes={search.levelSizes}
                       kind={search.kind}
                       current={revealLevel}
@@ -1337,6 +1301,7 @@ export default function Observatory() {
                     />
                   ) : (
                     <DepthTrace
+                      t={t}
                       order={search.order}
                       levels={search.levels}
                       depth={search.depth}
@@ -1346,7 +1311,7 @@ export default function Observatory() {
                   )}
                   <div className={styles.playback}>
                     <IconButton
-                      label={playing ? 'Pause' : reveal >= search.reached - 1 ? 'Replay' : 'Play'}
+                      label={playing ? t.pause : reveal >= search.reached - 1 ? t.replay : t.play}
                       onClick={() => setPlaying((p) => !p)}
                       accent
                     >
@@ -1365,7 +1330,7 @@ export default function Observatory() {
                       step={1}
                       value={Math.round(reveal)}
                       onChange={(event) => scrub(Number(event.target.value))}
-                      aria-label="Discovery progress"
+                      aria-label={t.progress}
                     />
                     <span className={`mono ${styles.hint}`}>
                       {formatInt(Math.min(Math.round(reveal) + 1, search.reached))}
@@ -1373,9 +1338,7 @@ export default function Observatory() {
                   </div>
                 </div>
               ) : (
-                <p className={styles.hint}>
-                  Click a vertex on the canvas to make it the origin, or type its number.
-                </p>
+                <p className={styles.hint}>{t.searchHint}</p>
               )}
             </Panel>
 
@@ -1386,11 +1349,11 @@ export default function Observatory() {
                 onClick={() => setDiameterOpen((o) => !o)}
                 aria-expanded={diameterOpen}
               >
-                <span className={styles.panelTitle}>Diameter</span>
+                <span className={styles.panelTitle}>{t.diameter}</span>
                 {diameter && !diameterOpen && (
                   <span className={`mono ${styles.panelSummary}`}>
                     {diameter.isExact && !diameter.cancelled ? '' : '≥ '}
-                    {diameter.value} · {formatCompact(diameter.bfsCount)} BFS
+                    {diameter.value} · {t.bfsCount(formatCompact(diameter.bfsCount))}
                   </span>
                 )}
                 <ChevronDown
@@ -1404,7 +1367,7 @@ export default function Observatory() {
                   <div className={styles.panelBody}>
                     <div className={styles.searchRow}>
                       <div className={styles.field}>
-                        <label htmlFor="method">Method</label>
+                        <label htmlFor="method">{t.method}</label>
                         <select
                           id="method"
                           className={styles.select}
@@ -1414,14 +1377,14 @@ export default function Observatory() {
                           }
                         >
                           {DIAMETER_METHODS.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.label}
+                            <option key={m} value={m}>
+                              {t.diameterMethods[m]}
                             </option>
                           ))}
                         </select>
                       </div>
                       <div className={`${styles.field} ${styles.fieldNarrow}`}>
-                        <label htmlFor="budget">BFS budget</label>
+                        <label htmlFor="budget">{t.bfsBudget}</label>
                         <input
                           id="budget"
                           className={`mono ${styles.input}`}
@@ -1439,7 +1402,7 @@ export default function Observatory() {
                         disabled={diameterBusy}
                       >
                         <Ruler size={14} aria-hidden="true" />
-                        {diameterBusy ? 'Computing…' : 'Compute'}
+                        {diameterBusy ? t.computing : t.compute}
                       </button>
                       {diameter && (
                         <span className={styles.diameterResult}>
@@ -1448,9 +1411,9 @@ export default function Observatory() {
                             {diameter.value}
                           </span>
                           <span className={styles.hint}>
-                            {diameter.from} ↔ {diameter.to} · {formatInt(diameter.bfsCount)} BFS
-                            {diameter.cancelled ? ' (budget hit)' : ''} ·{' '}
-                            {formatMs(diameter.elapsedMs)}
+                            {diameter.from} ↔ {diameter.to} ·{' '}
+                            {t.bfsCount(formatInt(diameter.bfsCount))}
+                            {diameter.cancelled ? t.budgetHit : ''} · {formatMs(diameter.elapsedMs)}
                           </span>
                         </span>
                       )}
@@ -1462,7 +1425,7 @@ export default function Observatory() {
           </>
         ) : (
           <>
-            <Panel title="Graph">
+            <Panel title={t.graph}>
               <div className={styles.starters}>
                 <button
                   type="button"
@@ -1471,8 +1434,8 @@ export default function Observatory() {
                   disabled={status.kind !== 'ready'}
                 >
                   <FlaskConical size={18} strokeWidth={1.75} aria-hidden="true" />
-                  <span className={styles.starterTitle}>Sample</span>
-                  <span className={styles.starterHint}>5 vertices · 5 edges</span>
+                  <span className={styles.starterTitle}>{t.sample}</span>
+                  <span className={styles.starterHint}>{t.sampleHint}</span>
                 </button>
                 <button
                   type="button"
@@ -1481,23 +1444,21 @@ export default function Observatory() {
                   disabled={status.kind !== 'ready'}
                 >
                   <Upload size={18} strokeWidth={1.75} aria-hidden="true" />
-                  <span className={styles.starterTitle}>Open a file</span>
-                  <span className={styles.starterHint}>.txt · course format</span>
+                  <span className={styles.starterTitle}>{t.openFile}</span>
+                  <span className={styles.starterHint}>{t.openFileHint}</span>
                 </button>
               </div>
             </Panel>
-            <Panel title="Controls" grow>
+            <Panel title={t.controlsTitle} grow>
               <ul className={styles.keys}>
-                {CONTROLS.map(([key, does]) => (
+                {t.controls.map(([key, does]) => (
                   <li key={key}>
                     <kbd className="mono">{key}</kbd>
                     <span>{does}</span>
                   </li>
                 ))}
               </ul>
-              <p className={`comment ${styles.keysNote}`}>
-                {'// rust → wasm · webgpu · runs in your tab'}
-              </p>
+              <p className={`comment ${styles.keysNote}`}>{t.keysNote}</p>
             </Panel>
           </>
         )}
@@ -1523,7 +1484,7 @@ export default function Observatory() {
           ref={canvasRef}
           className={styles.canvas}
           style={{ opacity: canvasVisible ? 1 : 0 }}
-          aria-label="Graph canvas"
+          aria-label={t.canvas}
         />
         <canvas ref={labelCanvasRef} className={styles.labels} aria-hidden="true" />
 
@@ -1532,16 +1493,13 @@ export default function Observatory() {
           <div className={styles.empty}>
             {status.kind === 'unsupported' ? (
               <div className={styles.emptyCard}>
-                <h2>WebGPU is not available</h2>
+                <h2>{t.noWebGpu}</h2>
                 <p>{status.message}</p>
-                <p className={styles.hint}>
-                  The observatory needs a browser with WebGPU (Chrome, Edge, Safari 26 or Firefox
-                  141 and newer).
-                </p>
+                <p className={styles.hint}>{t.noWebGpuHint}</p>
               </div>
             ) : status.kind === 'failed' ? (
               <div className={styles.emptyCard}>
-                <h2>Something went wrong</h2>
+                <h2>{t.failed}</h2>
                 <p>{status.message}</p>
               </div>
             ) : (
@@ -1551,18 +1509,20 @@ export default function Observatory() {
                 </span>
                 <span className={styles.dropTitle}>
                   {status.kind === 'booting'
-                    ? 'Starting the library…'
+                    ? t.booting
                     : status.kind === 'parsing'
-                      ? `Parsing ${status.name}…`
-                      : 'Drop a graph file anywhere'}
+                      ? t.parsing(status.name)
+                      : t.drop}
                 </span>
-                <div className={`mono ${styles.format}`} aria-label="File format">
+                <div className={`mono ${styles.format}`} aria-label={t.fileFormat}>
                   <span className={styles.formatName}>sample.txt</span>
                   <span />
-                  {FORMAT_LINES.map(([line, note]) => (
+                  {FORMAT_LINES.map((line, i) => (
                     <Fragment key={line}>
                       <span>{line}</span>
-                      <span className={styles.formatNote}>{note}</span>
+                      <span className={styles.formatNote}>
+                        {i === 0 ? t.format.vertices : i === 1 ? t.format.edge : ''}
+                      </span>
                     </Fragment>
                   ))}
                 </div>
@@ -1573,7 +1533,7 @@ export default function Observatory() {
                     onClick={() => fileInputRef.current?.click()}
                     disabled={status.kind !== 'ready'}
                   >
-                    Browse files
+                    {t.browse}
                   </button>
                   <button
                     type="button"
@@ -1581,7 +1541,7 @@ export default function Observatory() {
                     onClick={loadExample}
                     disabled={status.kind !== 'ready'}
                   >
-                    Try the sample
+                    {t.trySample}
                   </button>
                 </div>
               </div>
@@ -1590,7 +1550,7 @@ export default function Observatory() {
         )}
 
         {meta && status.kind === 'parsing' && (
-          <div className={styles.overlay}>Parsing {status.name}…</div>
+          <div className={styles.overlay}>{t.parsing(status.name)}</div>
         )}
 
         {meta && (
@@ -1599,7 +1559,7 @@ export default function Observatory() {
             <div ref={helpRef} className={`${styles.floating} ${styles.floatingTopLeft}`}>
               <div className={styles.cluster}>
                 <IconButton
-                  label={helpOpen ? 'Hide the controls' : 'Show the controls'}
+                  label={helpOpen ? t.hideControls : t.showControls}
                   pressed={helpOpen}
                   onClick={() => setHelpOpen((o) => !o)}
                 >
@@ -1607,10 +1567,10 @@ export default function Observatory() {
                 </IconButton>
               </div>
               {helpOpen && (
-                <div className={styles.help} role="dialog" aria-label="Controls">
-                  <span className={`label ${styles.helpTitle}`}>Controls</span>
+                <div className={styles.help} role="dialog" aria-label={t.controlsTitle}>
+                  <span className={`label ${styles.helpTitle}`}>{t.controlsTitle}</span>
                   <ul className={styles.keys}>
-                    {CONTROLS.map(([key, does]) => (
+                    {t.controls.map(([key, does]) => (
                       <li key={key + does}>
                         <kbd className="mono">{key}</kbd>
                         <span>{does}</span>
@@ -1625,18 +1585,14 @@ export default function Observatory() {
             <div ref={layoutMenuRef} className={`${styles.floating} ${styles.floatingTopRight}`}>
               <div className={styles.cluster}>
                 <IconButton
-                  label={showLabels ? 'Hide vertex numbers' : 'Show vertex numbers'}
+                  label={showLabels ? t.hideNumbers : t.showNumbers}
                   pressed={showLabels}
                   onClick={() => setShowLabels((on) => !on)}
                 >
                   <Hash size={15} />
                 </IconButton>
                 <IconButton
-                  label={
-                    follow
-                      ? 'Stop following the search'
-                      : 'Follow the search (keep discovered vertices in view)'
-                  }
+                  label={follow ? t.stopFollowing : t.follow}
                   pressed={follow}
                   onClick={() => {
                     const next = !follow;
@@ -1648,7 +1604,7 @@ export default function Observatory() {
                 </IconButton>
                 <span className={styles.clusterRule} aria-hidden="true" />
                 <IconButton
-                  label={layoutOpen ? 'Hide the layouts' : 'Choose a layout'}
+                  label={layoutOpen ? t.hideLayouts : t.chooseLayout}
                   pressed={layoutOpen}
                   onClick={() => setLayoutOpen((o) => !o)}
                 >
@@ -1656,8 +1612,12 @@ export default function Observatory() {
                 </IconButton>
               </div>
               {layoutOpen && (
-                <div className={`${styles.help} ${styles.menu}`} role="menu" aria-label="Layouts">
-                  <span className={`label ${styles.helpTitle}`}>Layout</span>
+                <div
+                  className={`${styles.help} ${styles.menu}`}
+                  role="menu"
+                  aria-label={t.layoutsMenu}
+                >
+                  <span className={`label ${styles.helpTitle}`}>{t.layout}</span>
                   {LAYOUTS.map((item) => (
                     <button
                       key={item.id}
@@ -1672,19 +1632,17 @@ export default function Observatory() {
                     >
                       <span className={styles.menuIcon}>{item.icon}</span>
                       <span className={styles.menuText}>
-                        <span>{item.label}</span>
-                        <span className={styles.menuHint}>{item.hint}</span>
+                        <span>{t.layouts[item.id].label}</span>
+                        <span className={styles.menuHint}>{t.layouts[item.id].hint}</span>
                       </span>
                     </button>
                   ))}
                   {layout === 'force' && (
                     <div className={styles.menuFooter}>
-                      <span className={`label ${styles.helpTitle}`}>Simulation</span>
+                      <span className={`label ${styles.helpTitle}`}>{t.simulation}</span>
                       <span className={styles.menuButtons}>
                         <IconButton
-                          label={
-                            simulate ? 'Pause the force simulation' : 'Resume the force simulation'
-                          }
+                          label={simulate ? t.pauseSimulation : t.resumeSimulation}
                           pressed={simulate}
                           onClick={() => {
                             const next = !simulate;
@@ -1695,7 +1653,7 @@ export default function Observatory() {
                           <Magnet size={15} />
                         </IconButton>
                         <IconButton
-                          label="Reheat the simulation"
+                          label={t.reheat}
                           onClick={() => {
                             rendererRef.current?.reheat(1);
                           }}
@@ -1713,17 +1671,17 @@ export default function Observatory() {
             {/* View tools, bottom right */}
             <div className={`${styles.floating} ${styles.floatingBottomRight}`}>
               <div className={`${styles.cluster} ${styles.clusterVertical}`}>
-                <IconButton label="Zoom in" onClick={() => zoomBy(1.4)}>
+                <IconButton label={t.zoomIn} onClick={() => zoomBy(1.4)}>
                   <Plus size={15} />
                 </IconButton>
-                <IconButton label="Zoom out" onClick={() => zoomBy(1 / 1.4)}>
+                <IconButton label={t.zoomOut} onClick={() => zoomBy(1 / 1.4)}>
                   <Minus size={15} />
                 </IconButton>
-                <IconButton label="Fit the graph to the view (F)" onClick={fit}>
+                <IconButton label={t.fit} onClick={fit}>
                   <Maximize2 size={15} />
                 </IconButton>
                 <IconButton
-                  label={fullscreen ? 'Exit full screen' : 'Full screen'}
+                  label={fullscreen ? t.exitFullscreen : t.fullscreen}
                   onClick={toggleFullscreen}
                 >
                   {fullscreen ? <Minimize2 size={15} /> : <Expand size={15} />}
@@ -1734,22 +1692,22 @@ export default function Observatory() {
             <div className={styles.legend}>
               {search ? (
                 <>
-                  <span className={styles.swatchA} /> level 0
+                  <span className={styles.swatchA} /> {t.level(0)}
                   <span className={styles.swatchBar} />
-                  <span className={styles.swatchB} /> level {search.depth}
+                  <span className={styles.swatchB} /> {t.level(search.depth)}
                   <span className={styles.legendSep} />
-                  <span className={styles.swatchDim} /> not reached
+                  <span className={styles.swatchDim} /> {t.notReached}
                 </>
               ) : component ? (
                 <>
-                  <span className={styles.swatchLit} /> component {component}
+                  <span className={styles.swatchLit} /> {t.component(component)}
                   <span className={styles.legendSep} />
-                  <span className={styles.swatchDim} /> the rest
+                  <span className={styles.swatchDim} /> {t.theRest}
                 </>
               ) : selected ? (
-                `Origin: vertex ${selected}`
+                t.originVertex(selected)
               ) : (
-                'Click a vertex to choose the origin'
+                t.chooseOrigin
               )}
             </div>
           </>
@@ -1761,15 +1719,15 @@ export default function Observatory() {
             style={{ left: pointer.x + 14, top: pointer.y + 14 }}
             role="status"
           >
-            <span className="mono">vertex {hovered}</span>
-            <span>degree {hoverInfo.degree}</span>
+            <span className="mono">{t.vertex(hovered)}</span>
+            <span>{t.degree(hoverInfo.degree)}</span>
             {search &&
               (hoverInfo.level === null ? (
-                <span>not reached</span>
+                <span>{t.notReached}</span>
               ) : (
                 <span>
-                  level {hoverInfo.level}
-                  {hoverInfo.parent !== null && ` · parent ${hoverInfo.parent}`}
+                  {t.level(hoverInfo.level)}
+                  {hoverInfo.parent !== null && t.parent(hoverInfo.parent)}
                 </span>
               ))}
           </div>
@@ -1779,7 +1737,7 @@ export default function Observatory() {
       {notice && (
         <div className={styles.notice} role="alert">
           <span>{notice}</span>
-          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss">
+          <button type="button" onClick={() => setNotice(null)} aria-label={t.dismiss}>
             ×
           </button>
         </div>
@@ -1873,7 +1831,7 @@ function Tile({
 }
 
 /** How many vertices have each degree, as a tiny bar chart. */
-function DegreeHistogram({ degrees, max }: { degrees: Uint32Array; max: number }) {
+function DegreeHistogram({ t, degrees, max }: { t: Strings; degrees: Uint32Array; max: number }) {
   const bars = useMemo(() => {
     const counts = new Uint32Array(max + 1);
     for (let v = 1; v < degrees.length; v++) counts[degrees[v]] += 1;
@@ -1892,17 +1850,20 @@ function DegreeHistogram({ degrees, max }: { degrees: Uint32Array; max: number }
   }, [degrees, max]);
   const peak = bars.reduce((m, b) => Math.max(m, b.count), 1);
   return (
-    <div className={`${styles.chart} ${styles.shedThird}`} aria-label="Degree distribution">
+    <div className={`${styles.chart} ${styles.shedThird}`} aria-label={t.degreeDistribution}>
       <div className={styles.chartHeader}>
-        <span className={`label ${styles.tileLabel}`}>Degree distribution</span>
-        <span className={styles.tileHint}>vertices per degree</span>
+        <span className={`label ${styles.tileLabel}`}>{t.degreeDistribution}</span>
+        <span className={styles.tileHint}>{t.verticesPerDegree}</span>
       </div>
       <div className={styles.bars}>
         {bars.map((b) => (
           <span
             key={b.from}
             style={{ height: `${Math.max(b.count > 0 ? 3 : 0, (b.count / peak) * 100)}%` }}
-            title={`degree ${b.from === b.to ? b.from : `${b.from}–${b.to}`}: ${formatInt(b.count)}`}
+            title={t.degreeBucket(
+              b.from === b.to ? String(b.from) : `${b.from}–${b.to}`,
+              formatInt(b.count),
+            )}
           />
         ))}
       </div>
@@ -1920,11 +1881,13 @@ function DegreeHistogram({ degrees, max }: { degrees: Uint32Array; max: number }
     buttons, a previous / next navigator and the selected component's
     numbers as tiles. */
 function ComponentsView({
+  t,
   meta,
   current,
   onSelect,
   onClose,
 }: {
+  t: Strings;
   meta: GraphMeta;
   current: number;
   onSelect: (c: number) => void;
@@ -1939,14 +1902,16 @@ function ComponentsView({
   const edges = current ? meta.componentEdges[current] : 0;
   const possible = (size * (size - 1)) / 2;
   return (
-    <div className={styles.chart} aria-label="Components">
+    <div className={styles.chart} aria-label={t.components}>
       <div className={styles.chartHeader}>
-        <span className={`label ${styles.tileLabel}`}>Components · {formatInt(sizes.length)}</span>
+        <span className={`label ${styles.tileLabel}`}>
+          {t.componentsCount(formatInt(sizes.length))}
+        </span>
         <span className={styles.tileHint}>
-          {sizes.length === 1 ? 'connected' : `smallest ${formatInt(sizes[sizes.length - 1])}`}
+          {sizes.length === 1 ? t.connected : t.smallest(formatInt(sizes[sizes.length - 1]))}
         </span>
       </div>
-      <div className={styles.segments} role="group" aria-label="Pick a component">
+      <div className={styles.segments} role="group" aria-label={t.pickComponent}>
         {Array.from({ length: shown }, (_, i) => (
           <button
             key={i}
@@ -1954,8 +1919,8 @@ function ComponentsView({
             className={styles.piece}
             style={{ flexGrow: sizes[i], opacity: 1 - (i / Math.max(shown, 2)) * 0.7 }}
             data-current={current === i + 1 || undefined}
-            title={`component ${i + 1}: ${formatInt(sizes[i])} vertices`}
-            aria-label={`Component ${i + 1}, ${formatInt(sizes[i])} vertices`}
+            title={t.componentTitle(i + 1, formatInt(sizes[i]))}
+            aria-label={t.componentLabel(i + 1, formatInt(sizes[i]))}
             aria-pressed={current === i + 1}
             onClick={() => onSelect(i + 1)}
           />
@@ -1966,8 +1931,8 @@ function ComponentsView({
             className={`${styles.piece} ${styles.pieceRest}`}
             style={{ flexGrow: rest }}
             data-current={current > shown || undefined}
-            title={`${formatInt(sizes.length - shown)} more components: ${formatInt(rest)} vertices`}
-            aria-label={`${formatInt(sizes.length - shown)} smaller components`}
+            title={t.moreComponents(formatInt(sizes.length - shown), formatInt(rest))}
+            aria-label={t.smallerComponents(formatInt(sizes.length - shown))}
             aria-pressed={current > shown}
             onClick={() => onSelect(shown + 1)}
           />
@@ -1977,21 +1942,21 @@ function ComponentsView({
         <button
           type="button"
           className={styles.stepButton}
-          aria-label="Previous (larger) component"
+          aria-label={t.previousComponent}
           disabled={current <= 1}
           onClick={() => onSelect(current - 1)}
         >
           <ChevronLeft size={12} />
         </button>
         <span className={`mono ${styles.componentInfo}`}>
-          component <b>{current}</b>
+          {t.componentWord} <b>{current}</b>
           <span className={styles.componentSep}>/</span>
           {formatInt(sizes.length)}
         </span>
         <button
           type="button"
           className={styles.stepButton}
-          aria-label="Next (smaller) component"
+          aria-label={t.nextComponent}
           disabled={current >= sizes.length}
           onClick={() => onSelect(current + 1)}
         >
@@ -2000,8 +1965,8 @@ function ComponentsView({
         <button
           type="button"
           className={styles.stepButton}
-          aria-label="Back to the graph summary"
-          title="Back to the summary"
+          aria-label={t.backToSummary}
+          title={t.backToSummaryShort}
           onClick={onClose}
         >
           <X size={12} />
@@ -2010,26 +1975,28 @@ function ComponentsView({
       {current > 0 && (
         <div className={styles.tiles}>
           <Tile
-            label="Vertices"
+            label={t.vertices}
             value={formatInt(size)}
-            hint={`${((size / total) * 100).toFixed(size === total ? 0 : 1)}% of the graph`}
+            hint={t.ofGraph(((size / total) * 100).toFixed(size === total ? 0 : 1))}
           />
           <Tile
-            label="Edges"
+            label={t.edges}
             value={formatInt(edges)}
-            hint={`${((edges / Math.max(meta.edges, 1)) * 100).toFixed(edges === meta.edges ? 0 : 1)}% of the edges`}
+            hint={t.ofEdges(
+              ((edges / Math.max(meta.edges, 1)) * 100).toFixed(edges === meta.edges ? 0 : 1),
+            )}
           />
           <Tile
-            label="Degree"
+            label={t.componentDegree}
             value={`${meta.componentDegree.min[current]} – ${meta.componentDegree.max[current]}`}
-            hint={`mean ${size ? ((2 * edges) / size).toFixed(2) : '0'}`}
+            hint={t.mean(size ? ((2 * edges) / size).toFixed(2) : '0')}
           />
           <Tile
-            label="Density"
+            label={t.density}
             value={
               possible ? `${((edges / possible) * 100).toFixed(edges === possible ? 0 : 2)}%` : '—'
             }
-            hint="of the possible edges"
+            hint={t.ofPossible}
           />
         </div>
       )}
@@ -2040,11 +2007,13 @@ function ComponentsView({
 /** Vertices per level as horizontal bars, level 0 at the bottom; the index
     on the left is a button that moves the timeline to that level. */
 function LevelProfile({
+  t,
   sizes,
   kind,
   current,
   onSelect,
 }: {
+  t: Strings;
   sizes: Uint32Array;
   kind: SearchKindName;
   current: number;
@@ -2070,7 +2039,7 @@ function LevelProfile({
     return out;
   }, [sizes]);
   const peak = rows.reduce((m, r) => Math.max(m, r.count), 1);
-  const noun = kind === 'bfs' ? 'level' : 'depth';
+  const noun = kind === 'bfs' ? t.levelNoun : t.depthNoun;
 
   // Keep the current level in view while the wave plays.
   useEffect(() => {
@@ -2081,9 +2050,9 @@ function LevelProfile({
   }, [current]);
 
   return (
-    <div className={`${styles.chart} ${styles.shedFourth}`} aria-label={`Vertices per ${noun}`}>
+    <div className={`${styles.chart} ${styles.shedFourth}`} aria-label={t.verticesPer(noun)}>
       <div className={styles.chartHeader}>
-        <span className={`label ${styles.tileLabel}`}>Vertices per {noun}</span>
+        <span className={`label ${styles.tileLabel}`}>{t.verticesPer(noun)}</span>
       </div>
       <div ref={listRef} className={styles.levels}>
         {rows.map((row) => {
@@ -2099,7 +2068,7 @@ function LevelProfile({
                 type="button"
                 className={`mono ${styles.levelIndex}`}
                 onClick={() => onSelect(row.from)}
-                title={`Go to ${noun} ${row.from}`}
+                title={t.goTo(noun, row.from)}
               >
                 {row.from === row.to ? row.from : `${row.from}–${row.to}`}
               </button>
@@ -2121,12 +2090,14 @@ function LevelProfile({
 /** A DFS as the stack depth over discovery time: it plunges and backtracks.
     Click or drag on the trace to move the timeline. */
 function DepthTrace({
+  t,
   order,
   levels,
   depth,
   reveal,
   onScrub,
 }: {
+  t: Strings;
   order: Uint32Array;
   levels: Uint32Array;
   depth: number;
@@ -2161,9 +2132,9 @@ function DepthTrace({
   };
 
   return (
-    <div className={`${styles.chart} ${styles.shedFourth}`} aria-label="Depth over the traversal">
+    <div className={`${styles.chart} ${styles.shedFourth}`} aria-label={t.depthTrace}>
       <div className={styles.chartHeader}>
-        <span className={`label ${styles.tileLabel}`}>Depth over the traversal</span>
+        <span className={`label ${styles.tileLabel}`}>{t.depthTrace}</span>
         <span className={`mono ${styles.tileHint}`}>
           {currentDepth} / {depth}
         </span>
@@ -2180,7 +2151,7 @@ function DepthTrace({
           if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubAt(event);
         }}
         role="slider"
-        aria-label="Discovery progress"
+        aria-label={t.progress}
         aria-valuemin={0}
         aria-valuemax={total - 1}
         aria-valuenow={Math.round(reveal)}
