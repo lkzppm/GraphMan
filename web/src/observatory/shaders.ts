@@ -18,6 +18,7 @@ struct View {
   selected: u32,
   mode: u32,          // 0 = no search, 1 = BFS, 2 = DFS
   n: u32,
+  component: u32,     // > 0: only this component is lit, the rest is dimmed
   stride: u32,        // > 1 while moving: only every stride-th non-tree edge is drawn
   treeStride: u32,    // the same for the tree edges of a search
   nodeStride: u32,    // > 1 where vertices pile up: only every nodeStride-th is drawn
@@ -66,6 +67,9 @@ ${VIEW}
 @group(0) @binding(1) var<storage, read> positions: array<vec2f>;
 @group(0) @binding(2) var<storage, read> levels: array<u32>;
 @group(0) @binding(3) var<storage, read> ranks: array<u32>;
+@group(0) @binding(4) var<storage, read> labels: array<u32>;
+@group(0) @binding(5) var<storage, read> offsets: array<u32>;
+@group(0) @binding(6) var<storage, read> targets: array<u32>;
 
 struct VOut {
   @builtin(position) pos: vec4f,
@@ -77,19 +81,39 @@ struct VOut {
 }
 
 fn nodeColor(v: u32) -> vec4f {
+  if (view.component != 0u && labels[v] != view.component) { return view.dim; }
   if (view.mode == 0u) { return view.base; }
   let rank = ranks[v];
   if (rank == 0xffffffffu || f32(rank) > view.reveal) { return view.dim; }
   return levelColor(levels[v]);
 }
 
+// Whether v is adjacent to the selected vertex: a binary search of the
+// selected vertex's neighbour row (rows are ascending).
+fn adjacent(v: u32) -> bool {
+  if (view.selected == 0u) { return false; }
+  var lo = offsets[view.selected];
+  var hi = offsets[view.selected + 1u];
+  while (lo < hi) {
+    let mid = (lo + hi) / 2u;
+    let w = targets[mid];
+    if (w == v) { return true; }
+    if (w < v) { lo = mid + 1u; } else { hi = mid; }
+  }
+  return false;
+}
+
 @vertex fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
-  // Instances cover every nodeStride-th vertex, then the hovered and the
-  // selected one (which may not be in the sample).
+  // Instances cover every nodeStride-th vertex, then the neighbours of the
+  // selected vertex, the hovered and the selected one (none of which need
+  // be in the sample).
   let sampled = (view.n + view.nodeStride - 1u) / view.nodeStride;
+  var degree = 0u;
+  if (view.selected != 0u) { degree = offsets[view.selected + 1u] - offsets[view.selected]; }
   var v = ii * view.nodeStride + 1u;
-  if (ii == sampled) { v = view.hovered; }
-  if (ii == sampled + 1u) { v = view.selected; }
+  if (ii >= sampled && ii < sampled + degree) { v = targets[offsets[view.selected] + ii - sampled]; }
+  if (ii == sampled + degree) { v = view.hovered; }
+  if (ii == sampled + degree + 1u) { v = view.selected; }
   var out: VOut;
   if (v == 0u || v > view.n) {
     out.pos = vec4f(0.0, 0.0, 2.0, 1.0);
@@ -103,6 +127,7 @@ fn nodeColor(v: u32) -> vec4f {
   var flags = 0u;
   if (v == view.selected) { flags |= 1u; r = max(r * 1.5, 5.0); }
   if (v == view.hovered) { flags |= 2u; r = max(r * 1.3, 4.0); }
+  if (flags == 0u && adjacent(v)) { flags |= 4u; r = max(r * 1.25, 4.0); }
   // Discovery: the vertex pops to almost twice its size and settles.
   var pop = 0.0;
   if (view.mode != 0u) { pop = freshness(ranks[v], 0.5); }
@@ -125,7 +150,10 @@ fn nodeColor(v: u32) -> vec4f {
   var rgb = in.color.rgb * in.color.a * body;
   var a = in.color.a * body;
   if (in.flags != 0u) {
-    let ring = smoothstep(in.rpx + 0.6, in.rpx + 1.4, d) * (1.0 - smoothstep(in.rpx + 2.2, in.rpx + 3.0, d));
+    // The hover / selection ring; the neighbours of the selected vertex
+    // wear a lighter one.
+    let ring = smoothstep(in.rpx + 0.6, in.rpx + 1.4, d) * (1.0 - smoothstep(in.rpx + 2.2, in.rpx + 3.0, d))
+      * select(1.0, 0.5, in.flags == 4u);
     rgb = rgb * (1.0 - ring) + view.ring.rgb * ring;
     a = a * (1.0 - ring) + ring;
   }
@@ -161,27 +189,52 @@ ${VIEW}
 // view.stride, 1 = the tree edges of the search at view.treeStride.
 struct Kind { tree: u32 }
 @group(0) @binding(6) var<uniform> kind: Kind;
+@group(0) @binding(7) var<storage, read> labels: array<u32>;
+@group(0) @binding(8) var<storage, read> offsets: array<u32>;
+@group(0) @binding(9) var<storage, read> targets: array<u32>;
 
 struct VOut {
   @builtin(position) pos: vec4f,
   @location(0) color: vec4f,
 }
 
+fn cull() -> VOut {
+  var out: VOut;
+  out.pos = vec4f(0.0, 0.0, 2.0, 1.0);
+  out.color = vec4f(0.0);
+  return out;
+}
+
 @vertex fn vs_main(@builtin(vertex_index) vi: u32) -> VOut {
   let stride = select(view.stride, view.treeStride, kind.tree != 0u);
-  let e = (vi / 2u) * stride;
-  var out: VOut;
-  if (2u * e + 1u >= arrayLength(&edges)) {
-    out.pos = vec4f(0.0, 0.0, 2.0, 1.0);
-    out.color = vec4f(0.0);
-    return out;
+  let count = arrayLength(&edges) / 2u;
+  let sampled = (count + stride - 1u) / stride;
+  let segment = vi / 2u;
+  var a = 0u;
+  var b = 0u;
+  // The edges at the selected vertex are lit and drawn by the plain draw
+  // as extra segments after the sample, straight from the CSR row, so no
+  // stride can drop one; the samples skip them.
+  let incident = segment >= sampled;
+  if (incident) {
+    let start = offsets[view.selected];
+    let j = segment - sampled;
+    if (j >= offsets[view.selected + 1u] - start) { return cull(); }
+    a = view.selected;
+    b = targets[start + j];
+  } else {
+    let e = segment * stride;
+    if (e >= count) { return cull(); }
+    a = edges[2u * e];
+    b = edges[2u * e + 1u];
+    if (view.selected != 0u && (a == view.selected || b == view.selected)) { return cull(); }
   }
-  let a = edges[2u * e];
-  let b = edges[2u * e + 1u];
-  let v = edges[2u * e + (vi & 1u)];
+  let v = select(a, b, (vi & 1u) == 1u);
+  var out: VOut;
   var world = positions[v];
   var color = view.edge;
   var tree = false;
+  var drawn = 1.0;
   if (view.mode != 0u) {
     let ra = ranks[a];
     let rb = ranks[b];
@@ -192,7 +245,7 @@ struct VOut {
       // A tree edge draws itself from the parent towards the child during
       // the rank before the child is discovered, then brightens briefly.
       tree = true;
-      let drawn = clamp(view.reveal - (f32(rc) - 1.0), 0.0, 1.0);
+      drawn = clamp(view.reveal - (f32(rc) - 1.0), 0.0, 1.0);
       if (v == child) { world = mix(positions[parent], positions[child], drawn); }
       let fresh = freshness(rc, 0.7);
       color = mix(view.edgeTree * levelColor(levels[child]), view.colorA, 0.6 * fresh);
@@ -201,11 +254,17 @@ struct VOut {
       color = view.edgeDim;
     }
   }
+  if (view.component != 0u && (labels[a] != view.component || labels[b] != view.component)) {
+    color = view.edgeDim;
+  }
+  if (incident) {
+    out.pos = toClip((world - view.offset) * view.scale);
+    out.color = vec4f(view.colorA.rgb, 0.85 * step(0.001, drawn));
+    return out;
+  }
   if (tree != (kind.tree != 0u)) {
     // The other draw's kind of edge.
-    out.pos = vec4f(0.0, 0.0, 2.0, 1.0);
-    out.color = vec4f(0.0);
-    return out;
+    return cull();
   }
   let full = color.a;
   color.a = color.a * select(view.edgeFade, view.treeFade, tree);
@@ -319,5 +378,33 @@ fn step(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_id)
     vel[i] = v;
     posOut[i] = np;
   }
+}
+`;
+
+/**
+ * One step of a layout change: every vertex slides from where it was to
+ * where the new layout puts it, `t` eased on the CPU. The dragged vertex,
+ * if any, stays under the pointer.
+ */
+export const MORPH_SHADER = /* wgsl */ `
+struct Morph {
+  n: u32,
+  dragIndex: u32,
+  t: f32,
+  pad: f32,
+  dragPos: vec2f,
+}
+@group(0) @binding(0) var<uniform> morph: Morph;
+@group(0) @binding(1) var<storage, read> src: array<vec2f>;
+@group(0) @binding(2) var<storage, read> dst: array<vec2f>;
+@group(0) @binding(3) var<storage, read_write> posOut: array<vec2f>;
+
+@compute @workgroup_size(256)
+fn step(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  if (i == 0u || i > morph.n) { return; }
+  var p = mix(src[i], dst[i], morph.t);
+  if (i == morph.dragIndex) { p = morph.dragPos; }
+  posOut[i] = p;
 }
 `;

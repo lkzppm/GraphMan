@@ -32,7 +32,7 @@ import {
   type Target,
 } from 'vgpu';
 import { UNREACHED } from '@/lib/graphman';
-import { COMPOSITE_SHADER, EDGE_SHADER, NODE_SHADER, SIM_SHADER } from './shaders';
+import { COMPOSITE_SHADER, EDGE_SHADER, MORPH_SHADER, NODE_SHADER, SIM_SHADER } from './shaders';
 
 export type Rgba = [number, number, number, number];
 
@@ -89,7 +89,7 @@ const NODE_PILE = 3;
 const SETTLE_MS = 120;
 /** Opacity the plain edges, and the tree edges, should add up to where they
     overlap; their alpha is scaled down so a dense picture stays readable. */
-const EDGE_COVERAGE = 0.6;
+const EDGE_COVERAGE = 0.4;
 const TREE_COVERAGE = 0.95;
 /** Faded edges below this alpha would vanish in the half-float blending
     (each one adds less than the layer can resolve), so instead of drawing
@@ -115,6 +115,7 @@ type ViewValues = {
   selected: number;
   mode: number;
   n: number;
+  component: number;
   stride: number;
   treeStride: number;
   nodeStride: number;
@@ -142,6 +143,7 @@ const EMPTY_VIEW: ViewValues = {
   selected: 0,
   mode: 0,
   n: 0,
+  component: 0,
   stride: 1,
   treeStride: 1,
   nodeStride: 1,
@@ -176,6 +178,7 @@ export class Renderer {
   private treeEdges: Draw;
   private composite: Effect;
   private sim: Compute;
+  private morph: Compute;
   private loop: FrameLoopHandle | null = null;
   private theme: Theme;
 
@@ -204,6 +207,20 @@ export class Renderer {
   private levels: StorageBuffer | null = null;
   private ranks: StorageBuffer | null = null;
   private parents: StorageBuffer | null = null;
+  private labels: StorageBuffer | null = null;
+  /** The CSR offsets, kept to size the selected vertex's neighbourhood draws. */
+  private csrOffsets: Uint32Array = new Uint32Array(0);
+  /** The edge pairs and component labels, kept to re-measure the density after a layout change. */
+  private cpuEdges: Uint32Array = new Uint32Array(0);
+  private cpuLabels: Uint32Array = new Uint32Array(0);
+
+  // A layout change in progress: positions slide from `morphFrom` to
+  // `morphDest` over `morphMs`, starting at `morphStart`.
+  private morphFrom: StorageBuffer | null = null;
+  private morphDest: StorageBuffer | null = null;
+  private morphTarget: Float32Array | null = null;
+  private morphStart = 0;
+  private morphMs = 0;
 
   /** CPU mirror of the positions, refreshed from the GPU while simulating. */
   private mirror = new Float32Array(0);
@@ -263,6 +280,7 @@ export class Renderer {
     });
     this.composite = effect(gpu, COMPOSITE_SHADER, { label: 'composite', blend: 'premultiplied' });
     this.sim = compute(gpu, SIM_SHADER, { label: 'layout' });
+    this.morph = compute(gpu, MORPH_SHADER, { label: 'morph' });
     gpu.onError((error) => this.onError?.(error.message));
   }
 
@@ -345,15 +363,21 @@ export class Renderer {
     this.ranks.write(unreached);
     this.parents = storage(gpu, slots * 4, 'read');
     this.parents.write(new Uint32Array(slots));
+    this.labels = storage(gpu, slots * 4, 'read');
+    this.labels.write(bytes(graph.componentLabels));
 
     this.mirror = new Float32Array(graph.positions);
-    this.measure(graph);
+    this.csrOffsets = graph.csrOffsets;
+    this.cpuEdges = graph.edges;
+    this.cpuLabels = graph.componentLabels;
+    this.measure(graph.positions);
     [this.viewValues.edgeFade, this.viewValues.treeFade] = this.fades(this.viewValues.scale);
     this.viewValues.n = n;
     this.viewValues.mode = 0;
     this.viewValues.reveal = -1;
     this.viewValues.hovered = 0;
     this.viewValues.selected = 0;
+    this.viewValues.component = 0;
     this.touch(true);
 
     this.sim.set({
@@ -368,10 +392,20 @@ export class Renderer {
       parents: this.parents,
       ranks: this.ranks,
       levels: this.levels,
+      labels: this.labels,
+      offsets: this.offsets,
+      targets: this.targets,
     };
     this.edges.set(edgeBindings);
     this.treeEdges.set(edgeBindings);
-    this.nodes.set({ view: this.view, levels: this.levels, ranks: this.ranks });
+    this.nodes.set({
+      view: this.view,
+      levels: this.levels,
+      ranks: this.ranks,
+      labels: this.labels,
+      offsets: this.offsets,
+      targets: this.targets,
+    });
 
     this.simulate = n <= SIMULATION_LIMIT;
     this.alpha = this.simulate ? 1 : 0;
@@ -379,17 +413,16 @@ export class Renderer {
   }
 
   /**
-   * Measures how thickly the edges pile up. The initial layout puts each
-   * component on a disc whose area is proportional to its size (the radius
-   * formula mirrors `initial_layout` in the wasm crate), so the density of a
-   * component is its edges over that disc; the picture is governed by the
-   * densest of the components that hold a real share of the edges.
+   * Measures how thickly the edges pile up in a layout: the density of a
+   * component is its edges over the area it occupies (the ellipse in its
+   * bounding box, which for the disc layouts is the disc itself); the
+   * picture is governed by the densest of the components that hold a real
+   * share of the edges.
    */
-  private measure(graph: GraphBuffers) {
-    const pos = graph.positions;
-    const labels = graph.componentLabels;
-    const n = graph.vertexCount;
-    const edges = graph.edges;
+  private measure(pos: Float32Array) {
+    const labels = this.cpuLabels;
+    const n = this.n;
+    const edges = this.cpuEdges;
     const count = edges.length / 2;
     let components = 0;
     for (let v = 1; v <= n; v++) components = Math.max(components, labels[v]);
@@ -397,7 +430,20 @@ export class Renderer {
     const perComponent = new Uint32Array(components + 1);
     const lengthSum = new Float64Array(components + 1);
     const sampled = new Uint32Array(components + 1);
-    for (let v = 1; v <= n; v++) size[labels[v]] += 1;
+    const minX = new Float64Array(components + 1).fill(Infinity);
+    const minY = new Float64Array(components + 1).fill(Infinity);
+    const maxX = new Float64Array(components + 1).fill(-Infinity);
+    const maxY = new Float64Array(components + 1).fill(-Infinity);
+    for (let v = 1; v <= n; v++) {
+      const c = labels[v];
+      size[c] += 1;
+      const x = pos[2 * v];
+      const y = pos[2 * v + 1];
+      if (x < minX[c]) minX[c] = x;
+      if (x > maxX[c]) maxX[c] = x;
+      if (y < minY[c]) minY[c] = y;
+      if (y > maxY[c]) maxY[c] = y;
+    }
     const step = Math.max(1, Math.floor(count / 50_000));
     for (let e = 0; e < count; e++) {
       const a = edges[2 * e];
@@ -414,8 +460,9 @@ export class Renderer {
     this.meanEdgeLength = this.linkLength;
     for (let c = 1; c <= components; c++) {
       if (perComponent[c] < count * 0.05 || sampled[c] === 0) continue;
-      const radius = this.linkLength * Math.sqrt(size[c] / 2) + this.linkLength;
-      const area = Math.PI * radius * radius;
+      const w = Math.max(maxX[c] - minX[c], this.linkLength);
+      const h = Math.max(maxY[c] - minY[c], this.linkLength);
+      const area = (Math.PI / 4) * w * h;
       const density = perComponent[c] / area;
       if (density > this.edgeDensity) {
         this.edgeDensity = density;
@@ -458,6 +505,9 @@ export class Renderer {
     this.alpha = 0;
     this.dragIndex = 0;
     this.mirror = new Float32Array(0);
+    this.csrOffsets = new Uint32Array(0);
+    this.cpuEdges = new Uint32Array(0);
+    this.cpuLabels = new Uint32Array(0);
     this.touch(true);
     // vgpu frees buffers with the gpu; between graphs we simply drop the
     // handles (a page loads a handful of graphs at most).
@@ -470,6 +520,47 @@ export class Renderer {
     this.levels = null;
     this.ranks = null;
     this.parents = null;
+    this.labels = null;
+    this.morphFrom = null;
+    this.morphDest = null;
+    this.morphTarget = null;
+  }
+
+  /**
+   * Slides every vertex to `target` (flat `[x, y, ...]`, `(n + 1) * 2`
+   * entries) over `ms` milliseconds; the simulation is cooled so it does
+   * not fight the new layout. `ms` of 0 jumps.
+   */
+  morphTo(target: Float32Array, ms: number) {
+    if (this.n === 0 || !this.positions || !this.velocities) return;
+    const slots = this.n + 1;
+    this.alpha = 0;
+    this.velocities.write(new Float32Array(slots * 2));
+    // The fades are tuned to the destination: a layout that spreads a
+    // component out needs less thinning than one that packs it.
+    this.measure(target);
+    [this.viewValues.edgeFade, this.viewValues.treeFade] = this.fades(this.viewValues.scale);
+    if (ms <= 0) {
+      this.positions.read.write(bytes(target));
+      this.positions.write.write(bytes(target));
+      this.mirror = new Float32Array(target);
+      this.morphTarget = null;
+      this.touch(true);
+      this.onPositions?.(this.mirror);
+      return;
+    }
+    this.morphFrom ??= storage(this.gpu, slots * 8, 'read');
+    this.morphDest ??= storage(this.gpu, slots * 8, 'read');
+    this.morphFrom.write(bytes(this.mirror));
+    this.morphDest.write(bytes(target));
+    this.morphTarget = target;
+    this.morphStart = performance.now();
+    this.morphMs = ms;
+    this.dirty = true;
+  }
+
+  get morphing(): boolean {
+    return this.morphTarget !== null;
   }
 
   /** Uploads a search tree; pass `null` to clear it. */
@@ -501,16 +592,31 @@ export class Renderer {
     this.touch(true);
   }
 
+  /** Lights one component (its id, 1 = largest) and dims the rest; 0 shows all. */
+  setComponent(c: number) {
+    if (c === this.viewValues.component) return;
+    this.viewValues.component = c;
+    this.touch(true);
+  }
+
   setHovered(v: number) {
     if (v === this.viewValues.hovered) return;
     this.viewValues.hovered = v;
     this.touch();
   }
 
+  /** Selects a vertex: it, its neighbours and the edges between are lit. */
   setSelected(v: number) {
     if (v === this.viewValues.selected) return;
     this.viewValues.selected = v;
-    this.touch();
+    this.touch(true);
+  }
+
+  /** Degree of the selected vertex: how many extra segments and instances its neighbourhood needs. */
+  private get selectedDegree(): number {
+    const v = this.viewValues.selected;
+    if (!v || v + 1 >= this.csrOffsets.length) return 0;
+    return this.csrOffsets[v + 1] - this.csrOffsets[v];
   }
 
   setCamera(camera: Camera) {
@@ -635,7 +741,29 @@ export class Renderer {
       }
       this.updateView();
 
-      const stepping = this.dragIndex !== 0 || this.simulating;
+      if (this.morphTarget && this.positions && this.morphFrom && this.morphDest) {
+        const raw = Math.min(1, (performance.now() - this.morphStart) / this.morphMs);
+        const t = 1 - Math.pow(1 - raw, 3); // ease out
+        this.morph.set({
+          morph: { n: this.n, dragIndex: this.dragIndex, t, pad: 0, dragPos: this.dragPos },
+          src: this.morphFrom,
+          dst: this.morphDest,
+          posOut: this.positions.write,
+        });
+        this.morph.dispatch(Math.ceil((this.n + 1) / WORKGROUP));
+        this.positions.swap();
+        this.edgesDirty = true;
+        if (raw >= 1) {
+          // Land exactly on the target, mirror included.
+          this.mirror = new Float32Array(this.morphTarget);
+          this.morphTarget = null;
+          this.onPositions?.(this.mirror);
+        } else {
+          this.scheduleRead();
+        }
+      }
+
+      const stepping = !this.morphTarget && (this.dragIndex !== 0 || this.simulating);
       if (stepping && this.positions && this.velocities) {
         this.sim.set({
           params: {
@@ -702,7 +830,9 @@ export class Renderer {
         [this.viewValues.stride, this.viewValues.treeStride] = stride;
         this.view.set(this.viewValues);
         frame.pass({ target: layer, clear: [0, 0, 0, 0] }, (pass) => {
-          pass.draw(this.edges, { vertices: Math.ceil(this.edgeCount / stride[0]) * 2 });
+          pass.draw(this.edges, {
+            vertices: (Math.ceil(this.edgeCount / stride[0]) + this.selectedDegree) * 2,
+          });
           if (this.viewValues.mode !== 0) {
             pass.draw(this.treeEdges, { vertices: Math.ceil(this.edgeCount / stride[1]) * 2 });
           }
@@ -714,7 +844,9 @@ export class Renderer {
       this.composite.set({ layer: layer.color });
       frame.pass({ target: this.surface, clear: this.theme.background }, (pass) => {
         pass.draw(this.composite);
-        pass.draw(this.nodes, { instances: Math.ceil(this.n / this.nodeStride) + 2 });
+        pass.draw(this.nodes, {
+          instances: Math.ceil(this.n / this.nodeStride) + this.selectedDegree + 2,
+        });
       });
     });
   }
