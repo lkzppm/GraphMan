@@ -228,6 +228,16 @@ Searches come back from wasm as typed arrays and are uploaded as-is; the
 animation is the `reveal` uniform sweeping over discovery ranks at `rate`
 ranks per second: the shaders derive each vertex's age since discovery from
 those two numbers (pop + halo on vertices, draw-in + flash on tree edges).
+A distance query is the same BFS: the path is read back along the parents
+on the CPU, the timeline spans only the ranks up to the target, and the
+path goes to the renderer (`setPath`) as a small buffer. The selected
+vertex's edges and the path's are the *extras*: `[a, b]` pairs the CPU
+builds (`updateExtras`) that a third edge draw (`Kind 2`) renders after the
+plain and tree draws, so they sit on top and no stride can drop them; the
+node draw appends the path's vertices as instances the same way. The edge
+shader stays within WebGPU's default eight storage buffers per vertex
+stage, which is why the extras are built on the CPU rather than read from
+the CSR rows in the shader.
 
 ### Data
 
