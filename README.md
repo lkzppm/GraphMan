@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="assets/graphman-logo.png" width="180" alt="GraphMan" />
+  <img src="assets/graphman-logo.svg" width="180" alt="GraphMan" />
 </p>
 
 <h1 align="center">GraphMan</h1>
 
-<p align="center">A Rust graph library that measures itself, with an observatory that draws millions of vertices from the search tree alone.</p>
+<p align="center">A Rust graph library that measures itself, and an observatory that runs it in your browser.</p>
 
 <p align="center">
   <a href="https://github.com/lkzppm/GraphMan/actions/workflows/ci.yml"><img src="https://github.com/lkzppm/GraphMan/actions/workflows/ci.yml/badge.svg?branch=dev" alt="CI" /></a>
@@ -20,8 +20,9 @@ six graphs from 10 thousand to 4.8 million vertices.
 | Piece | Where | What it does |
 |---|---|---|
 | `graphman` | `crates/graphman` | The library: `Graph` trait, adjacency list / bitset matrix / CSR, traversals with visitors, components, four diameter strategies, memory metrics. |
-| `graphman` CLI | `crates/graphman-cli` | One subcommand per assignment feature, plus `bench`, `memory`, `study` (the case-study runner) and `export` (observatory data). |
-| Observatory | `web/` | Vite + React + WebGL2 site: BFS rings and DFS spirals animated live, the architecture, and every case-study number as charts and tables. |
+| `graphman` CLI | `crates/graphman-cli` | One subcommand per assignment feature, plus `bench`, `memory` and `study` (the case-study runner). |
+| `graphman-wasm` | `crates/graphman-wasm` | The library compiled to WebAssembly for the browser. |
+| Observatory | `web/` | Next.js site: drop a graph file, drag its vertices, pick an origin and watch BFS/DFS unfold on the GPU (vgpu / WebGPU), plus the architecture and the case-study tables. |
 
 ## Quick start
 
@@ -35,8 +36,7 @@ cargo build --release
 ./target/release/graphman components graphs/grafo_1.txt
 ./target/release/graphman study graphs/grafo_1.txt --out studies   # JSON + RESULTS.md
 
-# Observatory
-./target/release/graphman export graphs/grafo_1.txt --out web/public/data
+# Observatory (needs the wasm32-unknown-unknown target; a WebGPU browser to view)
 cd web && npm install && npm run dev
 ```
 
@@ -73,7 +73,8 @@ feeds the site. See `spec/WORKFLOW.md` for how to regenerate them.
 
 ```
 crates/graphman/      library          crates/graphman-cli/   binary `graphman`
-web/                  observatory      studies/               case-study outputs
+crates/graphman-wasm/ wasm bindings    web/                   Next.js site + observatory
+studies/              case-study outputs
 spec/                 project knowledge (assignment, architecture, workflow, design)
 docs/                 course handouts  graphs/                inputs (gitignored)
 ```

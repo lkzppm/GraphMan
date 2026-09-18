@@ -1,68 +1,98 @@
-import { useRef, useState } from 'react';
-import { Liquid } from 'liquid-gooey';
-import './Nav.css';
+'use client';
 
-const LINKS = [
-  { href: '#observatory', label: 'Observatory' },
-  { href: '#anatomy', label: 'Anatomy' },
-  { href: '#studies', label: 'Case studies' },
-  { href: 'https://github.com/lkzppm/GraphMan', label: 'GitHub', external: true },
-];
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { siGithub } from 'simple-icons';
+import BrandIcon from './BrandIcon';
+import Logo from './Logo';
+import styles from './Nav.module.css';
 
-/** Top bar with a liquid highlight that flows between links on hover. */
+const TABS = [
+  { href: '/observatory', label: 'Observatory' },
+  { href: '/library', label: 'Library' },
+  { href: '/studies', label: 'Case studies' },
+] as const;
+
+/**
+ * Sticky top bar: the wordmark is the home link, then one tab per other
+ * page. A single blue indicator (pill and underline) slides to whichever
+ * tab is current, Golem-style, and hides on the home page.
+ */
 export default function Nav() {
-  const listRef = useRef<HTMLElement>(null);
-  const [blob, setBlob] = useState<{ x: number; w: number } | null>(null);
+  const pathname = usePathname();
+  const tabsRef = useRef<HTMLElement>(null);
+  const [indicator, setIndicator] = useState<{ left: number; width: number; ready: boolean }>({
+    left: 0,
+    width: 0,
+    ready: false,
+  });
 
-  const track = (el: HTMLElement) => {
-    const list = listRef.current;
+  const activeIndex = TABS.findIndex((tab) => pathname.startsWith(tab.href));
+  const home = pathname === '/';
+
+  useLayoutEffect(() => {
+    const list = tabsRef.current;
     if (!list) return;
-    const a = el.getBoundingClientRect();
-    const b = list.getBoundingClientRect();
-    setBlob({ x: a.left - b.left, w: a.width });
-  };
+    const measure = () => {
+      const el = list.querySelector<HTMLElement>('[data-active="true"]');
+      if (!el) {
+        setIndicator((i) => ({ ...i, width: 0 }));
+        return;
+      }
+      setIndicator((i) => ({ left: el.offsetLeft, width: el.offsetWidth, ready: i.ready || true }));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [activeIndex]);
 
   return (
-    <header className="nav">
-      <div className="nav__inner">
-        <a className="nav__brand" href="#top" aria-label="GraphMan home">
-          <img src="/brand/graphman-64.png" alt="" width={22} height={22} />
-          <span>GraphMan</span>
-        </a>
-        <nav
-          ref={listRef}
-          className="nav__links"
-          aria-label="Sections"
-          onMouseLeave={() => setBlob(null)}
+    <header className={styles.nav}>
+      <div className={styles.inner}>
+        <Link
+          href="/"
+          className={styles.brand}
+          aria-label="GraphMan home"
+          aria-current={home ? 'page' : undefined}
         >
-          <div className="nav__liquid" style={{ opacity: blob ? 1 : 0 }} aria-hidden="true">
-            <Liquid
-              fill="rgba(255,255,255,0.16)"
-              blur={6}
-              contrast={18}
-              style={{ width: '100%', height: '100%' }}
-            >
-              <Liquid.Item effect="move" move={{ springiness: 0.7, trail: 0.45, wobble: 0.35 }}>
-                <div
-                  className="nav__blob"
-                  style={{ transform: `translateX(${blob?.x ?? 0}px)`, width: blob?.w ?? 0 }}
-                />
-              </Liquid.Item>
-            </Liquid>
-          </div>
-          {LINKS.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              target={link.external ? '_blank' : undefined}
-              rel={link.external ? 'noreferrer' : undefined}
-              onMouseEnter={(e) => track(e.currentTarget)}
-              onFocus={(e) => track(e.currentTarget)}
-            >
-              {link.label}
-            </a>
-          ))}
+          <Logo size={30} />
+          <span className={`mono ${styles.wordmark}`}>
+            graphman<span className="accent">.</span>
+          </span>
+        </Link>
+        <nav ref={tabsRef} className={styles.tabs} aria-label="Pages">
+          <span
+            className={`${styles.indicator} ${indicator.ready ? styles.indicatorLive : ''}`}
+            style={{ transform: `translateX(${indicator.left}px)`, width: indicator.width }}
+            aria-hidden="true"
+          />
+          {TABS.map((tab, i) => {
+            const active = i === activeIndex;
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                className={active ? styles.tabActive : styles.tab}
+                data-active={active ? 'true' : undefined}
+                aria-current={active ? 'page' : undefined}
+              >
+                {tab.label}
+              </Link>
+            );
+          })}
         </nav>
+        <a
+          className={styles.github}
+          href="https://github.com/lkzppm/GraphMan"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Source on GitHub"
+        >
+          <BrandIcon icon={siGithub} size={18} />
+          <span>GitHub</span>
+        </a>
       </div>
     </header>
   );

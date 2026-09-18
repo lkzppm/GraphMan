@@ -49,8 +49,6 @@ enum Command {
     Memory(commands::memory::Args),
     /// Run the whole case study and write JSON + Markdown results.
     Study(commands::study::Args),
-    /// Export search-tree layouts for the web observatory.
-    Export(commands::export::Args),
 }
 
 fn main() -> Result<()> {
@@ -71,6 +69,5 @@ fn main() -> Result<()> {
         Command::Bench(args) => commands::bench::run(args, &ui),
         Command::Memory(args) => commands::memory::run(args, &ui),
         Command::Study(args) => commands::study::run(args, &ui),
-        Command::Export(args) => commands::export::run(args, &ui),
     }
 }

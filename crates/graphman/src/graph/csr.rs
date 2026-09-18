@@ -19,6 +19,17 @@ pub struct Csr {
 }
 
 impl Csr {
+    /// The row offsets: `offsets[v]..offsets[v + 1]` indexes the neighbours
+    /// of `v` in [`targets`](Self::targets). Length `n + 2` (index 0 unused).
+    pub fn offsets(&self) -> &[u32] {
+        &self.offsets
+    }
+
+    /// Every neighbour row back to back, `2m` entries.
+    pub fn targets(&self) -> &[Vertex] {
+        &self.targets
+    }
+
     /// The neighbour row of `v` as a slice.
     #[inline]
     pub fn row(&self, v: Vertex) -> &[Vertex] {

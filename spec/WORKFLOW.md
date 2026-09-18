@@ -17,13 +17,14 @@ Rust job: `cargo fmt --check`, `cargo clippy --all-targets --all-features
 -D warnings`, `cargo test --all-features`, `cargo doc` with warnings denied,
 and a smoke test of the release CLI on the Figure 1 graph.
 
-Web job: `npm ci`, `npm run typecheck`, `npm run lint`, `npm run build`.
+Web job: installs the wasm32 target, then `npm ci`, `npm run prepare-assets`
+(wasm + data), `npm run typecheck`, `npm run lint`, `npx next build`.
 
 Run the same locally before committing:
 
 ```
 cargo fmt --all && cargo clippy --all-targets --all-features -- -D warnings && cargo test --all-features
-cd web && npm run typecheck && npm run lint && npm run build
+cd web && npm run prepare-assets && npm run typecheck && npm run lint && npm run build
 ```
 
 ## Case studies
@@ -46,27 +47,29 @@ Useful knobs: `--runs 100` (searches per representation), `--seed 42`,
 this many vertices), `--diameter-budget <seconds>` (per exact method; when it
 runs out the best lower bound so far is recorded and flagged).
 
-## Observatory data
-
-```
-./target/release/graphman export graphs/grafo_1.txt --out web/public/data
-cd web && npm run data        # refreshes manifest.json and results.json
-```
-
-`export` writes `<name>.bfs.gmo`, `<name>.dfs.gmo` (binary layouts, see
-`spec/ARCHITECTURE.md`) and `<name>.json` (metadata). The `.gmo` files are
-gitignored (tens of MB for the large graphs); regenerate them locally or in
-the deployment step.
-
 ## Web app
 
 ```
 cd web
 npm install
-npm run dev          # http://localhost:5173
-npm run build        # dist/
+npm run dev          # builds the wasm + syncs data, then http://localhost:3000
+npm run build        # same, then `next build`
+npm run wasm         # only rebuild crates/graphman-wasm → src/wasm + public/wasm
+npm run data         # only copy studies/results.json → src/data
 ```
 
-Design rules live in `spec/DESIGN.md`: full-height paper/graphite scenes, one
-signal blue, tight display type, liquid indicators (`liquid-gooey`) and metal
-rings (`metal-fx`) as the only effects, dataviz-validated chart colours.
+`npm run wasm` needs `cargo` with the `wasm32-unknown-unknown` target
+(`rustup target add wasm32-unknown-unknown`); it downloads the matching
+`wasm-bindgen` CLI into `web/.cache` by itself. The observatory needs a
+browser with WebGPU (Chrome/Edge, Safari 26+, Firefox 141+).
+
+## Deploying to Vercel
+
+Import the GitHub repository, set **Root Directory** to `web` and keep
+"Include source files outside of the Root Directory" enabled (the build
+compiles `crates/`). `web/vercel.json` sets `npm ci` / `npm run build`; the
+build script installs a minimal Rust toolchain with rustup when `cargo` is
+missing, so nothing else is configured. Production deploys track `main`,
+previews come from pull requests.
+
+Design rules live in `spec/DESIGN.md`.
