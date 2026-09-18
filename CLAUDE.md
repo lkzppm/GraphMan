@@ -1,6 +1,6 @@
 # GraphMan — guide for coding agents
 
-GraphMan is a graph library + CLI in Rust and a web "observatory" in React,
+GraphMan is a graph library + CLI in Rust and a web "observatory" in Next.js,
 built for the COS 242 (Graph Theory, UFRJ) course project. Part 1 (this
 repo's current scope) covers undirected graphs: two representations,
 BFS/DFS, distances, diameter, connected components and a benchmark study.
@@ -19,20 +19,22 @@ English.
   the design decisions worth presenting, and the data formats.
 - `spec/WORKFLOW.md` — git flow, commit style, CI, how to run studies and
   regenerate the web data.
-- `spec/DESIGN.md` — GraphMan's own design system: paper/graphite scenes, one
-  signal blue, liquid and metal motion, chart rules.
+- `spec/DESIGN.md` — the design system: white + greys + one blue, tracked
+  capitals, mono numbers, accent-edged surfaces, the shakable mark (a
+  Golem-inspired voice), canvas colours.
 
 ## Layout
 
 ```
 crates/graphman/       core library (no CLI concerns, wasm-friendly)
 crates/graphman-cli/   `graphman` binary: commands + the case-study runner
-web/                   Vite + React + TypeScript observatory and presentation site
+crates/graphman-wasm/  wasm-bindgen bindings of the library for the browser
+web/                   Next.js site: landing page + the observatory (vgpu / WebGPU)
 studies/               case-study outputs (results.json, RESULTS.md, per-graph JSON)
 graphs/                course input graphs (gitignored, 100 MB–700 MB each)
 docs/                  course handouts (Portuguese) and the report
 spec/                  project knowledge for humans and agents
-assets/                brand assets (logo)
+assets/                brand assets (logo PNG/JPG + the SVG logo and one-colour mark)
 ```
 
 ## Commands
@@ -43,19 +45,24 @@ cargo clippy --all-targets -- -D warnings   # must be clean (CI enforces)
 cargo fmt --all
 cargo build --release                       # binary at target/release/graphman
 graphman study graphs/grafo_1.txt --out studies   # case studies → JSON + RESULTS.md
-graphman export graphs/grafo_1.txt --out web/public/data   # observatory data
-cd web && npm install && npm run dev        # web app
+cd web && npm install && npm run dev        # builds the wasm, syncs data, starts Next.js
+cd web && npm run typecheck && npm run lint # must be green (CI enforces)
 ```
 
 ## Rules
 
 - Never commit directly to `main`. Work on `feat/*` or `fix/*` from `dev`, use
   the `/commit` skill to commit and the `/merge` skill to open PRs (CI gates).
-- Keep `cargo clippy -D warnings`, `cargo fmt --check` and `npm run lint`
-  green before committing.
+- Keep `cargo clippy -D warnings`, `cargo fmt --check`, `npm run typecheck`
+  and `npm run lint` green before committing. `web/src/wasm`, `web/public/wasm`
+  and `web/src/data` are generated (`npm run prepare-assets`), never edited.
 - Vertices are 1-based (`1..=n`, as in the input files); `0` is `NO_VERTEX`.
 - Algorithms are generic over `Graph`; never write an algorithm for one
   representation. Use `dispatch!` on `AnyGraph` at the CLI boundary only.
+- The wasm crate is glue only: no algorithms there, and it must build with
+  `default-features = false` (no mmap, no rayon).
+- The observatory computes everything client-side from the uploaded file:
+  no pre-exported data, no server.
 - Every representation keeps neighbour rows ascending; tests rely on all
   representations producing identical search trees.
 - Timings in studies exclude parsing and file output (course rule).
