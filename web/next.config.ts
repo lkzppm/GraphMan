@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   // JS and fetches the .wasm binary from /wasm at runtime, so no bundler
   // configuration for WebAssembly is needed.
   reactStrictMode: true,
+  // The repo's own CLAUDE.md is the guide; don't drop generated ones here.
+  agentRules: false,
   headers: async () => [
     {
       source: '/wasm/:path*',
