@@ -22,16 +22,17 @@ export function formatMs(ms: number): string {
   return `${(ms / 60_000).toFixed(1)} min`;
 }
 
-/** Bytes in MB or GB. */
+/** Bytes in KB, MB, GB or TB. */
 export function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 4) return `${(bytes / 1024 ** 4).toFixed(2)} TB`;
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
   if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${bytes} B`;
 }
 
-/** `grafo_1` → `Graph 1`. */
-export function prettyName(name: string): string {
+/** `grafo_1` → `1`; any other name comes back whole (the word is the dictionary's). */
+export function graphNumber(name: string): string {
   const match = /^grafo_(\d+)$/.exec(name);
-  return match ? `Graph ${match[1]}` : name;
+  return match ? match[1] : name;
 }
