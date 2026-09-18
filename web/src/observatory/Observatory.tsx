@@ -94,13 +94,20 @@ interface GraphMeta {
   parseMs: number;
 }
 
-type SearchKindName = 'bfs' | 'dfs';
+/** BFS, DFS, or a distance query (a BFS that stops at the target and lights the path). */
+type SearchKindName = 'bfs' | 'dfs' | 'distance';
 
 interface Search {
   kind: SearchKindName;
   root: number;
+  /** The distance query's other end (0 otherwise). */
+  target: number;
+  /** The shortest path root → target, `null` when the target is not reached. */
+  path: Uint32Array | null;
   depth: number;
   reached: number;
+  /** Discovery ranks the timeline covers: all of them, or up to the target. */
+  span: number;
   elapsedMs: number;
   levels: Uint32Array;
   parents: Uint32Array;
@@ -166,6 +173,7 @@ export default function Observatory() {
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [kind, setKind] = useState<SearchKindName>('bfs');
   const [rootInput, setRootInput] = useState('');
+  const [targetInput, setTargetInput] = useState('');
   const [search, setSearch] = useState<Search | null>(null);
   const [reveal, setReveal] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -643,7 +651,7 @@ export default function Observatory() {
   // ---- searches --------------------------------------------------------------
 
   const runSearch = useCallback(
-    (which: SearchKindName, root: number) => {
+    (which: SearchKindName, root: number, target = 0) => {
       const wasm = wasmRef.current;
       const graph = graphRef.current;
       const renderer = rendererRef.current;
@@ -652,18 +660,37 @@ export default function Observatory() {
       try {
         search?.result.free();
         const result = graph.search(
-          which === 'bfs' ? wasm.SearchKind.Bfs : wasm.SearchKind.Dfs,
+          which === 'dfs' ? wasm.SearchKind.Dfs : wasm.SearchKind.Bfs,
           root,
         );
         const levels = result.levels();
         const parents = result.parents();
         const ranks = result.ranks();
-        renderer.setSearch({ kind: which, levels, ranks, parents, depth: result.depth });
+        // A distance query is a BFS whose wave stops at the target; the
+        // path is read back along the parents.
+        let path: Uint32Array | null = null;
+        let span = result.reached;
+        if (which === 'distance' && levels[target] !== UNREACHED) {
+          path = new Uint32Array(levels[target] + 1);
+          for (let v = target, i = path.length - 1; i >= 0; i--, v = parents[v]) path[i] = v;
+          span = ranks[target] + 1;
+        }
+        renderer.setSearch({
+          kind: which === 'dfs' ? 'dfs' : 'bfs',
+          levels,
+          ranks,
+          parents,
+          depth: result.depth,
+        });
+        renderer.setPath(path);
         setSearch({
           kind: which,
           root,
+          target: which === 'distance' ? target : 0,
+          path,
           depth: result.depth,
           reached: result.reached,
+          span,
           elapsedMs: result.elapsedMs,
           levels,
           parents,
@@ -691,7 +718,7 @@ export default function Observatory() {
   // ones finish within seconds.
   useEffect(() => {
     if (!playing || !search) return;
-    const total = search.reached;
+    const total = search.span;
     const duration = Math.min(8000, Math.max(1600, total * 6));
     rendererRef.current?.setRevealRate((Math.max(total - 1, 1) / duration) * 1000);
     let frame = 0;
@@ -732,13 +759,13 @@ export default function Observatory() {
   const scrubToLevel = (level: number) => {
     if (!search) return;
     let rank = 0;
-    if (search.kind === 'bfs') {
+    if (search.kind !== 'dfs') {
       for (let l = 0; l <= level; l++) rank += search.levelSizes[l];
       rank -= 1;
     } else {
       while (rank < search.order.length - 1 && search.levels[search.order[rank]] !== level) rank++;
     }
-    scrub(Math.max(0, Math.min(rank, search.reached - 1)));
+    scrub(Math.max(0, Math.min(rank, search.span - 1)));
   };
 
   /** The level of the vertex the timeline is at. */
@@ -866,8 +893,11 @@ export default function Observatory() {
     const g = gesture.current;
     if (g.mode === 'maybe-click' && g.vertex) {
       setSelected(g.vertex);
-      setRootInput(String(g.vertex));
       renderer?.setSelected(g.vertex);
+      // In distance mode, with an origin already chosen, a click on another
+      // vertex picks the target; otherwise it picks the origin.
+      if (kind === 'distance' && rootValid && g.vertex !== root) setTargetInput(String(g.vertex));
+      else setRootInput(String(g.vertex));
     }
     // A click on the background (a pan that never moved) clears the selection.
     if (
@@ -959,11 +989,11 @@ export default function Observatory() {
         // BFS: a level up or down; DFS: ten vertices.
         event.preventDefault();
         const dir = event.key === 'ArrowUp' ? 1 : -1;
-        if (k.search.kind === 'bfs') {
+        if (k.search.kind !== 'dfs') {
           k.scrubToLevel(Math.max(0, Math.min(k.search.depth, k.revealLevel + dir)));
         } else {
           k.scrub(
-            Math.max(0, Math.min(k.search.reached - 1, Math.round(revealRef.current) + dir * 10)),
+            Math.max(0, Math.min(k.search.span - 1, Math.round(revealRef.current) + dir * 10)),
           );
         }
         return;
@@ -971,7 +1001,7 @@ export default function Observatory() {
       if (k.search && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
         event.preventDefault();
         const step = (event.shiftKey ? 10 : 1) * (event.key === 'ArrowRight' ? 1 : -1);
-        k.scrub(Math.max(0, Math.min(k.search.reached - 1, Math.round(revealRef.current) + step)));
+        k.scrub(Math.max(0, Math.min(k.search.span - 1, Math.round(revealRef.current) + step)));
         return;
       }
       if (event.key === 'Escape') {
@@ -1089,6 +1119,21 @@ export default function Observatory() {
 
   const root = Number.parseInt(rootInput, 10);
   const rootValid = meta !== null && Number.isInteger(root) && root >= 1 && root <= meta.vertices;
+  const target = Number.parseInt(targetInput, 10);
+  const targetValid =
+    meta !== null && Number.isInteger(target) && target >= 1 && target <= meta.vertices;
+  /** Whether the run button has what the current mode needs. */
+  const canRun = rootValid && (kind !== 'distance' || targetValid);
+  const run = () => {
+    if (canRun) runSearch(kind, root, kind === 'distance' ? target : 0);
+  };
+  const runLabel =
+    kind === 'distance'
+      ? t.runDistance(
+          rootValid ? String(root) : t.theOrigin,
+          targetValid ? String(target) : t.theTarget,
+        )
+      : t.runFrom(kind.toUpperCase(), rootValid ? String(root) : t.theOrigin);
 
   const hoverInfo = useMemo(() => {
     if (!hovered || !meta) return null;
@@ -1217,6 +1262,7 @@ export default function Observatory() {
                         setSearch(null);
                         setPlaying(false);
                         rendererRef.current?.setSearch(null);
+                        rendererRef.current?.setPath(null);
                       }}
                     >
                       <Trash2 size={14} />
@@ -1225,6 +1271,29 @@ export default function Observatory() {
                 )
               }
             >
+              <div className={styles.field}>
+                <span className={styles.fieldLabel}>{t.traversal}</span>
+                <div
+                  className={styles.segmented}
+                  role="radiogroup"
+                  aria-label={t.traversal}
+                  data-active={kind}
+                >
+                  <span className={styles.thumb} aria-hidden="true" />
+                  {(['bfs', 'dfs', 'distance'] as const).map((which) => (
+                    <button
+                      key={which}
+                      type="button"
+                      role="radio"
+                      aria-checked={kind === which}
+                      className={kind === which ? styles.segmentActive : styles.segment}
+                      onClick={() => setKind(which)}
+                    >
+                      {which === 'distance' ? t.distanceShort : which.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className={styles.searchRow}>
                 <div className={styles.field}>
                   <label htmlFor="root">{t.origin}</label>
@@ -1241,41 +1310,34 @@ export default function Observatory() {
                       }
                     }}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' && rootValid) runSearch(kind, root);
+                      if (event.key === 'Enter') run();
                     }}
                     placeholder={t.originPlaceholder}
                   />
                 </div>
-                <div className={styles.field}>
-                  <span className={styles.fieldLabel}>{t.traversal}</span>
-                  <div
-                    className={styles.segmented}
-                    role="radiogroup"
-                    aria-label={t.traversal}
-                    data-active={kind}
-                  >
-                    <span className={styles.thumb} aria-hidden="true" />
-                    {(['bfs', 'dfs'] as const).map((which) => (
-                      <button
-                        key={which}
-                        type="button"
-                        role="radio"
-                        aria-checked={kind === which}
-                        className={kind === which ? styles.segmentActive : styles.segment}
-                        onClick={() => setKind(which)}
-                      >
-                        {which.toUpperCase()}
-                      </button>
-                    ))}
+                {kind === 'distance' && (
+                  <div className={styles.field}>
+                    <label htmlFor="target">{t.target}</label>
+                    <input
+                      id="target"
+                      className={`mono ${styles.input}`}
+                      inputMode="numeric"
+                      value={targetInput}
+                      onChange={(event) => setTargetInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') run();
+                      }}
+                      placeholder={t.targetPlaceholder}
+                    />
                   </div>
-                </div>
+                )}
                 <button
                   type="button"
                   className={styles.run}
-                  disabled={!rootValid}
-                  onClick={() => rootValid && runSearch(kind, root)}
-                  aria-label={t.runFrom(kind.toUpperCase(), rootValid ? String(root) : t.theOrigin)}
-                  title={t.runFrom(kind.toUpperCase(), rootValid ? String(root) : t.theOrigin)}
+                  disabled={!canRun}
+                  onClick={run}
+                  aria-label={runLabel}
+                  title={runLabel}
                 >
                   <Play size={15} aria-hidden="true" />
                 </button>
@@ -1284,18 +1346,51 @@ export default function Observatory() {
               {search ? (
                 <div className={styles.result}>
                   <div className={styles.stats}>
-                    <Stat label={t.reached} value={formatInt(search.reached)} />
+                    {search.kind === 'distance' ? (
+                      <Stat
+                        label={t.distance}
+                        value={search.path ? String(search.path.length - 1) : '∞'}
+                      />
+                    ) : (
+                      <Stat label={t.reached} value={formatInt(search.reached)} />
+                    )}
                     <Stat
-                      label={search.kind === 'bfs' ? t.eccentricity : t.depth}
-                      value={String(search.depth)}
+                      label={
+                        search.kind === 'distance'
+                          ? t.reached
+                          : search.kind === 'bfs'
+                            ? t.eccentricity
+                            : t.depth
+                      }
+                      value={
+                        search.kind === 'distance'
+                          ? formatInt(search.reached)
+                          : String(search.depth)
+                      }
                     />
                     <Stat label={t.time} value={formatMs(search.elapsedMs)} />
                   </div>
-                  {search.kind === 'bfs' ? (
+                  {search.kind === 'distance' && (
+                    <p className={`mono ${styles.path}`} aria-label={t.path}>
+                      {search.path ? (
+                        pathSteps(search.path).map((step, i) => (
+                          <Fragment key={i}>
+                            {i > 0 && <span className={styles.pathArrow}>→</span>}
+                            <span className={step === '…' ? styles.pathGap : styles.pathStep}>
+                              {step}
+                            </span>
+                          </Fragment>
+                        ))
+                      ) : (
+                        <span className={styles.pathGap}>{t.noPath}</span>
+                      )}
+                    </p>
+                  )}
+                  {search.kind !== 'dfs' ? (
                     <LevelProfile
                       t={t}
                       sizes={search.levelSizes}
-                      kind={search.kind}
+                      kind="bfs"
                       current={revealLevel}
                       onSelect={scrubToLevel}
                     />
@@ -1311,13 +1406,13 @@ export default function Observatory() {
                   )}
                   <div className={styles.playback}>
                     <IconButton
-                      label={playing ? t.pause : reveal >= search.reached - 1 ? t.replay : t.play}
+                      label={playing ? t.pause : reveal >= search.span - 1 ? t.replay : t.play}
                       onClick={() => setPlaying((p) => !p)}
                       accent
                     >
                       {playing ? (
                         <Pause size={14} />
-                      ) : reveal >= search.reached - 1 ? (
+                      ) : reveal >= search.span - 1 ? (
                         <RotateCcw size={14} />
                       ) : (
                         <Play size={14} />
@@ -1326,14 +1421,14 @@ export default function Observatory() {
                     <input
                       type="range"
                       min={0}
-                      max={Math.max(search.reached - 1, 0)}
+                      max={Math.max(search.span - 1, 0)}
                       step={1}
                       value={Math.round(reveal)}
                       onChange={(event) => scrub(Number(event.target.value))}
                       aria-label={t.progress}
                     />
                     <span className={`mono ${styles.hint}`}>
-                      {formatInt(Math.min(Math.round(reveal) + 1, search.reached))}
+                      {formatInt(Math.min(Math.round(reveal) + 1, search.span))}
                     </span>
                   </div>
                 </div>
@@ -1744,6 +1839,13 @@ export default function Observatory() {
       )}
     </div>
   );
+}
+
+/** The path as labels, the middle elided past twelve vertices. */
+function pathSteps(path: Uint32Array): string[] {
+  const all = Array.from(path, String);
+  if (all.length <= 12) return all;
+  return [...all.slice(0, 5), '…', ...all.slice(-5)];
 }
 
 function Panel({

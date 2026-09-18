@@ -701,7 +701,7 @@
 .segmented {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   height: 34px;
   padding: 3px;
   border: 1px solid var(--border);
@@ -714,7 +714,7 @@
   top: 3px;
   bottom: 3px;
   left: 3px;
-  width: calc(50% - 3px);
+  width: calc((100% - 6px) / 3);
   border-radius: var(--radius-sm);
   background: var(--bg);
   box-shadow:
@@ -725,6 +725,33 @@
 
 .segmented[data-active='dfs'] .thumb {
   transform: translateX(100%);
+}
+
+.segmented[data-active='distance'] .thumb {
+  transform: translateX(200%);
+}
+
+/* The shortest path of a distance query, vertex by vertex. */
+.path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pathStep {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  color: var(--fg);
+}
+
+.pathArrow,
+.pathGap {
+  color: var(--fg-3);
 }
 
 .segment,

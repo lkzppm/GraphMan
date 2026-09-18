@@ -24,6 +24,8 @@ struct View {
   nodeStride: u32,    // > 1 where vertices pile up: only every nodeStride-th is drawn
   edgeFade: f32,      // alpha scale of the plain and dim edges (thins dense pictures)
   treeFade: f32,      // alpha scale of the tree edges
+  pathLength: u32,    // vertices in the lit path (0 = none), see the path buffer
+  incident: u32,      // edges at the selected vertex: the first segments of the extras buffer
   base: vec4f,        // node colour without a search
   dim: vec4f,         // node not (yet) reached
   colorA: vec4f,      // level 0
@@ -70,6 +72,7 @@ ${VIEW}
 @group(0) @binding(4) var<storage, read> labels: array<u32>;
 @group(0) @binding(5) var<storage, read> offsets: array<u32>;
 @group(0) @binding(6) var<storage, read> targets: array<u32>;
+@group(0) @binding(7) var<storage, read> path: array<u32>;
 
 struct VOut {
   @builtin(position) pos: vec4f,
@@ -105,15 +108,21 @@ fn adjacent(v: u32) -> bool {
 
 @vertex fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
   // Instances cover every nodeStride-th vertex, then the neighbours of the
-  // selected vertex, the hovered and the selected one (none of which need
-  // be in the sample).
+  // selected vertex, the hovered and the selected one, then the vertices
+  // of the lit path (none of which need be in the sample; the extras draw
+  // on top of their sampled twins).
   let sampled = (view.n + view.nodeStride - 1u) / view.nodeStride;
   var degree = 0u;
   if (view.selected != 0u) { degree = offsets[view.selected + 1u] - offsets[view.selected]; }
   var v = ii * view.nodeStride + 1u;
+  var onPath = false;
   if (ii >= sampled && ii < sampled + degree) { v = targets[offsets[view.selected] + ii - sampled]; }
   if (ii == sampled + degree) { v = view.hovered; }
   if (ii == sampled + degree + 1u) { v = view.selected; }
+  if (ii >= sampled + degree + 2u) {
+    let j = ii - sampled - degree - 2u;
+    if (j >= view.pathLength) { v = 0u; } else { v = path[j]; onPath = true; }
+  }
   var out: VOut;
   if (v == 0u || v > view.n) {
     out.pos = vec4f(0.0, 0.0, 2.0, 1.0);
@@ -128,6 +137,7 @@ fn adjacent(v: u32) -> bool {
   if (v == view.selected) { flags |= 1u; r = max(r * 1.5, 5.0); }
   if (v == view.hovered) { flags |= 2u; r = max(r * 1.3, 4.0); }
   if (flags == 0u && adjacent(v)) { flags |= 4u; r = max(r * 1.25, 4.0); }
+  if (onPath) { flags |= 8u; r = max(r * 1.4, 5.0); }
   // Discovery: the vertex pops to almost twice its size and settles.
   var pop = 0.0;
   if (view.mode != 0u) { pop = freshness(ranks[v], 0.5); }
@@ -186,12 +196,14 @@ ${VIEW}
 @group(0) @binding(4) var<storage, read> ranks: array<u32>;
 @group(0) @binding(5) var<storage, read> levels: array<u32>;
 // Which edges this draw covers: 0 = the plain (non-tree) edges at
-// view.stride, 1 = the tree edges of the search at view.treeStride.
+// view.stride, 1 = the tree edges of the search at view.treeStride, 2 = the
+// extra segments (drawn last, over both).
 struct Kind { tree: u32 }
 @group(0) @binding(6) var<uniform> kind: Kind;
 @group(0) @binding(7) var<storage, read> labels: array<u32>;
-@group(0) @binding(8) var<storage, read> offsets: array<u32>;
-@group(0) @binding(9) var<storage, read> targets: array<u32>;
+// Segments drawn after the sample, as [a, b] pairs: the edges at the
+// selected vertex (view.incident of them), then the edges of the lit path.
+@group(0) @binding(8) var<storage, read> extras: array<u32>;
 
 struct VOut {
   @builtin(position) pos: vec4f,
@@ -212,16 +224,19 @@ fn cull() -> VOut {
   let segment = vi / 2u;
   var a = 0u;
   var b = 0u;
-  // The edges at the selected vertex are lit and drawn by the plain draw
-  // as extra segments after the sample, straight from the CSR row, so no
-  // stride can drop one; the samples skip them.
-  let incident = segment >= sampled;
-  if (incident) {
-    let start = offsets[view.selected];
-    let j = segment - sampled;
-    if (j >= offsets[view.selected + 1u] - start) { return cull(); }
-    a = view.selected;
-    b = targets[start + j];
+  // The edges at the selected vertex, then the edges of the lit path, are
+  // the extras draw's segments (the CPU fills the extras buffer), so no
+  // stride can drop one and they sit on top; the samples skip the
+  // incident ones.
+  let extra = kind.tree == 2u;
+  var incident = false;
+  var onPath = false;
+  if (extra) {
+    if (2u * segment + 1u >= arrayLength(&extras)) { return cull(); }
+    a = extras[2u * segment];
+    b = extras[2u * segment + 1u];
+    incident = segment < view.incident;
+    onPath = !incident;
   } else {
     let e = segment * stride;
     if (e >= count) { return cull(); }
@@ -256,6 +271,12 @@ fn cull() -> VOut {
   }
   if (view.component != 0u && (labels[a] != view.component || labels[b] != view.component)) {
     color = view.edgeDim;
+  }
+  if (onPath) {
+    // The shortest path, in the ring colour, appearing with the wave.
+    out.pos = toClip((world - view.offset) * view.scale);
+    out.color = vec4f(view.ring.rgb, 0.9 * step(0.001, drawn));
+    return out;
   }
   if (incident) {
     out.pos = toClip((world - view.offset) * view.scale);
