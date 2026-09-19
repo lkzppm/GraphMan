@@ -160,11 +160,13 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   graph it describes, each under a tracked label (start), the
   normalisation as chips with loops and repeats struck (format), the home's
   figure (representations), BFS beside DFS with levels on the navy-to-light
-  ramp and tree edges in blue (traversals), the `discover` calls as balls
-  down to the `Break` (visitors), two components in fading blues with the
-  shortest path from 4 to 3 (distance), the endpoints 1 and 5 ringed in
-  navy with a longest shortest path (diameter), and file, command, output
-  as three vertices on one edge (CLI). The memory budget is a paragraph
+  ramp and tree edges in blue (traversals), the search as it stands when
+  `Until(4)` breaks beside its `discover` calls as balls on one vertical
+  edge in the same level colours (visitors), two components in fading
+  blues with the shortest path from 4 to 3 (distance), the endpoints 1 and
+  5 ringed in navy with a longest shortest path (diameter), and the sample
+  file, the `graphman bfs` command and the file it writes, arrows between
+  (CLI). The memory budget is a paragraph
   and three lines of the representations chapter, not a chapter of its
   own, and the design decisions belong to the presentation.
 - **Footer**: a small graph. One 1.5 px edge runs across the top and each

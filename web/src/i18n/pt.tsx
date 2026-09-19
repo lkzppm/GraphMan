@@ -116,6 +116,7 @@ export const pt: Dictionary = {
       visitors: {
         title: 'Visitors',
         body: 'Uma busca reporta a um Visitor: discover, level_complete (BFS) e finish (DFS), cada um com um padrão vazio. Devolver Control::Break interrompe a busca; distância é uma BFS com um visitor que para no destino. As árvores são reutilizáveis pelas variantes _into: um reset só toca o que a busca anterior alcançou.',
+        state: 'a busca quando para',
         sequence: 'O que Until(4) ouve na BFS a partir de 1',
         go: 'Continue',
         stop: 'Break',
