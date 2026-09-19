@@ -24,6 +24,8 @@
   /* Search level ramp ends: level 0 is a deep navy (the accent at 42 %),
      the deepest level the light blue. */
   --level-0: #002f66;
+  /* The one green: the destination of a distance query. */
+  --target: #16a34a;
   --warning: var(--accent);
 
   --node: #0070f3;

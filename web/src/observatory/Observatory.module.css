@@ -614,8 +614,8 @@
 .run {
   display: inline-grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius);
   background: var(--accent);
   color: #fff;
@@ -667,8 +667,8 @@
 
 .input,
 .select {
-  height: 34px;
-  padding: 0 10px;
+  height: 28px;
+  padding: 0 8px;
   border: 1px solid var(--border-2);
   border-radius: var(--radius);
   background: var(--bg);
@@ -702,8 +702,8 @@
   position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  height: 34px;
-  padding: 3px;
+  height: 28px;
+  padding: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-3);
@@ -711,10 +711,10 @@
 
 .thumb {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
-  left: 3px;
-  width: calc(50% - 3px);
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
   border-radius: var(--radius-sm);
   background: var(--bg);
   box-shadow:
@@ -723,15 +723,49 @@
   transition: transform 0.35s var(--ease-spring);
 }
 
-.segmented[data-active='dfs'] .thumb {
+.segmented[data-active='second'] .thumb {
   transform: translateX(100%);
+}
+
+/* The path of a distance query, floating over the canvas: one ball per
+   vertex, coloured from the origin's blue to the destination's green. */
+.path {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px 5px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.pathBall {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: #fff;
+}
+
+.pathArrow,
+.pathGap {
+  color: var(--fg-3);
 }
 
 .segment,
 .segmentActive {
   position: relative;
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: var(--tracking);
   color: var(--fg-2);
@@ -882,6 +916,20 @@
   left: 14px;
   flex-direction: column;
   align-items: flex-start;
+}
+
+/* Centred with auto margins (the rise animation ends on `transform: none`). */
+.floatingTopCenter {
+  top: 14px;
+  left: 70px;
+  right: 130px;
+  justify-content: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.floatingTopCenter > * {
+  pointer-events: auto;
 }
 
 /* The controls popover under the help button. */
@@ -1282,7 +1330,9 @@
 .swatchLit,
 .swatchA,
 .swatchB,
-.swatchDim {
+.swatchDim,
+.swatchOrigin,
+.swatchTarget {
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -1295,6 +1345,14 @@
 
 .swatchA {
   background: var(--level-0);
+}
+
+.swatchOrigin {
+  background: var(--accent);
+}
+
+.swatchTarget {
+  background: var(--target);
 }
 
 .swatchB {

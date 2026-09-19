@@ -11,6 +11,7 @@ import {
   FlaskConical,
   Focus,
   Hash,
+  Highlighter,
   Magnet,
   Orbit,
   Rows3,
@@ -24,6 +25,7 @@ import {
   RefreshCw,
   RotateCcw,
   Ruler,
+  Scan,
   Trash2,
   Upload,
   X,
@@ -95,12 +97,20 @@ interface GraphMeta {
 }
 
 type SearchKindName = 'bfs' | 'dfs';
+/** What the panel asks for: the whole traversal, or the path to a destination. */
+type SearchMode = 'search' | 'distance';
 
 interface Search {
   kind: SearchKindName;
   root: number;
+  /** The distance query's other end (0 otherwise). */
+  target: number;
+  /** The shortest path root → target, `null` when the target is not reached. */
+  path: Uint32Array | null;
   depth: number;
   reached: number;
+  /** Discovery ranks the timeline covers: all of them, or up to the target. */
+  span: number;
   elapsedMs: number;
   levels: Uint32Array;
   parents: Uint32Array;
@@ -140,6 +150,8 @@ const LAYOUTS: { id: LayoutId; icon: ReactNode }[] = [
 
 /** How long a layout change takes to slide into place. */
 const MORPH_MS = 700;
+/** Share of the view a framed path fills (the path label floats over the top). */
+const PATH_FILL = 0.62;
 /** Pointer travel (CSS px) under which a press is a click, not a drag or a pan. */
 const CLICK_SLOP = 4;
 
@@ -165,7 +177,11 @@ export default function Observatory() {
   const [hovered, setHovered] = useState(0);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [kind, setKind] = useState<SearchKindName>('bfs');
+  const [mode, setMode] = useState<SearchMode>('search');
   const [rootInput, setRootInput] = useState('');
+  const [targetInput, setTargetInput] = useState('');
+  /** In a distance query, grey everything but the path. */
+  const [pathOnly, setPathOnly] = useState(false);
   const [search, setSearch] = useState<Search | null>(null);
   const [reveal, setReveal] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -310,9 +326,9 @@ export default function Observatory() {
     [applyCamera],
   );
 
-  /** Glides the camera to frame the vertices `keep` accepts. */
+  /** Glides the camera to frame the vertices `keep` accepts, filling `fill` of the view. */
   const fitVertices = useCallback(
-    (keep: (v: number) => boolean) => {
+    (keep: (v: number) => boolean, fill = 0.8) => {
       const renderer = rendererRef.current;
       if (!renderer || !renderer.hasGraph) return;
       const positions = renderer.positionsMirror;
@@ -334,7 +350,7 @@ export default function Observatory() {
       // A lone origin still gets a neighbourhood, not a giant disc.
       const bw = Math.max(maxX - minX, 220);
       const bh = Math.max(maxY - minY, 220);
-      const zoom = Math.min((w * 0.8) / bw, (h * 0.8) / bh, 6);
+      const zoom = Math.min((w * fill) / bw, (h * fill) / bh, 6);
       glideTo({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, zoom });
     },
     [glideTo],
@@ -642,8 +658,11 @@ export default function Observatory() {
 
   // ---- searches --------------------------------------------------------------
 
+  const followRef = useRef(false);
+  followRef.current = follow;
+
   const runSearch = useCallback(
-    (which: SearchKindName, root: number) => {
+    (which: SearchKindName, root: number, target = 0) => {
       const wasm = wasmRef.current;
       const graph = graphRef.current;
       const renderer = rendererRef.current;
@@ -658,17 +677,42 @@ export default function Observatory() {
         const levels = result.levels();
         const parents = result.parents();
         const ranks = result.ranks();
-        renderer.setSearch({ kind: which, levels, ranks, parents, depth: result.depth });
+        // A distance query is the same traversal, its wave stopping when
+        // the target is discovered; the path is read back along the parents
+        // (the shortest one for a BFS, the tree path for a DFS).
+        let path: Uint32Array | null = null;
+        let span = result.reached;
+        let order = result.order();
+        let levelSizes = result.levelSizes();
+        let depth = result.depth;
+        if (target && levels[target] !== UNREACHED) {
+          path = new Uint32Array(levels[target] + 1);
+          for (let v = target, i = path.length - 1; i >= 0; i--, v = parents[v]) path[i] = v;
+          // The traversal stops at the target: the sidebar describes only
+          // what was visited until then.
+          span = ranks[target] + 1;
+          order = order.slice(0, span);
+          depth = 0;
+          for (let r = 0; r < span; r++) depth = Math.max(depth, levels[order[r]]);
+          levelSizes = new Uint32Array(depth + 1);
+          for (let r = 0; r < span; r++) levelSizes[levels[order[r]]] += 1;
+        }
+        renderer.setSearch({ kind: which, levels, ranks, parents, depth });
+        renderer.setPath(target, path);
+        renderer.setPathOnly(pathOnly);
         setSearch({
           kind: which,
           root,
-          depth: result.depth,
-          reached: result.reached,
+          target,
+          path,
+          depth,
+          reached: span,
+          span,
           elapsedMs: result.elapsedMs,
           levels,
           parents,
-          levelSizes: result.levelSizes(),
-          order: result.order(),
+          levelSizes,
+          order,
           ranks,
           result,
         });
@@ -683,7 +727,7 @@ export default function Observatory() {
         setNotice(error instanceof Error ? error.message : String(error));
       }
     },
-    [search],
+    [search, pathOnly],
   );
 
   // The reveal animation: discovery ranks light up over a duration that
@@ -691,7 +735,7 @@ export default function Observatory() {
   // ones finish within seconds.
   useEffect(() => {
     if (!playing || !search) return;
-    const total = search.reached;
+    const total = search.span;
     const duration = Math.min(8000, Math.max(1600, total * 6));
     rendererRef.current?.setRevealRate((Math.max(total - 1, 1) / duration) * 1000);
     let frame = 0;
@@ -715,9 +759,6 @@ export default function Observatory() {
     return () => cancelAnimationFrame(frame);
   }, [playing, search, fitDiscovered]);
 
-  const followRef = useRef(false);
-  followRef.current = follow;
-
   const scrub = (rank: number) => {
     keysTarget.current = 'search';
     setPlaying(false);
@@ -738,7 +779,7 @@ export default function Observatory() {
     } else {
       while (rank < search.order.length - 1 && search.levels[search.order[rank]] !== level) rank++;
     }
-    scrub(Math.max(0, Math.min(rank, search.reached - 1)));
+    scrub(Math.max(0, Math.min(rank, search.span - 1)));
   };
 
   /** The level of the vertex the timeline is at. */
@@ -866,8 +907,11 @@ export default function Observatory() {
     const g = gesture.current;
     if (g.mode === 'maybe-click' && g.vertex) {
       setSelected(g.vertex);
-      setRootInput(String(g.vertex));
       renderer?.setSelected(g.vertex);
+      // In distance mode, with an origin already chosen, a click on another
+      // vertex picks the target; otherwise it picks the origin.
+      if (mode === 'distance' && rootValid && g.vertex !== root) setTargetInput(String(g.vertex));
+      else setRootInput(String(g.vertex));
     }
     // A click on the background (a pan that never moved) clears the selection.
     if (
@@ -963,7 +1007,7 @@ export default function Observatory() {
           k.scrubToLevel(Math.max(0, Math.min(k.search.depth, k.revealLevel + dir)));
         } else {
           k.scrub(
-            Math.max(0, Math.min(k.search.reached - 1, Math.round(revealRef.current) + dir * 10)),
+            Math.max(0, Math.min(k.search.span - 1, Math.round(revealRef.current) + dir * 10)),
           );
         }
         return;
@@ -971,7 +1015,7 @@ export default function Observatory() {
       if (k.search && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
         event.preventDefault();
         const step = (event.shiftKey ? 10 : 1) * (event.key === 'ArrowRight' ? 1 : -1);
-        k.scrub(Math.max(0, Math.min(k.search.reached - 1, Math.round(revealRef.current) + step)));
+        k.scrub(Math.max(0, Math.min(k.search.span - 1, Math.round(revealRef.current) + step)));
         return;
       }
       if (event.key === 'Escape') {
@@ -1089,6 +1133,22 @@ export default function Observatory() {
 
   const root = Number.parseInt(rootInput, 10);
   const rootValid = meta !== null && Number.isInteger(root) && root >= 1 && root <= meta.vertices;
+  const target = Number.parseInt(targetInput, 10);
+  const targetValid =
+    meta !== null && Number.isInteger(target) && target >= 1 && target <= meta.vertices;
+  /** Whether the run button has what the current mode needs. */
+  const canRun = rootValid && (mode !== 'distance' || targetValid);
+  const run = () => {
+    if (canRun) runSearch(kind, root, mode === 'distance' ? target : 0);
+  };
+  const runLabel =
+    mode === 'distance'
+      ? t.runDistance(
+          kind.toUpperCase(),
+          rootValid ? String(root) : t.theOrigin,
+          targetValid ? String(target) : t.theTarget,
+        )
+      : t.runFrom(kind.toUpperCase(), rootValid ? String(root) : t.theOrigin);
 
   const hoverInfo = useMemo(() => {
     if (!hovered || !meta) return null;
@@ -1217,6 +1277,7 @@ export default function Observatory() {
                         setSearch(null);
                         setPlaying(false);
                         rendererRef.current?.setSearch(null);
+                        rendererRef.current?.setPath(0, null);
                       }}
                     >
                       <Trash2 size={14} />
@@ -1227,24 +1288,27 @@ export default function Observatory() {
             >
               <div className={styles.searchRow}>
                 <div className={styles.field}>
-                  <label htmlFor="root">{t.origin}</label>
-                  <input
-                    id="root"
-                    className={`mono ${styles.input}`}
-                    inputMode="numeric"
-                    value={rootInput}
-                    onChange={(event) => setRootInput(event.target.value)}
-                    onBlur={() => {
-                      if (rootValid) {
-                        setSelected(root);
-                        rendererRef.current?.setSelected(root);
-                      }
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && rootValid) runSearch(kind, root);
-                    }}
-                    placeholder={t.originPlaceholder}
-                  />
+                  <span className={styles.fieldLabel}>{t.mode}</span>
+                  <div
+                    className={styles.segmented}
+                    role="radiogroup"
+                    aria-label={t.mode}
+                    data-active={mode === 'distance' ? 'second' : 'first'}
+                  >
+                    <span className={styles.thumb} aria-hidden="true" />
+                    {(['search', 'distance'] as const).map((which) => (
+                      <button
+                        key={which}
+                        type="button"
+                        role="radio"
+                        aria-checked={mode === which}
+                        className={mode === which ? styles.segmentActive : styles.segment}
+                        onClick={() => setMode(which)}
+                      >
+                        {which === 'search' ? t.modeSearch : t.modeDistance}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t.traversal}</span>
@@ -1252,7 +1316,7 @@ export default function Observatory() {
                     className={styles.segmented}
                     role="radiogroup"
                     aria-label={t.traversal}
-                    data-active={kind}
+                    data-active={kind === 'dfs' ? 'second' : 'first'}
                   >
                     <span className={styles.thumb} aria-hidden="true" />
                     {(['bfs', 'dfs'] as const).map((which) => (
@@ -1269,13 +1333,51 @@ export default function Observatory() {
                     ))}
                   </div>
                 </div>
+              </div>
+              <div className={styles.searchRow}>
+                <div className={styles.field}>
+                  <label htmlFor="root">{t.origin}</label>
+                  <input
+                    id="root"
+                    className={`mono ${styles.input}`}
+                    inputMode="numeric"
+                    value={rootInput}
+                    onChange={(event) => setRootInput(event.target.value)}
+                    onBlur={() => {
+                      if (rootValid) {
+                        setSelected(root);
+                        rendererRef.current?.setSelected(root);
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') run();
+                    }}
+                    placeholder={t.originPlaceholder}
+                  />
+                </div>
+                {mode === 'distance' && (
+                  <div className={styles.field}>
+                    <label htmlFor="target">{t.target}</label>
+                    <input
+                      id="target"
+                      className={`mono ${styles.input}`}
+                      inputMode="numeric"
+                      value={targetInput}
+                      onChange={(event) => setTargetInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') run();
+                      }}
+                      placeholder={t.targetPlaceholder}
+                    />
+                  </div>
+                )}
                 <button
                   type="button"
                   className={styles.run}
-                  disabled={!rootValid}
-                  onClick={() => rootValid && runSearch(kind, root)}
-                  aria-label={t.runFrom(kind.toUpperCase(), rootValid ? String(root) : t.theOrigin)}
-                  title={t.runFrom(kind.toUpperCase(), rootValid ? String(root) : t.theOrigin)}
+                  disabled={!canRun}
+                  onClick={run}
+                  aria-label={runLabel}
+                  title={runLabel}
                 >
                   <Play size={15} aria-hidden="true" />
                 </button>
@@ -1284,10 +1386,19 @@ export default function Observatory() {
               {search ? (
                 <div className={styles.result}>
                   <div className={styles.stats}>
-                    <Stat label={t.reached} value={formatInt(search.reached)} />
+                    {search.target ? (
+                      <Stat
+                        label={search.kind === 'bfs' ? t.distance : t.pathLength}
+                        value={search.path ? String(search.path.length - 1) : '∞'}
+                      />
+                    ) : (
+                      <Stat label={t.reached} value={formatInt(search.reached)} />
+                    )}
                     <Stat
-                      label={search.kind === 'bfs' ? t.eccentricity : t.depth}
-                      value={String(search.depth)}
+                      label={
+                        search.target ? t.reached : search.kind === 'bfs' ? t.eccentricity : t.depth
+                      }
+                      value={search.target ? formatInt(search.reached) : String(search.depth)}
                     />
                     <Stat label={t.time} value={formatMs(search.elapsedMs)} />
                   </div>
@@ -1311,13 +1422,13 @@ export default function Observatory() {
                   )}
                   <div className={styles.playback}>
                     <IconButton
-                      label={playing ? t.pause : reveal >= search.reached - 1 ? t.replay : t.play}
+                      label={playing ? t.pause : reveal >= search.span - 1 ? t.replay : t.play}
                       onClick={() => setPlaying((p) => !p)}
                       accent
                     >
                       {playing ? (
                         <Pause size={14} />
-                      ) : reveal >= search.reached - 1 ? (
+                      ) : reveal >= search.span - 1 ? (
                         <RotateCcw size={14} />
                       ) : (
                         <Play size={14} />
@@ -1326,14 +1437,14 @@ export default function Observatory() {
                     <input
                       type="range"
                       min={0}
-                      max={Math.max(search.reached - 1, 0)}
+                      max={Math.max(search.span - 1, 0)}
                       step={1}
                       value={Math.round(reveal)}
                       onChange={(event) => scrub(Number(event.target.value))}
                       aria-label={t.progress}
                     />
                     <span className={`mono ${styles.hint}`}>
-                      {formatInt(Math.min(Math.round(reveal) + 1, search.reached))}
+                      {formatInt(Math.min(Math.round(reveal) + 1, search.span))}
                     </span>
                   </div>
                 </div>
@@ -1581,6 +1692,60 @@ export default function Observatory() {
               )}
             </div>
 
+            {/* The path of a distance query, top centre */}
+            {search?.target !== 0 && search && (
+              <div className={`${styles.floating} ${styles.floatingTopCenter}`}>
+                {search.path && (
+                  <div className={styles.cluster}>
+                    <IconButton
+                      label={pathOnly ? t.colourSearch : t.pathOnly}
+                      pressed={pathOnly}
+                      onClick={() => {
+                        setPathOnly(!pathOnly);
+                        rendererRef.current?.setPathOnly(!pathOnly);
+                      }}
+                    >
+                      <Highlighter size={15} />
+                    </IconButton>
+                    <IconButton
+                      label={t.fitPath}
+                      onClick={() => {
+                        const onPath = new Set(search.path);
+                        autoFit.current = false;
+                        fitVertices((v) => onPath.has(v), PATH_FILL);
+                      }}
+                    >
+                      <Scan size={15} />
+                    </IconButton>
+                  </div>
+                )}
+                <p className={`mono ${styles.path}`} aria-label={t.path}>
+                  {search.path ? (
+                    pathSteps(search.path).map((step, i, all) => (
+                      <Fragment key={i}>
+                        {i > 0 && <span className={styles.pathArrow}>→</span>}
+                        {step === '…' ? (
+                          <span className={styles.pathGap}>{step}</span>
+                        ) : (
+                          <span
+                            className={styles.pathBall}
+                            style={{
+                              // The canvas gradient: the origin's blue to the destination's green.
+                              background: `color-mix(in srgb, var(--accent) ${Math.round(100 - (100 * i) / Math.max(all.length - 1, 1))}%, var(--target))`,
+                            }}
+                          >
+                            {step}
+                          </span>
+                        )}
+                      </Fragment>
+                    ))
+                  ) : (
+                    <span className={styles.pathGap}>{t.noPath}</span>
+                  )}
+                </p>
+              </div>
+            )}
+
             {/* Layout tools, top right */}
             <div ref={layoutMenuRef} className={`${styles.floating} ${styles.floatingTopRight}`}>
               <div className={styles.cluster}>
@@ -1690,7 +1855,15 @@ export default function Observatory() {
             </div>
 
             <div className={styles.legend}>
-              {search ? (
+              {search?.target ? (
+                <>
+                  <span className={styles.swatchOrigin} /> {t.origin.toLowerCase()}
+                  <span className={styles.legendSep} />
+                  <span className={styles.swatchTarget} /> {t.target.toLowerCase()}
+                  <span className={styles.legendSep} />
+                  <span className={styles.swatchDim} /> {t.notReached}
+                </>
+              ) : search ? (
                 <>
                   <span className={styles.swatchA} /> {t.level(0)}
                   <span className={styles.swatchBar} />
@@ -1744,6 +1917,13 @@ export default function Observatory() {
       )}
     </div>
   );
+}
+
+/** The path as labels, the middle elided past ten vertices. */
+function pathSteps(path: Uint32Array): string[] {
+  const all = Array.from(path, String);
+  if (all.length <= 10) return all;
+  return [...all.slice(0, 4), '…', ...all.slice(-4)];
 }
 
 function Panel({

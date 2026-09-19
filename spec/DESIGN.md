@@ -16,7 +16,9 @@ drawn for.
 2. **Colour discipline.** White, greys and `--accent` blue. Blue means
    "alive": links, buttons, the origin vertex, level 0 of a search, the
    accent edge of a surface, flagged values. A lighter blue (`--accent-2`)
-   exists only so the level ramp has a far end. No green, no red, no amber.
+   exists only so the level ramp has a far end. One green (`--target`,
+   `#16a34a`) exists for exactly one thing: the destination of a distance
+   query, on the canvas and in the path balls. No red, no amber.
 3. **Light only.** No dark theme; `color-scheme: light`. The canvas reads
    the same CSS variables the UI uses.
 4. **Alive, not busy.** Everything actionable answers the pointer: buttons
@@ -123,9 +125,28 @@ Below 900 px the hero stacks and centres.
 The observatory renders under the nav (`calc(100dvh - var(--nav-height))`)
 with no header of its own: a 340 px sidebar and the stage. The sidebar never
 scrolls; it is a column of panels (Graph: file, 2 × 2 tiles, degree
-histogram, component bar, chips; Search: origin, BFS/DFS segmented control
-and a square play button, then result tiles, level profile and playback
-(replay + slider + count; download and clear live in the panel header);
+histogram, component bar, chips; Search: two small segmented controls
+side by side — mode (Search / Distance) and traversal (BFS / DFS) — then
+origin (and, in Distance, target) with a square play button, then result
+tiles, level profile and playback (replay + slider + count; download and
+clear live in the panel header). Controls are compact: 28 px inputs,
+segments and play button, 11 px labels. **Distance** runs the chosen
+traversal from the origin and stops it the moment the target is
+discovered: the tiles read distance (steps, for a DFS; `∞` when the
+target is in another component), reached and time, and the level profile
+or depth trace cover only what was visited until then. The path floats
+at the top centre of the canvas as a row of balls (`③ → ⑤ → ②`, coloured
+from the origin's accent to the destination's `--target` green, the
+middle elided past ten) with two icon buttons beside it: grey out
+everything but the path (a toggle), and fit the path to the view. On the
+canvas the origin is drawn in the accent and the destination in green,
+the path's vertices grow 1.6× with the `--fg` ring and wear the same
+gradient, its edges are thick gradient segments drawn over everything
+(appearing with the wave, never dropped by the sampling), every vertex
+off the path shrinks to a third (the fit button frames the path; the
+view otherwise stays where it was); the legend reads origin ·
+destination · not reached. In Distance a
+click on the canvas picks the target once the origin is set;
 Diameter: a strip along the bottom that opens as a drawer over the panels,
 its body growing with a `grid-template-rows` transition). Search results
 are three compact stats (reached, eccentricity/depth, time) over a chart

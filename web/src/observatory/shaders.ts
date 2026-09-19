@@ -24,6 +24,10 @@ struct View {
   nodeStride: u32,    // > 1 where vertices pile up: only every nodeStride-th is drawn
   edgeFade: f32,      // alpha scale of the plain and dim edges (thins dense pictures)
   treeFade: f32,      // alpha scale of the tree edges
+  pathLength: u32,    // vertices in the lit path (0 = none), see the path buffer
+  incident: u32,      // edges at the selected vertex: the first segments of the extras buffer
+  dest: u32,          // a distance query's destination (0 = none): the picture is the path; "target" is a reserved word
+  mute: u32,          // 1: only the path keeps its colours, the rest of the search goes grey
   base: vec4f,        // node colour without a search
   dim: vec4f,         // node not (yet) reached
   colorA: vec4f,      // level 0
@@ -32,6 +36,7 @@ struct View {
   edge: vec4f,
   edgeDim: vec4f,
   edgeTree: vec4f,
+  colorTarget: vec4f, // the destination of a distance query
 }
 @group(0) @binding(0) var<uniform> view: View;
 
@@ -70,6 +75,7 @@ ${VIEW}
 @group(0) @binding(4) var<storage, read> labels: array<u32>;
 @group(0) @binding(5) var<storage, read> offsets: array<u32>;
 @group(0) @binding(6) var<storage, read> targets: array<u32>;
+@group(0) @binding(7) var<storage, read> path: array<u32>;
 
 struct VOut {
   @builtin(position) pos: vec4f,
@@ -85,6 +91,13 @@ fn nodeColor(v: u32) -> vec4f {
   if (view.mode == 0u) { return view.base; }
   let rank = ranks[v];
   if (rank == 0xffffffffu || f32(rank) > view.reveal) { return view.dim; }
+  // A distance query: the origin in the accent, the destination in green,
+  // and, muted, everything else grey.
+  if (view.dest != 0u) {
+    if (v == view.dest) { return view.colorTarget; }
+    if (levels[v] == 0u) { return view.colorA; }
+    if (view.mute != 0u) { return view.dim; }
+  }
   return levelColor(levels[v]);
 }
 
@@ -105,15 +118,25 @@ fn adjacent(v: u32) -> bool {
 
 @vertex fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
   // Instances cover every nodeStride-th vertex, then the neighbours of the
-  // selected vertex, the hovered and the selected one (none of which need
-  // be in the sample).
+  // selected vertex, the hovered and the selected one, then the vertices
+  // of the lit path (none of which need be in the sample; the extras draw
+  // on top of their sampled twins).
   let sampled = (view.n + view.nodeStride - 1u) / view.nodeStride;
   var degree = 0u;
   if (view.selected != 0u) { degree = offsets[view.selected + 1u] - offsets[view.selected]; }
   var v = ii * view.nodeStride + 1u;
+  var onPath = false;
+  var along = 0.0; // position along the path, 0 at the origin, 1 at the destination
   if (ii >= sampled && ii < sampled + degree) { v = targets[offsets[view.selected] + ii - sampled]; }
   if (ii == sampled + degree) { v = view.hovered; }
   if (ii == sampled + degree + 1u) { v = view.selected; }
+  if (ii >= sampled + degree + 2u) {
+    let j = ii - sampled - degree - 2u;
+    if (j >= view.pathLength) { v = 0u; } else { v = path[j]; onPath = true; }
+    along = f32(j) / max(f32(view.pathLength - 1u), 1.0);
+    // The path shows as the wave reaches it; until then the sampled twin stands.
+    if (onPath && f32(ranks[v]) > view.reveal) { v = 0u; }
+  }
   var out: VOut;
   if (v == 0u || v > view.n) {
     out.pos = vec4f(0.0, 0.0, 2.0, 1.0);
@@ -128,6 +151,9 @@ fn adjacent(v: u32) -> bool {
   if (v == view.selected) { flags |= 1u; r = max(r * 1.5, 5.0); }
   if (v == view.hovered) { flags |= 2u; r = max(r * 1.3, 4.0); }
   if (flags == 0u && adjacent(v)) { flags |= 4u; r = max(r * 1.25, 4.0); }
+  if (onPath) { flags |= 8u; r = max(r * 1.6, 6.0); }
+  // In a distance query everything off the path shrinks out of the way.
+  if (view.dest != 0u && !onPath && flags == 0u) { r = max(r * 0.35, 1.0); }
   // Discovery: the vertex pops to almost twice its size and settles.
   var pop = 0.0;
   if (view.mode != 0u) { pop = freshness(ranks[v], 0.5); }
@@ -138,6 +164,8 @@ fn adjacent(v: u32) -> bool {
   out.pos = toClip(centre + c * half);
   out.uv = c * half;
   out.color = mix(nodeColor(v), view.colorA, 0.5 * pop);
+  // The path wears the gradient from the origin's blue to the destination's green.
+  if (onPath) { out.color = mix(view.colorA, view.colorTarget, along); }
   out.flags = flags;
   out.rpx = r;
   out.pop = pop;
@@ -169,6 +197,53 @@ fn adjacent(v: u32) -> bool {
 }
 `;
 
+/**
+ * The path of a distance query as thick segments (one instanced quad per
+ * edge), coloured from the origin's blue to the destination's green, each
+ * drawing itself in as the wave discovers its far end.
+ */
+export const PATH_SHADER = /* wgsl */ `
+${VIEW}
+@group(0) @binding(1) var<storage, read> positions: array<vec2f>;
+@group(0) @binding(2) var<storage, read> path: array<u32>;
+@group(0) @binding(3) var<storage, read> ranks: array<u32>;
+
+struct VOut {
+  @builtin(position) pos: vec4f,
+  @location(0) color: vec4f,
+}
+
+@vertex fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
+  var out: VOut;
+  if (ii + 1u >= view.pathLength) {
+    out.pos = vec4f(0.0, 0.0, 2.0, 1.0);
+    out.color = vec4f(0.0);
+    return out;
+  }
+  let a = path[ii];
+  let b = path[ii + 1u];
+  let pa = (positions[a] - view.offset) * view.scale;
+  var pb = (positions[b] - view.offset) * view.scale;
+  // Drawn from a towards b during the rank before b is discovered.
+  let drawn = clamp(view.reveal - (f32(ranks[b]) - 1.0), 0.0, 1.0);
+  pb = mix(pa, pb, drawn);
+  let d = pb - pa;
+  let len = max(length(d), 1e-3);
+  let n = vec2f(-d.y, d.x) / len * clamp(view.radius * 0.45, 1.5, 4.0);
+  var corners = array<vec2f, 6>(
+    pa - n, pb - n, pa + n,
+    pa + n, pb - n, pb + n);
+  out.pos = toClip(corners[vi]);
+  let t = (f32(ii) + 0.5) / max(f32(view.pathLength - 1u), 1.0);
+  out.color = vec4f(mix(view.colorA.rgb, view.colorTarget.rgb, t), 0.95 * step(0.001, drawn));
+  return out;
+}
+
+@fragment fn fs_main(in: VOut) -> @location(0) vec4f {
+  return vec4f(in.color.rgb * in.color.a, in.color.a);
+}
+`;
+
 /** Copies the cached edge layer onto the surface (premultiplied, 1:1). */
 export const COMPOSITE_SHADER = /* wgsl */ `
 @group(0) @binding(0) var layer: texture_2d<f32>;
@@ -186,12 +261,13 @@ ${VIEW}
 @group(0) @binding(4) var<storage, read> ranks: array<u32>;
 @group(0) @binding(5) var<storage, read> levels: array<u32>;
 // Which edges this draw covers: 0 = the plain (non-tree) edges at
-// view.stride, 1 = the tree edges of the search at view.treeStride.
+// view.stride, 1 = the tree edges of the search at view.treeStride, 2 = the
+// extra segments (drawn last, over both).
 struct Kind { tree: u32 }
 @group(0) @binding(6) var<uniform> kind: Kind;
 @group(0) @binding(7) var<storage, read> labels: array<u32>;
-@group(0) @binding(8) var<storage, read> offsets: array<u32>;
-@group(0) @binding(9) var<storage, read> targets: array<u32>;
+// The edges at the selected vertex as [a, b] pairs (view.incident of them).
+@group(0) @binding(8) var<storage, read> extras: array<u32>;
 
 struct VOut {
   @builtin(position) pos: vec4f,
@@ -212,16 +288,14 @@ fn cull() -> VOut {
   let segment = vi / 2u;
   var a = 0u;
   var b = 0u;
-  // The edges at the selected vertex are lit and drawn by the plain draw
-  // as extra segments after the sample, straight from the CSR row, so no
-  // stride can drop one; the samples skip them.
-  let incident = segment >= sampled;
+  // The edges at the selected vertex are the extras draw's segments (the
+  // CPU fills the extras buffer), so no stride can drop one and they sit
+  // on top; the samples skip them.
+  let incident = kind.tree == 2u;
   if (incident) {
-    let start = offsets[view.selected];
-    let j = segment - sampled;
-    if (j >= offsets[view.selected + 1u] - start) { return cull(); }
-    a = view.selected;
-    b = targets[start + j];
+    if (segment >= view.incident) { return cull(); }
+    a = extras[2u * segment];
+    b = extras[2u * segment + 1u];
   } else {
     let e = segment * stride;
     if (e >= count) { return cull(); }
@@ -257,6 +331,7 @@ fn cull() -> VOut {
   if (view.component != 0u && (labels[a] != view.component || labels[b] != view.component)) {
     color = view.edgeDim;
   }
+  if (view.mute != 0u && view.dest != 0u && !incident) { color = view.edgeDim; }
   if (incident) {
     out.pos = toClip((world - view.offset) * view.scale);
     out.color = vec4f(view.colorA.rgb, 0.85 * step(0.001, drawn));
