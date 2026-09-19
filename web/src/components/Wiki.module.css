@@ -100,7 +100,7 @@
 .railTitle {
   font-size: 13px;
   white-space: nowrap;
-  max-width: 150px;
+  max-width: 130px;
   overflow: hidden;
   text-overflow: ellipsis;
   transition: transform 0.25s var(--ease);
@@ -314,100 +314,109 @@
   background: color-mix(in srgb, var(--accent) 6%, white);
 }
 
-/* The visitor's calls, one ball per vertex, the last one stops. */
+/* The visitor's calls beside the search: two pieces under tracked labels. */
+.sequence {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 56px;
+  padding: 8px 0;
+}
+
+/* The calls as vertices on one vertical edge, the edge ending at the last. */
 .calls {
+  position: relative;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 18px;
+}
+
+.calls::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 13px;
+  bottom: 13px;
+  width: 1.5px;
+  background: var(--border-2);
 }
 
 .calls li {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 12.5px;
+  gap: 16px;
+  font-size: 13px;
   color: var(--fg-2);
 }
 
 .callBall {
+  flex: none;
   display: inline-grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 27px;
+  height: 27px;
   border-radius: 50%;
   font-size: 11px;
+  font-weight: 500;
   color: #fff;
-  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--bg);
 }
 
 .calls li[data-last] .callBall {
-  background: var(--level-0);
+  box-shadow:
+    0 0 0 3px var(--bg),
+    0 0 0 5px var(--level-0);
 }
 
 .callText {
-  min-width: 170px;
+  min-width: 150px;
   color: var(--fg);
 }
 
 .callResult {
+  font-size: 12px;
   color: var(--fg-3);
 }
 
 .calls li[data-last] .callResult {
   color: var(--accent);
-  font-weight: 500;
 }
 
-/* In, command, out. */
+/* File in, command, file out, like the start chapter's text to graph. */
 .flow {
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  position: relative;
-}
-
-.flow::before {
-  content: '';
-  position: absolute;
-  left: 16%;
-  right: 16%;
-  top: 16px;
-  height: 1.5px;
-  background: var(--border-2);
-}
-
-.flow li {
-  position: relative;
   display: flex;
-  flex-direction: column;
+  justify-content: center;
   align-items: center;
-  gap: 10px;
-  text-align: center;
+  gap: 22px;
+  padding: 8px 0;
 }
 
-.flowNode {
-  display: inline-flex;
-  align-items: center;
-  height: 32px;
-  padding: 0 14px;
-  border-radius: 999px;
-  font-size: 12px;
-  color: var(--fg);
-  background: var(--bg);
-  border: 1.5px solid var(--border-2);
+.flow .piece {
+  gap: 12px;
 }
 
-.flowNode[data-command] {
-  color: #fff;
-  background: var(--accent);
-  border-color: var(--accent);
+.flow .file {
+  font-size: 13px;
+}
+
+.flow .file li:first-child:not([data-count]),
+.flow .file li:nth-child(2):not([data-count]) {
+  color: var(--fg-3);
+}
+
+.flowName {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--fg-3);
 }
 
 .flowNote {
   font-size: 12px;
+  line-height: 1.5;
   color: var(--fg-3);
-  max-width: 180px;
+  max-width: 130px;
 }
 
 /* ---- tables and commands ------------------------------------------------ */

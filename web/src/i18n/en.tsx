@@ -119,6 +119,7 @@ export const en = {
       visitors: {
         title: 'Visitors',
         body: 'A traversal reports to a Visitor: discover, level_complete (BFS) and finish (DFS), each with a no-op default. Returning Control::Break stops the search; distance is a BFS with a visitor that breaks at the target. Trees are reusable through the _into variants: a reset only touches what the previous search reached.',
+        state: 'the search when it stops',
         sequence: 'What Until(4) hears on the BFS from 1',
         go: 'Continue',
         stop: 'Break',

@@ -11,11 +11,12 @@ import styles from './GraphFigure.module.css';
 const PAD = 16;
 const PX_PER_UNIT = 1.35;
 
-/** The level ramp, from the origin's navy to the far end's light blue. */
+/** The level ramp, from the origin's navy to the far end's light blue,
+    shared with the wiki's visitor timeline. */
 const LEVEL_FROM = [0x00, 0x2f, 0x66];
 const LEVEL_TO = [0xa9, 0xdc, 0xff];
 
-function levelColour(level: number, max: number): string {
+export function levelColour(level: number, max: number): string {
   const t = max === 0 ? 0 : level / max;
   const c = LEVEL_FROM.map((a, i) => Math.round(a + (LEVEL_TO[i] - a) * t));
   return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;

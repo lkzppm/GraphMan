@@ -9,13 +9,14 @@ import {
   SAMPLE_TEXT,
   TWO_COMPONENT_EDGES,
   TWO_COMPONENT_POSITIONS,
+  UNREACHED,
   bfs,
   components,
   dfs,
   shortestPath,
 } from '@/lib/sample';
 import Code from './Code';
-import GraphFigure from './GraphFigure';
+import GraphFigure, { levelColour } from './GraphFigure';
 import Representations from './Representations';
 import Reveal from './Reveal';
 import styles from './Wiki.module.css';
@@ -78,6 +79,19 @@ const PATH_4_3 = shortestPath(TWO_N, TWO_COMPONENT_EDGES, 4, 3);
 const DIAMETER_ENDS: [number, number] = [1, 5];
 const DIAMETER_PATH = shortestPath(N, SAMPLE_EDGES, ...DIAMETER_ENDS);
 const UNTIL_4 = BFS.order.slice(0, BFS.order.indexOf(4) + 1);
+/** The tree as it stands when Until(4) breaks: only what was discovered. */
+const AT_BREAK = {
+  levels: BFS.levels.map((l, v) => (UNTIL_4.includes(v) ? l : UNREACHED)),
+  parents: BFS.parents.map((p, v) => (UNTIL_4.includes(v) ? p : 0)),
+};
+/** What `graphman bfs` writes for the sample from 1 (SearchTree::write_to). */
+const BFS_FILE = [
+  '# root 1',
+  '# vertex parent level',
+  ...Array.from({ length: N }, (_, i) => `${i + 1} ${BFS.parents[i + 1]} ${BFS.levels[i + 1]}`),
+];
+const FLOW_FILES = ['grafo.txt', 'grafo.bfs-1.txt'];
+const FLOW_COMMAND = 'graphman bfs grafo.txt --from 1';
 
 export default function Wiki({ examples }: { examples: Record<string, string> }) {
   const t = useT();
@@ -177,7 +191,7 @@ export default function Wiki({ examples }: { examples: Record<string, string> })
 
           <Chapter meta={chapter('visitors')} index={5}>
             {code('visitors')}
-            <Sequence order={UNTIL_4} tree={BFS} />
+            <Sequence order={UNTIL_4} />
           </Chapter>
 
           <Chapter meta={chapter('distance')} index={6}>
@@ -367,46 +381,84 @@ function Normalisation({ lines }: { lines: string[] }) {
   );
 }
 
-/** The discover calls a stopping visitor receives, the last one breaking. */
-function Sequence({
-  order,
-  tree,
-}: {
-  order: number[];
-  tree: { parents: number[]; levels: number[] };
-}) {
+/** The visitor's calls as a timeline beside the search as it stands when
+    the visitor breaks: balls on one vertical edge, in the level colours
+    of the drawing, the last one ringed like the vertex it stops at. */
+function Sequence({ order }: { order: number[] }) {
   const c = useT().library.chapters.visitors;
+  const max = Math.max(...order.map((v) => BFS.levels[v]));
   return (
-    <div className={styles.figure}>
-      <p className={styles.legend}>{c.sequence}</p>
-      <ol className={styles.calls}>
-        {order.map((v, i) => (
-          <li key={v} className="mono" data-last={i === order.length - 1 || undefined}>
-            <span className={styles.callBall}>{v}</span>
-            <span className={styles.callText}>
-              discover({v}, {tree.parents[v]}, {tree.levels[v]})
-            </span>
-            <span className={styles.callResult}>{i === order.length - 1 ? c.stop : c.go}</span>
-          </li>
-        ))}
-      </ol>
+    <div className={styles.sequence}>
+      <div className={styles.piece}>
+        <span className={`label ${styles.pieceLabel}`}>{c.state}</span>
+        <GraphFigure
+          edges={SAMPLE_EDGES}
+          positions={SAMPLE_POSITIONS}
+          levels={AT_BREAK.levels}
+          parents={AT_BREAK.parents}
+          marks={[order[order.length - 1]]}
+        />
+      </div>
+      <div className={styles.piece}>
+        <span className={`label ${styles.pieceLabel}`}>{c.sequence}</span>
+        <ol className={styles.calls}>
+          {order.map((v, i) => (
+            <li key={v} data-last={i === order.length - 1 || undefined}>
+              <span
+                className={`mono ${styles.callBall}`}
+                style={{ background: levelColour(BFS.levels[v], max) }}
+              >
+                {v}
+              </span>
+              <span className={`mono ${styles.callText}`}>
+                discover({v}, {BFS.parents[v]}, {BFS.levels[v]})
+              </span>
+              <span className={`mono ${styles.callResult}`}>
+                {i === order.length - 1 ? c.stop : c.go}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </div>
     </div>
   );
 }
 
-/** In, command, out: three vertices on one edge. */
+/** File in, command, file out: the sample as the course's text file, the
+    command that reads it and the file it writes, each under its name. */
 function Flow({ steps }: { steps: string[] }) {
-  const files = ['grafo_1.txt', 'graphman', 'grafo_1.bfs-1.txt'];
-  return (
-    <ol className={styles.flow}>
-      {steps.map((step, i) => (
-        <li key={step}>
-          <span className={`mono ${styles.flowNode}`} data-command={i === 1 || undefined}>
-            {files[i]}
-          </span>
-          <span className={styles.flowNote}>{step}</span>
+  const l = useT().library;
+  const lines = (text: string[]) => (
+    <ol className={`mono ${styles.file}`}>
+      {text.map((line, i) => (
+        <li key={i} data-count={i === 0 && !line.startsWith('#') ? true : undefined}>
+          {line}
         </li>
       ))}
     </ol>
+  );
+  return (
+    <div className={styles.flow}>
+      <div className={styles.piece}>
+        <span className={`mono ${styles.flowName}`}>{FLOW_FILES[0]}</span>
+        {lines(SAMPLE_TEXT.trim().split('\n'))}
+        <span className={styles.flowNote}>{steps[0]}</span>
+      </div>
+      <span className={styles.normaliseArrow} aria-hidden="true">
+        →
+      </span>
+      <div className={styles.piece} data-command>
+        <Code code={FLOW_COMMAND} lang="shell" copyLabel={l.copy} copiedLabel={l.copied} />
+        <span className={styles.flowNote}>{steps[1]}</span>
+      </div>
+      <span className={styles.normaliseArrow} aria-hidden="true">
+        →
+      </span>
+      <div className={styles.piece}>
+        <span className={`mono ${styles.flowName}`}>{FLOW_FILES[1]}</span>
+        {lines(BFS_FILE)}
+        <span className={styles.flowNote}>{steps[2]}</span>
+      </div>
+    </div>
   );
 }
