@@ -12,7 +12,8 @@ Portuguese (the course language), but code, comments, docs and commits are
 English. The web site's interface is bilingual (Portuguese by default,
 English by a switch): every visible string lives in `web/src/i18n/`
 (`en.tsx` is the schema, `pt.tsx` must match it), never inline in a
-component.
+component. Never use the em dash (—) in anything the visitor reads, site
+or slides: a comma, a colon or a full stop takes its place.
 
 ## Read these first
 

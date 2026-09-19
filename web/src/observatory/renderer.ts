@@ -3,8 +3,8 @@
 // draws (edges as a line list, vertices as instanced discs). React owns the
 // state and calls into this class; it owns nothing GPU-related.
 //
-// Frames are drawn only when something changed, and the edges — by far the
-// most expensive draw on the course graphs (grafo_2 has 1.3M of them) — are
+// Frames are drawn only when something changed, and the edges, by far the
+// most expensive draw on the course graphs (grafo_2 has 1.3M of them), are
 // cached in their own layer: hovering or selecting a vertex redraws the
 // vertices over the cached edges, and while the picture moves (pan, zoom,
 // drag, playback, simulation) only a sample of the non-tree edges is drawn,

@@ -2174,7 +2174,7 @@ function ComponentsView({
           <Tile
             label={t.density}
             value={
-              possible ? `${((edges / possible) * 100).toFixed(edges === possible ? 0 : 2)}%` : '—'
+              possible ? `${((edges / possible) * 100).toFixed(edges === possible ? 0 : 2)}%` : '·'
             }
             hint={t.ofPossible}
           />

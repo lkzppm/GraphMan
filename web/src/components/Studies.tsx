@@ -80,7 +80,7 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
                         ) : value !== null ? (
                           formatBytes(value)
                         ) : (
-                          '—'
+                          '·'
                         )}
                       </td>
                     );
@@ -110,7 +110,7 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
                       const t = cell(s, r)?.[algo];
                       return (
                         <td key={r} className={`mono ${styles.num}`}>
-                          {t ? formatMs(t.mean_ms) : '—'}
+                          {t ? formatMs(t.mean_ms) : '·'}
                         </td>
                       );
                     })}
@@ -140,7 +140,7 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
                     if (!d) {
                       return (
                         <td key={m} className={`mono ${styles.num}`}>
-                          —
+                          ·
                         </td>
                       );
                     }

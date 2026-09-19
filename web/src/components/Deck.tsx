@@ -238,15 +238,15 @@ function Results({ t, studies }: { t: T; studies: GraphStudy[] }) {
   const c = s.columns;
   const memory = (study: GraphStudy, repr: 'adjacency_list' | 'adjacency_matrix') => {
     const m = study.representations.find((r) => r.representation === repr)?.memory;
-    if (!m) return '—';
+    if (!m) return '·';
     if (!m.feasible)
       return <span className={styles.flag}>{s.needed(formatBytes(m.required_bytes))}</span>;
     const value = m.footprint_bytes ?? m.resident_bytes;
-    return value === null ? '—' : formatBytes(value);
+    return value === null ? '·' : formatBytes(value);
   };
   const time = (study: GraphStudy, algo: 'bfs' | 'dfs') => {
     const timing = study.representations.find((r) => r.representation === 'adjacency_list')?.[algo];
-    return timing ? formatMs(timing.mean_ms) : '—';
+    return timing ? formatMs(timing.mean_ms) : '·';
   };
   const diameter = (study: GraphStudy) => {
     // The best answer: an exact one if any method finished, else the largest bound.
