@@ -214,7 +214,7 @@ export const en = {
     theOrigin: 'the origin',
     runFrom: (kind: string, root: string) => `Run ${kind} from ${root}`,
     mode: 'Mode',
-    modeSearch: 'Search',
+    modeSearch: 'Max',
     modeDistance: 'Distance',
     distance: 'Distance',
     pathLength: 'Steps',

@@ -126,7 +126,7 @@ The observatory renders under the nav (`calc(100dvh - var(--nav-height))`)
 with no header of its own: a 340 px sidebar and the stage. The sidebar never
 scrolls; it is a column of panels (Graph: file, 2 × 2 tiles, degree
 histogram, component bar, chips; Search: two small segmented controls
-side by side — mode (Search / Distance) and traversal (BFS / DFS) — then
+side by side — mode (Max, the whole traversal / Distance) and traversal (BFS / DFS) — then
 origin (and, in Distance, target) with a square play button, then result
 tiles, level profile and playback (replay + slider + count; download and
 clear live in the panel header). Controls are compact: 28 px inputs,

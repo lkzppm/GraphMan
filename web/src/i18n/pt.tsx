@@ -215,7 +215,7 @@ export const pt: Dictionary = {
     theOrigin: 'a origem',
     runFrom: (kind: string, root: string) => `Rodar ${kind} a partir de ${root}`,
     mode: 'Modo',
-    modeSearch: 'Busca',
+    modeSearch: 'Max',
     modeDistance: 'Distância',
     distance: 'Distância',
     pathLength: 'Passos',
