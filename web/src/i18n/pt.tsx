@@ -21,15 +21,14 @@ export const pt: Dictionary = {
     eyebrow: 'feito para cos 242 · teoria dos grafos · ufrj 2026/2',
     brief: (
       <>
-        Uma biblioteca de grafos em Rust que mede a si mesma — um trait <code>Graph</code>, três
-        formas de guardar um grafo, quatro formas de achar o diâmetro — rodando no seu navegador.
+        Uma biblioteca de grafos em Rust: um trait <code>Graph</code>, três formas de guardar um
+        grafo, quatro formas de achar o diâmetro, rodando no seu navegador.
       </>
     ),
     open: 'Abrir o observatório',
     library: 'A biblioteca',
     discover: '// descubra mais',
     discoverLabel: 'Descubra mais',
-    whatEyebrow: 'o que é',
     whatTitle: 'Um trait, três representações, quatro diâmetros',
     whatLead: (
       <>
@@ -47,14 +46,24 @@ export const pt: Dictionary = {
       oneTrait: 'um trait Graph',
       methods: 'métodos de diâmetro',
       cancellable: 'todos canceláveis',
-      servers: 'servidores',
-      inTab: 'a biblioteca roda na sua aba',
+    },
+    figure: {
+      graph: 'o grafo',
+      list: 'lista de adjacência',
+      matrix: 'matriz de bits',
+      csr: 'CSR',
+      offsets: 'offsets',
+      targets: 'targets',
     },
   },
 
   pipeline: {
-    eyebrow: 'No navegador',
-    title: 'Sem servidor, sem dados pré-calculados: a própria biblioteca.',
+    title: (
+      <>
+        Sem servidor, sem dados pré-calculados: a própria biblioteca{' '}
+        <span className="accent">no seu navegador</span>
+      </>
+    ),
     lead: 'O observatório começa vazio. Carregue qualquer grafo no formato da disciplina e tudo o que você vê é calculado na hora.',
     steps: [
       {
@@ -62,12 +71,8 @@ export const pt: Dictionary = {
         body: 'O mesmo crate que roda os estudos de caso (crates/graphman) é exposto com wasm-bindgen. Leitura, BFS, DFS, distâncias, componentes e o diâmetro rodam na sua aba, em uma thread, a partir do arquivo que você solta.',
       },
       {
-        title: 'A árvore de busca é o layout',
-        body: 'Uma BFS a partir do menor vértice de cada componente dá a cada vértice um anel e um ângulo em O(n). Esse layout radial é o ponto de partida, e o final para grafos grandes demais para simular.',
-      },
-      {
         title: 'WebGPU via vgpu',
-        body: 'Posições, arestas e a árvore de busca vivem em buffers da GPU. Um compute shader relaxa o layout com uma simulação de forças; dois draws desenham cada vértice e aresta, coloridos pelo nível em que a busca os alcançou.',
+        body: 'Posições, arestas e a árvore de busca vivem em buffers da GPU. Compute shaders rodam a simulação de forças e o morph entre quatro layouts (forças, radial, camadas, grau); cada vértice e aresta é desenhado com a cor do nível em que a busca o alcançou.',
       },
     ],
   },
@@ -75,7 +80,7 @@ export const pt: Dictionary = {
   decisions: {
     eyebrow: 'A biblioteca',
     title: 'Seis decisões que valem apresentar.',
-    lead: 'Grafos não direcionados por enquanto; as partes 2 e 3 adicionam pesos, direções e fluxos sobre o mesmo núcleo — por isso o trait fica pequeno e os algoritmos, genéricos.',
+    lead: 'Grafos não direcionados por enquanto; as partes 2 e 3 adicionam pesos, direções e fluxos sobre o mesmo núcleo, por isso o trait fica pequeno e os algoritmos, genéricos.',
     items: [
       {
         title: 'Armazenamento é uma estratégia',
@@ -109,11 +114,13 @@ export const pt: Dictionary = {
     source: 'Código no GitHub',
     stack: 'Stack',
     licence: 'Licença MIT',
+    author: 'Autor',
+    authorName: 'Lucas Pacheco',
+    github: 'GitHub',
+    linkedin: 'LinkedIn',
     course: 'Disciplina',
     courseName: 'COS 242 · Teoria dos Grafos',
-    legal:
-      'Os tempos dos estudos de caso foram medidos na máquina indicada em cada estudo e excluem leitura e escrita, como a disciplina pede.',
-    built: '// feito em set 2026 · rio de janeiro',
+    copyright: '© 2026',
   },
 
   studies: {
@@ -366,7 +373,7 @@ export const pt: Dictionary = {
         items: [
           {
             title: 'Normalizar uma vez',
-            body: 'Laços descartados, arestas orientadas [min, max], ordenadas e sem duplicatas — toda representação ganha linhas de vizinhos crescentes e árvores de busca idênticas. Os testes garantem.',
+            body: 'Laços descartados, arestas orientadas [min, max], ordenadas e sem duplicatas, e toda representação ganha linhas de vizinhos crescentes e árvores de busca idênticas. Os testes garantem.',
           },
           {
             title: 'Buscas observáveis',
@@ -414,7 +421,7 @@ export const pt: Dictionary = {
             hint: 'grafo 2, camada de arestas em cache + nível de detalhe',
           },
           { value: '1 s', label: 'para carregar o grafo 4', hint: '105 MB, 8,2M arestas' },
-          { value: '4', label: 'layouts', hint: 'forças, radial, camadas, grau — morph na GPU' },
+          { value: '4', label: 'layouts', hint: 'forças, radial, camadas, grau, morph na GPU' },
           { value: '0', label: 'servidores', hint: 'tudo calculado no cliente' },
         ],
         cta: 'Abrir o observatório',

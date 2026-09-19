@@ -9,6 +9,7 @@ import type { GraphStudy } from '@/lib/studies';
 import BrandIcon from './BrandIcon';
 import Constellation from './Constellation';
 import HeroMark from './HeroMark';
+import Representations from './Representations';
 import Reveal from './Reveal';
 import styles from './Hero.module.css';
 
@@ -35,7 +36,6 @@ export default function Hero({ studies }: { studies: GraphStudy[] }) {
     },
     { value: '3', label: t.hero.facts.representations, hint: t.hero.facts.oneTrait },
     { value: '4', label: t.hero.facts.methods, hint: t.hero.facts.cancellable },
-    { value: '0', label: t.hero.facts.servers, hint: t.hero.facts.inTab },
   ];
 
   return (
@@ -81,27 +81,33 @@ export default function Hero({ studies }: { studies: GraphStudy[] }) {
         </a>
       </section>
 
+      {/* What it is: the words and the three facts on the left, the same
+          small graph stored three ways on the right. */}
       <section className="section" id="more">
-        <div className="container">
-          <Reveal>
-            <p className="eyebrow">{t.hero.whatEyebrow}</p>
-            <h2 className="section__title">
+        <div className={`container ${styles.what}`}>
+          <div className={styles.whatText}>
+            <Reveal as="h2" className="section__title">
               {t.hero.whatTitle}
               <span className="accent">.</span>
-            </h2>
-            <p className="section__lead">{t.hero.whatLead}</p>
+            </Reveal>
+            <Reveal as="p" className="section__lead" delay={0.1}>
+              {t.hero.whatLead}
+            </Reveal>
+            <dl className={styles.facts}>
+              {facts.map((fact, i) => (
+                <Reveal key={fact.label} className={styles.fact} delay={0.2 + i * 0.08}>
+                  <dt className="label">{fact.label}</dt>
+                  <dd>
+                    <span className={`mono ${styles.value}`}>{fact.value}</span>
+                    {fact.hint && <span className={styles.hint}>{fact.hint}</span>}
+                  </dd>
+                </Reveal>
+              ))}
+            </dl>
+          </div>
+          <Reveal delay={0.25}>
+            <Representations />
           </Reveal>
-          <dl className={styles.facts}>
-            {facts.map((fact, i) => (
-              <Reveal key={fact.label} className={styles.fact} delay={0.15 + i * 0.07}>
-                <dt className="label">{fact.label}</dt>
-                <dd>
-                  <span className={`mono ${styles.value}`}>{fact.value}</span>
-                  {fact.hint && <span className={styles.hint}>{fact.hint}</span>}
-                </dd>
-              </Reveal>
-            ))}
-          </dl>
         </div>
       </section>
     </>

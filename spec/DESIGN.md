@@ -111,16 +111,58 @@ language) with English one tap away; the choice is remembered
 lives in one typed dictionary per language (`web/src/i18n/en.tsx` is the
 schema, `pt.tsx` must match it), reached through `useT()`; components hold
 no prose. Numbers keep one convention in both languages: mono, `1,298,710`,
-`0.906 ms` — the tables read the same whichever language is on.
-`scrollbar-gutter:
-stable` keeps the nav the same width on pages with and without a scrollbar.
+`0.906 ms`, so the tables read the same whichever language is on. The em
+dash is banned from everything the visitor reads (site and slides): a
+comma, a colon or a full stop takes its place, and a missing table value
+is a middle dot. `scrollbar-gutter: stable` keeps the nav the same width on
+pages with and without a scrollbar.
 
 The hero fills one viewport: the live mark on the left (360 px), and on the
 right the eyebrow, the mono wordmark `graphman.`, the brief, two buttons
 and the stack line (brand glyphs from `simple-icons`: Rust, WebAssembly,
 WebGPU, Next.js, Vercel) under a hairline. A bouncing `// discover more`
-arrow at the bottom scrolls to the "what it is" section (lead + fact tiles).
-Below 900 px the hero stacks and centres.
+arrow at the bottom scrolls to the "what it is" section. Below 900 px the
+hero stacks and centres.
+
+The two sections under the hero have no boxes; they sit straight on the
+white page and rise into view as it is scrolled (`components/Reveal.tsx`,
+26 px and 0.9 s, staggered through `--delay`).
+
+- **What it is**: the title and lead on the left with three facts under a
+  hairline (blue mono value, tracked label, grey hint), and on the right
+  the three-representations figure (`components/Representations.tsx`): one
+  five-vertex graph drawn beside its adjacency list and its bitset matrix
+  (one dot per bit), with its CSR arrays underneath. One vertex is in focus at a time and everything that belongs to it turns
+  blue: the vertex and its edges, its row in the list (and itself wherever
+  it appears as a neighbour), its row and column in the matrix, its slice
+  of `targets` and the two `offsets` that bound it. The vertex taking the
+  focus squashes flat, stretches tall and settles (0.6 s, about its own
+  centre). The focus walks the vertices every 1.8 s and follows the
+  pointer while the figure is hovered.
+- **Footer**: a small graph. One 1.5 px edge runs across the top and each
+  of the four columns (project, stack, author, course) hangs from a 12 px
+  vertex on it; hovering a column fills its vertex blue. The author column
+  carries the GitHub and LinkedIn links with their glyphs (LinkedIn's path
+  is inlined, simple-icons no longer ships it). Under a hairline, centred:
+  the mark, the wordmark and `© 2026`. At 720 px the columns go two-up and
+  only the first row keeps its vertices.
+- **In the browser**: the title centred, its last words (`in your browser`)
+  in blue, over a faint blue globe (lucide `globe` at 520 px, thick lines,
+  a watermark masked to fade at the rim); then two cards (wasm, WebGPU).
+  The section's background is a field of faint
+  grey dots (28 px grid) that fades out towards the section's edges, the
+  way the constellation fades under the hero; every 4.5 s a ring expands
+  from the globe's centre to the edges of the section and is visible only
+  through soft-edged dots wider than the grey ones, so each dot swells
+  blue as the ring rises under it and shrinks back as it passes: a wave
+  lifting the field. As each ring sets off the globe's blue blinks
+  brighter (0.11 to 0.3) and settles back with a little bounce; the globe
+  itself never moves. Everything eases: the ring grows at a steady pace
+  (`grow`, linear) while its strength eases in over the first second and
+  out over the rest (`glow`), and the pulse is `ease-in-out`, so nothing
+  pops at either end of the 9 s loop. Rings and pulse start together when
+  the words scroll into view, so they stay in step (`Pipeline.module.css`,
+  pure CSS: masked radial gradients; hidden under reduced motion).
 
 The observatory renders under the nav (`calc(100dvh - var(--nav-height))`)
 with no header of its own: a 340 px sidebar and the stage. The sidebar never
@@ -178,8 +220,11 @@ the WebGPU one, drawn only when discs are at least 5 px.
   chevron-down, plus one per decision card and pipeline step.
 - Brand glyphs come from `simple-icons` through `components/BrandIcon.tsx`,
   drawn in the current text colour.
-- Icon chips (pipeline steps, decision cards) are 30–32 px bordered squares
-  that turn blue and tilt 8° on hover.
+- Icon chips (decision cards) are 30–32 px bordered squares that turn blue
+  and tilt 8° on hover; the pipeline cards show the bare icon in blue.
+- The globe behind the "in the browser" title is lucide `globe` at 520 px
+  with `strokeWidth` 0.8 (about 17 px lines at that size), blue at 0.11
+  between pulses.
 
 ## Components
 
@@ -187,12 +232,15 @@ the WebGPU one, drawn only when discs are at least 5 px.
   is the blue fill (hover: darker + blue glow); `secondary` is a ghost that
   turns its border and text blue on hover. All lift 1 px on hover and press
   to 0.97.
-- **Fact tile**: bordered grid cell, label on top, blue mono value, grey
-  hint; a 2 px blue line grows along the bottom on hover.
+- **Fact**: blue mono value (34 px), tracked label, grey hint, in a row
+  under a hairline with nothing boxed; the value lifts 2 px on hover.
 - **Surface card**: 1 px border, 2 px blue left edge, radius 4; hover lifts
   3 px, tints to `--bg-2`, and the title underlines in blue.
-- **Pipeline step**: cell in a bordered grid; hover slides the index right
-  and grows a blue edge down the left.
+- **Pipeline step**: a white card on the dot field framed as a graph: a
+  6 px vertex on each corner joined by a 1.5 px edge along each side (an
+  SVG with percent coordinates), the bare 22 px icon in blue beside the
+  title, the body under; hover lifts it 3 px, fills the vertices and edges
+  blue and tilts the icon. No index, no disc.
 - **Table**: bordered wrapper, caption band with a blue left edge, tracked
   uppercase headers, hairline rows that tint on hover.
 - **Segmented control**: grey track with a white thumb that springs between
@@ -299,8 +347,9 @@ the WebGPU one, drawn only when discs are at least 5 px.
 ## Responsive rules
 
 The landing folds at 900 px (hero stacks, mark first; decisions grid
-becomes one column) and 720/640 px (mark 240 px, facts go two-up, footer
-columns stack). The observatory sheds sidebar pieces by viewport height
+becomes one column) and 720/640 px (mark 240 px, footer columns stack);
+the representations figure folds at 560 px (the drawing full width, the
+list and the matrix side by side, CSR under them). The observatory sheds sidebar pieces by viewport height
 (above) and stacks at 840 px: stage on top, the sidebar becomes a scrollable
 bottom sheet of at most 46 % of the viewport with every piece shown again.
 Touch targets stay at least 30 px; the stage uses `touch-action: none`.
