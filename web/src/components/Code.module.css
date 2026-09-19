@@ -1,0 +1,74 @@
+/* Code on a wash of blue: the block is the accent at 5 %, a hairline of it
+   at 14 %, and the tokens are shades of the same blue. */
+
+.block {
+  position: relative;
+}
+
+.pre {
+  font-size: 13px;
+  line-height: 1.65;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, white);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--accent) 5%, white);
+  color: var(--fg);
+  overflow-x: auto;
+  tab-size: 4;
+}
+
+.pre[data-lang='shell']::before {
+  content: '$ ';
+  color: var(--accent);
+}
+
+.comment {
+  color: var(--fg-3);
+}
+
+.string {
+  color: var(--accent);
+}
+
+.keyword {
+  color: var(--accent-hover);
+  font-weight: 500;
+}
+
+.macro {
+  color: var(--level-0);
+}
+
+.type {
+  color: var(--level-0);
+}
+
+.number {
+  color: var(--accent);
+}
+
+.copy {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, white);
+  opacity: 0;
+  transition:
+    opacity 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+.block:hover .copy,
+.copy:focus-visible {
+  opacity: 1;
+}
+
+.copy:hover {
+  background: var(--accent-muted);
+}

@@ -77,36 +77,77 @@ export const pt: Dictionary = {
     ],
   },
 
-  decisions: {
-    eyebrow: 'A biblioteca',
-    title: 'Seis decisões que valem apresentar.',
-    lead: 'Grafos não direcionados por enquanto; as partes 2 e 3 adicionam pesos, direções e fluxos sobre o mesmo núcleo, por isso o trait fica pequeno e os algoritmos, genéricos.',
-    items: [
-      {
-        title: 'Armazenamento é uma estratégia',
-        body: 'Um trait Graph de cinco métodos com um iterador de vizinhos (GAT). Cada algoritmo é escrito uma vez e monomorfizado por representação: trocar o armazenamento não muda o resultado, só o custo.',
+  library: {
+    contents: 'Conteúdo',
+    copy: 'Copiar',
+    copied: 'Copiado',
+    chapters: {
+      start: {
+        title: 'Começo',
+        body: 'Adicione o crate, leia uma lista de arestas, construa uma representação e chame os algoritmos. Os vértices são numerados a partir de 1, exatamente como nos arquivos de entrada.',
+        file: 'o arquivo',
       },
-      {
-        title: 'Normalizar uma vez',
-        body: 'O parser descarta laços, orienta arestas como [min, max], ordena e remove duplicatas. Como a lista vem ordenada, todo construtor ganha linhas de vizinhos crescentes de graça e todas as árvores de busca saem idênticas.',
+      format: {
+        title: 'O formato',
+        body: 'A primeira linha é o número de vértices, depois uma aresta por linha. A leitura normaliza uma única vez, e assim toda representação concorda sobre qual é o grafo: laços são descartados, cada aresta não direcionada é guardada uma vez como [min, max], duplicatas saem, a lista é ordenada.',
+        raw: 'como escrito',
+        kept: 'depois da leitura',
+        loop: 'laço',
+        duplicate: 'duplicata',
       },
-      {
-        title: 'Buscas observáveis',
-        body: 'BFS e DFS reportam a um Visitor e podem parar cedo. Distância é uma BFS com condição de parada; a DFS é iterativa sobre iteradores de vizinhos e produz a árvore recursiva com memória O(profundidade).',
+      representations: {
+        title: 'Três representações',
+        body: 'AdjacencyList (uma linha por vértice), AdjacencyMatrix (uma matriz de bits compacta) e Csr (dois arrays contíguos) implementam o mesmo trait Graph, pequeno, e todas mantêm as linhas de vizinhos em ordem crescente. Os algoritmos são escritos uma vez e monomorfizados por representação: trocar o armazenamento muda o custo, nunca a resposta.',
+        table: [
+          ['Representação', 'Memória', 'neighbors(v)', 'has_edge(u, v)'],
+          ['AdjacencyList', 'O(n + m) palavras, um bloco por vértice', 'O(deg v)', 'O(log deg u)'],
+          ['Csr', 'O(n + m) palavras, dois blocos', 'O(deg v)', 'O(log deg u)'],
+          ['AdjacencyMatrix', 'O(n²) bits', 'O(n / 64) palavras', 'O(1)'],
+        ],
+        dispatch:
+          'Quando a representação é escolhida em tempo de execução (a CLI recebe como flag), AnyGraph guarda a que foi construída e dispatch! roda uma expressão genérica sobre ela. O algoritmo continua especializado por representação; a única decisão dinâmica é um match. Todo builder também sabe seu custo antes de alocar (required_bytes) e o confere contra um MemoryBudget, a memória da máquina por padrão: a matriz de bits de 375 000 vértices tem 17,6 GB, e pedi-la devolve um BuildError::OverBudget tipado, não um processo morrendo em swap.',
       },
-      {
-        title: 'Nada é alocado duas vezes',
-        body: 'Uma SearchTree reinicia só o que a busca anterior tocou. Milhares de BFS nos algoritmos de diâmetro não custam alocações nem limpezas O(n).',
+      traversals: {
+        title: 'Buscas',
+        body: 'bfs e dfs devolvem uma SearchTree: pai e nível de cada vértice alcançado, mais a ordem de descoberta. A BFS é síncrona por nível (a ordem serve de fila); a DFS é iterativa sobre iteradores de vizinhos, então usa memória O(profundidade) e produz exatamente a árvore que a versão recursiva produziria.',
+        bfs: 'BFS a partir de 1: vértices por nível, arestas da árvore em azul, profundidade 2',
+        dfs: 'DFS a partir de 1: o mesmo grafo, um caminho só até a profundidade 4',
       },
-      {
-        title: 'Um orçamento de memória, não um crash',
-        body: 'Os construtores calculam os bytes de que precisam antes. Uma matriz de bits de 375 000 vértices tem 17,6 GB; em vez de morrer no swap, você recebe um erro tipado e uma célula na tabela.',
+      visitors: {
+        title: 'Visitors',
+        body: 'Uma busca reporta a um Visitor: discover, level_complete (BFS) e finish (DFS), cada um com um padrão vazio. Devolver Control::Break interrompe a busca; distância é uma BFS com um visitor que para no destino. As árvores são reutilizáveis pelas variantes _into: um reset só toca o que a busca anterior alcançou.',
+        sequence: 'O que Until(4) ouve na BFS a partir de 1',
+        go: 'Continue',
+        stop: 'Break',
       },
-      {
-        title: 'Diâmetro de quatro jeitos',
-        body: 'Força bruta, iFUB, limites de Takes–Kosters e 4-sweep. O driver percorre as componentes da maior para a menor, pula as pequenas demais para importar e todo método é cancelável com um orçamento.',
+      distance: {
+        title: 'Distância e componentes',
+        body: 'distance roda uma BFS que para no destino e devolve None entre componentes; eccentricity é o vértice mais distante de um dado. Components::compute rotula cada vértice com uma BFS por componente, numeradas da maior para a menor, empate pelo menor vértice.',
+        legend: 'duas componentes, o caminho mais curto de 4 a 3 em azul',
       },
-    ],
+      diameter: {
+        title: 'Diâmetro',
+        body: 'Quatro estratégias dividem um driver que percorre as componentes da maior para a menor e pula as pequenas demais para superar o melhor valor encontrado. Exact é uma BFS por vértice; iFUB (Crescenzi et al., 2013) e os limites de Takes-Kosters (2011) são exatos com muito menos buscas em grafos reais; o 4-sweep é um limite inferior barato. Toda execução pode ser cancelada por um callback de progresso, e então reporta o melhor limite, marcado como não exato.',
+        legend:
+          'as pontas 1 e 5 em destaque, um caminho mais curto mais longo em azul: o diâmetro é 2',
+      },
+      cli: {
+        title: 'A linha de comando',
+        body: 'O binário graphman embrulha a biblioteca: todo comando recebe um arquivo de grafo, um --repr (list, matrix ou csr) e escreve os arquivos de saída da disciplina. study roda o estudo de caso inteiro e escreve JSON mais o RESULTS.md.',
+        flow: [
+          'um grafo no formato da disciplina',
+          'um comando',
+          'o arquivo de saída da disciplina',
+        ],
+        commands: [
+          'o arquivo de resumo: contagens, estatísticas de grau, componentes',
+          'uma árvore de busca a partir do vértice 1, guardada como CSR',
+          'distâncias entre pares de vértices',
+          'o diâmetro pelos limites de Takes-Kosters, desistindo após 60 s',
+          'o estudo de caso de um grafo, em studies/',
+        ],
+      },
+    },
   },
 
   footer: {

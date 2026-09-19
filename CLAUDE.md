@@ -67,6 +67,10 @@ cd web && npm run typecheck && npm run lint # must be green (CI enforces)
   `default-features = false` (no mmap, no rayon).
 - The observatory computes everything client-side from the uploaded file:
   no pre-exported data, no server.
+- The library page's code examples live in `crates/graphman/tests/wiki.rs`
+  (blocks between `// wiki:start <id>` and `// wiki:end`, extracted by
+  `web/scripts/sync-data.mjs`); change them there, never in the web code,
+  so the page only ever shows what `cargo test` has run.
 - Every representation keeps neighbour rows ascending; tests rely on all
   representations producing identical search trees.
 - Timings in studies exclude parsing and file output (course rule).

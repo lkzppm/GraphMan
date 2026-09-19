@@ -258,9 +258,11 @@ button {
   cursor: not-allowed;
 }
 
-/* Route change: the page rises in. */
+/* Route change: the page rises in. `backwards`, not `both`: once the rise
+   is over the transform must be gone, or the page would become the
+   containing block of anything fixed inside it (the library's rail). */
 .page {
-  animation: rise 0.35s var(--ease) both;
+  animation: rise 0.35s var(--ease) backwards;
 }
 
 /* Scroll reveal (src/components/Reveal.tsx): children rise into place once,

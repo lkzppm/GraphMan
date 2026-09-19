@@ -77,36 +77,75 @@ export const en = {
     ],
   },
 
-  decisions: {
-    eyebrow: 'The library',
-    title: 'Six decisions worth presenting.',
-    lead: 'Undirected graphs for now; parts 2 and 3 add weights, directions and flows on the same core, which is why the trait stays small and the algorithms generic.',
-    items: [
-      {
-        title: 'Storage is a strategy',
-        body: 'A five-method Graph trait with a GAT neighbour iterator. Every algorithm is written once and monomorphised per representation, so swapping the storage cannot change a result, only its cost.',
+  // The library page: a manual on the sample graph. Code examples come from
+  // crates/graphman/tests/wiki.rs (via web/src/data/wiki.json), so only the
+  // words live here.
+  library: {
+    contents: 'Contents',
+    copy: 'Copy',
+    copied: 'Copied',
+    chapters: {
+      start: {
+        title: 'Start',
+        body: 'Add the crate, parse an edge list, build a representation and call the algorithms. Vertices are numbered from 1, exactly as in the input files.',
+        file: 'the file',
       },
-      {
-        title: 'Normalise once',
-        body: 'The parser drops self-loops, orients edges as [min, max], sorts and dedups. Because the list is sorted, every builder gets ascending neighbour rows for free and all search trees come out identical.',
+      format: {
+        title: 'The format',
+        body: 'The first line is the vertex count, then one edge per line. Parsing normalises once, so every representation agrees on what the graph is: self-loops are dropped, each undirected edge is kept once as [min, max], duplicates go, the list is sorted.',
+        raw: 'as written',
+        kept: 'after parsing',
+        loop: 'self-loop',
+        duplicate: 'duplicate',
       },
-      {
-        title: 'Traversals are observable',
-        body: 'BFS and DFS report to a Visitor and can stop early. Distance is a BFS with a stop condition; DFS is iterative over neighbour iterators and yields the recursive tree with O(depth) memory.',
+      representations: {
+        title: 'Three representations',
+        body: 'AdjacencyList (one row per vertex), AdjacencyMatrix (a packed bitset) and Csr (two contiguous arrays) all implement the same small Graph trait, and all keep neighbour rows ascending. Algorithms are written once and monomorphised per representation: swapping the storage changes the cost, never the answer.',
+        table: [
+          ['Representation', 'Memory', 'neighbors(v)', 'has_edge(u, v)'],
+          ['AdjacencyList', 'O(n + m) words, one block per vertex', 'O(deg v)', 'O(log deg u)'],
+          ['Csr', 'O(n + m) words, two blocks', 'O(deg v)', 'O(log deg u)'],
+          ['AdjacencyMatrix', 'O(n²) bits', 'O(n / 64) words', 'O(1)'],
+        ],
+        dispatch:
+          "When the representation is chosen at runtime (the CLI takes it as a flag), AnyGraph holds whichever was built and dispatch! runs a generic expression on it. The algorithm is still specialised per representation; the only dynamic decision is one match. Every builder also knows its cost before allocating (required_bytes) and checks it against a MemoryBudget, the machine's memory by default: a 375 000-vertex bitset matrix is 17.6 GB, and asking for it gives a typed BuildError::OverBudget, not a process dying in swap.",
       },
-      {
-        title: 'Nothing is allocated twice',
-        body: 'A SearchTree resets only what the previous search touched. Thousands of BFS runs in the diameter algorithms cost no allocations and no O(n) clears.',
+      traversals: {
+        title: 'Traversals',
+        body: 'bfs and dfs return a SearchTree: parent and level of every reached vertex, plus the order of discovery. BFS is level-synchronous (the order doubles as the queue); DFS is iterative over neighbour iterators, so it uses O(depth) memory and yields exactly the tree the recursive version would.',
+        bfs: 'BFS from 1: vertices by level, tree edges in blue, depth 2',
+        dfs: 'DFS from 1: the same graph, one path down to depth 4',
       },
-      {
-        title: 'A memory budget, not a crash',
-        body: 'Builders compute the bytes they need up front. A 375 000-vertex bitset matrix is 17.6 GB; instead of swap death you get a typed error and a table cell.',
+      visitors: {
+        title: 'Visitors',
+        body: 'A traversal reports to a Visitor: discover, level_complete (BFS) and finish (DFS), each with a no-op default. Returning Control::Break stops the search; distance is a BFS with a visitor that breaks at the target. Trees are reusable through the _into variants: a reset only touches what the previous search reached.',
+        sequence: 'What Until(4) hears on the BFS from 1',
+        go: 'Continue',
+        stop: 'Break',
       },
-      {
-        title: 'Diameter, four ways',
-        body: 'Brute force, iFUB, Takes–Kosters bounds and a 4-sweep. The driver walks components largest-first, skips those too small to matter and every method is cancellable with a budget.',
+      distance: {
+        title: 'Distance and components',
+        body: 'distance runs a BFS that stops at the target and returns None across components; eccentricity is the farthest vertex from one. Components::compute labels every vertex with one BFS per component, numbered from the largest, ties broken by the smallest vertex.',
+        legend: 'two components, the shortest path from 4 to 3 in blue',
       },
-    ],
+      diameter: {
+        title: 'Diameter',
+        body: 'Four strategies share one driver that walks the components from largest to smallest and skips any too small to beat the best value found. Exact is one BFS per vertex; iFUB (Crescenzi et al., 2013) and the Takes-Kosters bounds (2011) are exact with far fewer searches on real graphs; the 4-sweep is a cheap lower bound. Every run can be cancelled through a progress callback and then reports its best bound, flagged as not exact.',
+        legend: 'the endpoints 1 and 5 ringed, a longest shortest path in blue: the diameter is 2',
+      },
+      cli: {
+        title: 'The command line',
+        body: "The graphman binary wraps the library: every command takes a graph file, a --repr (list, matrix or csr) and writes the assignment's output files. study runs the whole case study and writes JSON plus RESULTS.md.",
+        flow: ['a graph in the course format', 'one command', "the assignment's output file"],
+        commands: [
+          'the summary file: counts, degree statistics, components',
+          'a search tree from vertex 1, stored as CSR',
+          'distances for pairs of vertices',
+          'the diameter by Takes-Kosters bounds, giving up after 60 s',
+          'the case study of one graph, into studies/',
+        ],
+      },
+    },
   },
 
   footer: {

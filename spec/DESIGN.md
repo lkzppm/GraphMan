@@ -31,20 +31,20 @@ drawn for.
 
 ## Tokens (`web/src/app/globals.css`)
 
-| Role | Value |
-|---|---|
-| `--bg` / `--bg-2` / `--bg-3` | `#fff` / `#fafafa` / `#f2f2f2` |
-| `--fg` / `--fg-2` / `--fg-3` | `#171717` / `#666` / `#8f8f8f` |
-| `--border` / `--border-2` | `#e6e6e6` / `#cfcfcf` |
-| `--accent` / `--accent-hover` / `--accent-muted` | `#0070f3` / `#0a5fd0` / blue at 12 % |
-| `--accent-2` (level ramp end) | `#a9dcff` |
-| `--level-0` (level ramp start) | `#002f66` |
-| `--node` / `--node-dim` | `#8f8f8f` / `#d6d6d6` |
-| `--edge` / `--edge-dim` | ink at 14 % / 6 % |
-| Radii | 2 / 4 / 6 px |
-| `--tracking` | `0.1em` (labels), `0.3em` (eyebrows) |
-| `--glow` | `0 6px 24px -6px var(--accent-muted)` |
-| Container | 1080 px, 24 px gutters |
+| Role                                             | Value                                 |
+| ------------------------------------------------ | ------------------------------------- |
+| `--bg` / `--bg-2` / `--bg-3`                     | `#fff` / `#fafafa` / `#f2f2f2`        |
+| `--fg` / `--fg-2` / `--fg-3`                     | `#171717` / `#666` / `#8f8f8f`        |
+| `--border` / `--border-2`                        | `#e6e6e6` / `#cfcfcf`                 |
+| `--accent` / `--accent-hover` / `--accent-muted` | `#0070f3` / `#0a5fd0` / blue at 12 %  |
+| `--accent-2` (level ramp end)                    | `#a9dcff`                             |
+| `--level-0` (level ramp start)                   | `#002f66`                             |
+| `--node` / `--node-dim`                          | `#8f8f8f` / `#d6d6d6`                 |
+| `--edge` / `--edge-dim`                          | ink at 14 % / 6 %                     |
+| Radii                                            | 2 / 4 / 6 px                          |
+| `--tracking`                                     | `0.1em` (labels), `0.3em` (eyebrows)  |
+| `--glow`                                         | `0 6px 24px -6px var(--accent-muted)` |
+| Container                                        | 1080 px, 24 px gutters                |
 
 ## Typography
 
@@ -97,8 +97,8 @@ copies in `globals.css` are only reachable from global classes.
 
 One sticky nav, like Golem's: the mark + wordmark on the left is the home
 link (the wordmark turns blue on the home page), then a tab per other page
-— **Observatory** (`/observatory`), **Library** (`/library`, the six
-decisions), **Case studies** (`/studies`, the tables), **Presentation**
+— **Observatory** (`/observatory`), **Library** (`/library`, the
+interactive manual), **Case studies** (`/studies`, the tables), **Presentation**
 (`/presentation`, the five slides) — then, on the right, the language
 switch (two mono tags, `pt` · `en`, the current one in the blue-muted
 pill) and a bordered GitHub button. The current tab is marked in blue:
@@ -139,6 +139,34 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   focus squashes flat, stretches tall and settles (0.6 s, about its own
   centre). The focus walks the vertices every 1.8 s and follows the
   pointer while the figure is hovered.
+- **Library** (`components/Wiki.tsx`): a manual in eight chapters on the
+  sample graph (the pentagon with one chord the home draws three ways,
+  `lib/sample.ts`), more minimal than the home. A rail fixed on the left
+  and centred on the viewport lists the eight chapters as vertices on one
+  vertical edge; the edge is drawn in blue down to the current stop, whose
+  vertex is filled and larger (hidden below 1240 px). One 760 px column,
+  centred, with no head of its own: the first chapter opens the page.
+  Each chapter: mono index, title, a link to the source file
+  it documents, one paragraph, the Rust example (plain usage with results
+  in comments, never tests) and a fixed drawing of what it computes. Code
+  and tables are washed in the accent (`components/Code.tsx`: a 5 % blue
+  block with a 14 % hairline, keywords in the hover blue, types and macros
+  in the navy, strings and numbers in the accent, comments grey, a copy
+  button on hover; tables get a 7 % blue header band and 2.5 % zebra
+  rows). Drawings are unboxed, centred, with their legend under them, and
+  share the home figure's look (`components/GraphFigure.tsx`: 1.35 px per
+  unit of `lib/sample.ts`, 12 px vertices, 1.5 px strokes, 11 px mono
+  labels): the sample's text file (the count in blue) with an arrow to the
+  graph it describes, each under a tracked label (start), the
+  normalisation as chips with loops and repeats struck (format), the home's
+  figure (representations), BFS beside DFS with levels on the navy-to-light
+  ramp and tree edges in blue (traversals), the `discover` calls as balls
+  down to the `Break` (visitors), two components in fading blues with the
+  shortest path from 4 to 3 (distance), the endpoints 1 and 5 ringed in
+  navy with a longest shortest path (diameter), and file, command, output
+  as three vertices on one edge (CLI). The memory budget is a paragraph
+  and three lines of the representations chapter, not a chapter of its
+  own, and the design decisions belong to the presentation.
 - **Footer**: a small graph. One 1.5 px edge runs across the top and each
   of the four columns (project, stack, author, course) hangs from a 12 px
   vertex on it; hovering a column fills its vertex blue. The author column
@@ -339,10 +367,10 @@ the WebGPU one, drawn only when discs are at least 5 px.
   simulation toggle (magnet) and reheat. Picking a layout slides every
   vertex to its new place over 700 ms and glides the view to fit; the
   level layouts start at the search origin (or the selected vertex, else
-  1) and re-arrange when a new search runs, the view then framing the
-  origin's component only (the rest just makes room). Every component
-  gets the layout: radial components are packed as discs around the
-  origin's, layered ones stand side by side with level 0 on one line.
+  1. and re-arrange when a new search runs, the view then framing the
+     origin's component only (the rest just makes room). Every component
+     gets the layout: radial components are packed as discs around the
+     origin's, layered ones stand side by side with level 0 on one line.
 
 ## Responsive rules
 

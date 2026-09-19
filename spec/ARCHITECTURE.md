@@ -122,10 +122,10 @@ libraries. Deployed on Vercel with the root directory set to
 ```
 src/app/layout.tsx, globals.css   fonts, metadata, the LocaleProvider, the shared tabbed Nav, design tokens
 src/app/page.tsx                  Home tab: Hero + Pipeline
-src/app/library/, studies/        Library tab (Decisions), Case studies tab (tables)
+src/app/library/, studies/        Library tab (Wiki, the interactive manual), Case studies tab (tables)
 src/app/presentation/             Presentation tab: the five slides (Deck)
 src/app/observatory/              the tool, client-only (dynamic import, ssr: false)
-src/components/                   Nav, Logo, BrandIcon, Reveal, Deck, Representations, Field, page sections + CSS modules
+src/components/                   Nav, Logo, BrandIcon, Reveal, Deck, Representations, Field, Wiki, Code, GraphFigure, page sections + CSS modules
 src/i18n/                         en.tsx (the schema), pt.tsx, LocaleProvider (useT / useLocale)
 src/lib/graphman.ts               loads the wasm glue once
 src/lib/studies.ts                types of studies/results.json (synced into src/data)
@@ -251,6 +251,17 @@ the CSR rows in the shader.
 `studies/results.json` is copied to `web/src/data/results.json` by
 `scripts/sync-data.mjs` (Turbopack only bundles files under `web/`) and
 rendered as tables at build time.
+
+The library page's code examples live in `crates/graphman/tests/wiki.rs`:
+each test holds one block between `// wiki:start <id>` and `// wiki:end`
+that reads as plain usage with the results in comments, followed by the
+assertions that check those comments. The same script copies the blocks
+into `web/src/data/wiki.json` and `Wiki.tsx` shows them verbatim; `cargo
+test` runs them, so the page cannot document behaviour the library does
+not have. The page's drawings are worked out on the same sample graph in
+`web/src/lib/sample.ts`, whose BFS, DFS, components and shortest path
+mirror the library's order (ascending neighbours, DFS over neighbour
+iterators), so what is drawn is what the examples' comments say.
 
 ### Timing in the browser
 

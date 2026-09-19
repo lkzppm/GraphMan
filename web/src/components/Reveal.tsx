@@ -16,18 +16,20 @@ interface Props {
   as?: ElementType;
   className?: string;
   style?: CSSProperties;
+  id?: string;
   /** Also hands the element to the caller (React 19: a plain prop). */
   ref?: RefObject<HTMLElement | null>;
 }
 
 /** Rises its children into place the first time they scroll into view:
-    hidden until 15 % of the element is past the lower 12 % of the viewport. */
+    hidden until its top edge is past the lower 15 % of the viewport. */
 export default function Reveal({
   children,
   delay = 0,
   as: Tag = 'div',
   className = '',
   style,
+  id,
   ref: outer,
 }: Props) {
   const ref = useRef<HTMLElement>(null);
@@ -49,7 +51,7 @@ export default function Reveal({
           }
         }
       },
-      { rootMargin: '0px 0px -12% 0px', threshold: 0.15 },
+      { rootMargin: '0px 0px -15% 0px', threshold: 0 },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -58,6 +60,7 @@ export default function Reveal({
   return (
     <Tag
       ref={ref}
+      id={id}
       className={`reveal ${className}`}
       style={{ ...style, '--delay': `${delay}s` } as CSSProperties}
     >
