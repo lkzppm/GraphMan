@@ -26,6 +26,7 @@ struct View {
   treeFade: f32,      // alpha scale of the tree edges
   pathLength: u32,    // vertices in the lit path (0 = none), see the path buffer
   incident: u32,      // edges at the selected vertex: the first segments of the extras buffer
+  dest: u32,          // a distance query's destination (0 = none): the picture is the path; "target" is a reserved word
   base: vec4f,        // node colour without a search
   dim: vec4f,         // node not (yet) reached
   colorA: vec4f,      // level 0
@@ -34,6 +35,7 @@ struct View {
   edge: vec4f,
   edgeDim: vec4f,
   edgeTree: vec4f,
+  colorTarget: vec4f, // the destination of a distance query
 }
 @group(0) @binding(0) var<uniform> view: View;
 
@@ -88,6 +90,11 @@ fn nodeColor(v: u32) -> vec4f {
   if (view.mode == 0u) { return view.base; }
   let rank = ranks[v];
   if (rank == 0xffffffffu || f32(rank) > view.reveal) { return view.dim; }
+  // A distance query: the origin in the accent, the destination in green.
+  if (view.dest != 0u) {
+    if (v == view.dest) { return view.colorTarget; }
+    if (levels[v] == 0u) { return view.colorA; }
+  }
   return levelColor(levels[v]);
 }
 
@@ -122,6 +129,8 @@ fn adjacent(v: u32) -> bool {
   if (ii >= sampled + degree + 2u) {
     let j = ii - sampled - degree - 2u;
     if (j >= view.pathLength) { v = 0u; } else { v = path[j]; onPath = true; }
+    // The path shows as the wave reaches it; until then the sampled twin stands.
+    if (onPath && f32(ranks[v]) > view.reveal) { v = 0u; }
   }
   var out: VOut;
   if (v == 0u || v > view.n) {
@@ -138,6 +147,8 @@ fn adjacent(v: u32) -> bool {
   if (v == view.hovered) { flags |= 2u; r = max(r * 1.3, 4.0); }
   if (flags == 0u && adjacent(v)) { flags |= 4u; r = max(r * 1.25, 4.0); }
   if (onPath) { flags |= 8u; r = max(r * 1.4, 5.0); }
+  // In a distance query everything off the path shrinks out of the way.
+  if (view.dest != 0u && !onPath && flags == 0u) { r = max(r * 0.35, 1.0); }
   // Discovery: the vertex pops to almost twice its size and settles.
   var pop = 0.0;
   if (view.mode != 0u) { pop = freshness(ranks[v], 0.5); }

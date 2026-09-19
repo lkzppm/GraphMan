@@ -614,8 +614,8 @@
 .run {
   display: inline-grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius);
   background: var(--accent);
   color: #fff;
@@ -667,8 +667,8 @@
 
 .input,
 .select {
-  height: 34px;
-  padding: 0 10px;
+  height: 28px;
+  padding: 0 8px;
   border: 1px solid var(--border-2);
   border-radius: var(--radius);
   background: var(--bg);
@@ -701,9 +701,9 @@
 .segmented {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  height: 34px;
-  padding: 3px;
+  grid-template-columns: 1fr 1fr;
+  height: 28px;
+  padding: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-3);
@@ -711,10 +711,10 @@
 
 .thumb {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
-  left: 3px;
-  width: calc((100% - 6px) / 3);
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
   border-radius: var(--radius-sm);
   background: var(--bg);
   box-shadow:
@@ -723,30 +723,43 @@
   transition: transform 0.35s var(--ease-spring);
 }
 
-.segmented[data-active='dfs'] .thumb {
+.segmented[data-active='second'] .thumb {
   transform: translateX(100%);
 }
 
-.segmented[data-active='distance'] .thumb {
-  transform: translateX(200%);
-}
-
-/* The shortest path of a distance query, vertex by vertex. */
+/* The path of a distance query: one ball per vertex, the origin in the
+   accent and the destination in green, like the canvas. */
 .path {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 6px;
-  font-size: 12px;
-  line-height: 1.4;
+  gap: 4px 5px;
+  font-size: 11px;
+  line-height: 1;
 }
 
-.pathStep {
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-2);
+.pathBall {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-2);
+  background: var(--bg);
   color: var(--fg);
+}
+
+.pathOrigin {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.pathTarget {
+  background: var(--target);
+  border-color: var(--target);
+  color: #fff;
 }
 
 .pathArrow,
@@ -758,7 +771,7 @@
 .segmentActive {
   position: relative;
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: var(--tracking);
   color: var(--fg-2);
@@ -1309,7 +1322,9 @@
 .swatchLit,
 .swatchA,
 .swatchB,
-.swatchDim {
+.swatchDim,
+.swatchOrigin,
+.swatchTarget {
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -1322,6 +1337,14 @@
 
 .swatchA {
   background: var(--level-0);
+}
+
+.swatchOrigin {
+  background: var(--accent);
+}
+
+.swatchTarget {
+  background: var(--target);
 }
 
 .swatchB {

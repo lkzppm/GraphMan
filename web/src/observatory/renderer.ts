@@ -45,6 +45,8 @@ export interface Theme {
   ring: Rgba;
   edge: Rgba;
   edgeDim: Rgba;
+  /** The destination of a distance query. */
+  target: Rgba;
 }
 
 /** What the renderer needs from a loaded graph (all indexed by vertex id). */
@@ -123,6 +125,7 @@ type ViewValues = {
   treeFade: number;
   pathLength: number;
   incident: number;
+  dest: number;
   base: Rgba;
   dim: Rgba;
   colorA: Rgba;
@@ -131,6 +134,7 @@ type ViewValues = {
   edge: Rgba;
   edgeDim: Rgba;
   edgeTree: Rgba;
+  colorTarget: Rgba;
 };
 
 const EMPTY_VIEW: ViewValues = {
@@ -153,6 +157,7 @@ const EMPTY_VIEW: ViewValues = {
   treeFade: 1,
   pathLength: 0,
   incident: 0,
+  dest: 0,
   base: [0.5, 0.5, 0.5, 1],
   dim: [0.5, 0.5, 0.5, 1],
   colorA: [0, 0, 1, 1],
@@ -161,6 +166,7 @@ const EMPTY_VIEW: ViewValues = {
   edge: [0.5, 0.5, 0.5, 0.2],
   edgeDim: [0.5, 0.5, 0.5, 0.05],
   edgeTree: [1, 1, 1, 0.9],
+  colorTarget: [0.09, 0.64, 0.29, 1],
 };
 
 /** WebGPU is missing or refused to give us a device. */
@@ -347,6 +353,7 @@ export class Renderer {
       edge: theme.edge,
       edgeDim: theme.edgeDim,
       edgeTree: [1, 1, 1, 0.95],
+      colorTarget: theme.target,
     });
   }
 
@@ -403,6 +410,7 @@ export class Renderer {
     this.viewValues.component = 0;
     this.viewValues.pathLength = 0;
     this.viewValues.incident = 0;
+    this.viewValues.dest = 0;
     this.pathVertices = null;
     this.touch(true);
 
@@ -624,14 +632,19 @@ export class Renderer {
   }
 
   /**
-   * Lights a path (vertex ids in order, `null` clears): its vertices grow
-   * with a ring and its edges are drawn in the ring colour, never dropped
-   * by the sampling. The path's edges must be edges of the graph.
+   * Shows a distance query: `target` (0 clears) is drawn in green and the
+   * origin in the accent, everything off the path shrinks, and the path
+   * (vertex ids in order, `null` when the target is not reached) grows
+   * with a ring, its edges drawn in the ring colour, never dropped by the
+   * sampling. The path's edges must be edges of the graph.
    */
-  setPath(path: Uint32Array | null) {
+  setPath(target: number, path: Uint32Array | null) {
     if (!this.path) return;
     const length = path?.length ?? 0;
-    if (length === 0 && this.viewValues.pathLength === 0) return;
+    if (length === 0 && this.viewValues.pathLength === 0 && target === this.viewValues.dest) {
+      return;
+    }
+    this.viewValues.dest = target;
     if (length > 0 && path) {
       if (this.path.size < length * 4) this.path = storage(this.gpu, length * 4, 'read');
       this.path.write(bytes(path));
@@ -1068,6 +1081,7 @@ export function readTheme(): Theme {
     ring: get('--fg', [0.09, 0.09, 0.09, 1]),
     edge: get('--edge', [0.09, 0.09, 0.09, 0.14]),
     edgeDim: get('--edge-dim', [0.09, 0.09, 0.09, 0.06]),
+    target: get('--target', [0.09, 0.64, 0.29, 1]),
   };
 }
 

@@ -94,8 +94,9 @@ interface GraphMeta {
   parseMs: number;
 }
 
-/** BFS, DFS, or a distance query (a BFS that stops at the target and lights the path). */
-type SearchKindName = 'bfs' | 'dfs' | 'distance';
+type SearchKindName = 'bfs' | 'dfs';
+/** What the panel asks for: the whole traversal, or the path to a destination. */
+type SearchMode = 'search' | 'distance';
 
 interface Search {
   kind: SearchKindName;
@@ -172,6 +173,7 @@ export default function Observatory() {
   const [hovered, setHovered] = useState(0);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [kind, setKind] = useState<SearchKindName>('bfs');
+  const [mode, setMode] = useState<SearchMode>('search');
   const [rootInput, setRootInput] = useState('');
   const [targetInput, setTargetInput] = useState('');
   const [search, setSearch] = useState<Search | null>(null);
@@ -660,33 +662,28 @@ export default function Observatory() {
       try {
         search?.result.free();
         const result = graph.search(
-          which === 'dfs' ? wasm.SearchKind.Dfs : wasm.SearchKind.Bfs,
+          which === 'bfs' ? wasm.SearchKind.Bfs : wasm.SearchKind.Dfs,
           root,
         );
         const levels = result.levels();
         const parents = result.parents();
         const ranks = result.ranks();
-        // A distance query is a BFS whose wave stops at the target; the
-        // path is read back along the parents.
+        // A distance query is the same traversal, its wave stopping when
+        // the target is discovered; the path is read back along the parents
+        // (the shortest one for a BFS, the tree path for a DFS).
         let path: Uint32Array | null = null;
         let span = result.reached;
-        if (which === 'distance' && levels[target] !== UNREACHED) {
+        if (target && levels[target] !== UNREACHED) {
           path = new Uint32Array(levels[target] + 1);
           for (let v = target, i = path.length - 1; i >= 0; i--, v = parents[v]) path[i] = v;
           span = ranks[target] + 1;
         }
-        renderer.setSearch({
-          kind: which === 'dfs' ? 'dfs' : 'bfs',
-          levels,
-          ranks,
-          parents,
-          depth: result.depth,
-        });
-        renderer.setPath(path);
+        renderer.setSearch({ kind: which, levels, ranks, parents, depth: result.depth });
+        renderer.setPath(target, path);
         setSearch({
           kind: which,
           root,
-          target: which === 'distance' ? target : 0,
+          target,
           path,
           depth: result.depth,
           reached: result.reached,
@@ -759,7 +756,7 @@ export default function Observatory() {
   const scrubToLevel = (level: number) => {
     if (!search) return;
     let rank = 0;
-    if (search.kind !== 'dfs') {
+    if (search.kind === 'bfs') {
       for (let l = 0; l <= level; l++) rank += search.levelSizes[l];
       rank -= 1;
     } else {
@@ -896,7 +893,7 @@ export default function Observatory() {
       renderer?.setSelected(g.vertex);
       // In distance mode, with an origin already chosen, a click on another
       // vertex picks the target; otherwise it picks the origin.
-      if (kind === 'distance' && rootValid && g.vertex !== root) setTargetInput(String(g.vertex));
+      if (mode === 'distance' && rootValid && g.vertex !== root) setTargetInput(String(g.vertex));
       else setRootInput(String(g.vertex));
     }
     // A click on the background (a pan that never moved) clears the selection.
@@ -989,7 +986,7 @@ export default function Observatory() {
         // BFS: a level up or down; DFS: ten vertices.
         event.preventDefault();
         const dir = event.key === 'ArrowUp' ? 1 : -1;
-        if (k.search.kind !== 'dfs') {
+        if (k.search.kind === 'bfs') {
           k.scrubToLevel(Math.max(0, Math.min(k.search.depth, k.revealLevel + dir)));
         } else {
           k.scrub(
@@ -1123,13 +1120,14 @@ export default function Observatory() {
   const targetValid =
     meta !== null && Number.isInteger(target) && target >= 1 && target <= meta.vertices;
   /** Whether the run button has what the current mode needs. */
-  const canRun = rootValid && (kind !== 'distance' || targetValid);
+  const canRun = rootValid && (mode !== 'distance' || targetValid);
   const run = () => {
-    if (canRun) runSearch(kind, root, kind === 'distance' ? target : 0);
+    if (canRun) runSearch(kind, root, mode === 'distance' ? target : 0);
   };
   const runLabel =
-    kind === 'distance'
+    mode === 'distance'
       ? t.runDistance(
+          kind.toUpperCase(),
           rootValid ? String(root) : t.theOrigin,
           targetValid ? String(target) : t.theTarget,
         )
@@ -1262,7 +1260,7 @@ export default function Observatory() {
                         setSearch(null);
                         setPlaying(false);
                         rendererRef.current?.setSearch(null);
-                        rendererRef.current?.setPath(null);
+                        rendererRef.current?.setPath(0, null);
                       }}
                     >
                       <Trash2 size={14} />
@@ -1271,27 +1269,52 @@ export default function Observatory() {
                 )
               }
             >
-              <div className={styles.field}>
-                <span className={styles.fieldLabel}>{t.traversal}</span>
-                <div
-                  className={styles.segmented}
-                  role="radiogroup"
-                  aria-label={t.traversal}
-                  data-active={kind}
-                >
-                  <span className={styles.thumb} aria-hidden="true" />
-                  {(['bfs', 'dfs', 'distance'] as const).map((which) => (
-                    <button
-                      key={which}
-                      type="button"
-                      role="radio"
-                      aria-checked={kind === which}
-                      className={kind === which ? styles.segmentActive : styles.segment}
-                      onClick={() => setKind(which)}
-                    >
-                      {which === 'distance' ? t.distanceShort : which.toUpperCase()}
-                    </button>
-                  ))}
+              <div className={styles.searchRow}>
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>{t.mode}</span>
+                  <div
+                    className={styles.segmented}
+                    role="radiogroup"
+                    aria-label={t.mode}
+                    data-active={mode === 'distance' ? 'second' : 'first'}
+                  >
+                    <span className={styles.thumb} aria-hidden="true" />
+                    {(['search', 'distance'] as const).map((which) => (
+                      <button
+                        key={which}
+                        type="button"
+                        role="radio"
+                        aria-checked={mode === which}
+                        className={mode === which ? styles.segmentActive : styles.segment}
+                        onClick={() => setMode(which)}
+                      >
+                        {which === 'search' ? t.modeSearch : t.modeDistance}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>{t.traversal}</span>
+                  <div
+                    className={styles.segmented}
+                    role="radiogroup"
+                    aria-label={t.traversal}
+                    data-active={kind === 'dfs' ? 'second' : 'first'}
+                  >
+                    <span className={styles.thumb} aria-hidden="true" />
+                    {(['bfs', 'dfs'] as const).map((which) => (
+                      <button
+                        key={which}
+                        type="button"
+                        role="radio"
+                        aria-checked={kind === which}
+                        className={kind === which ? styles.segmentActive : styles.segment}
+                        onClick={() => setKind(which)}
+                      >
+                        {which.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
               <div className={styles.searchRow}>
@@ -1315,7 +1338,7 @@ export default function Observatory() {
                     placeholder={t.originPlaceholder}
                   />
                 </div>
-                {kind === 'distance' && (
+                {mode === 'distance' && (
                   <div className={styles.field}>
                     <label htmlFor="target">{t.target}</label>
                     <input
@@ -1346,9 +1369,9 @@ export default function Observatory() {
               {search ? (
                 <div className={styles.result}>
                   <div className={styles.stats}>
-                    {search.kind === 'distance' ? (
+                    {search.target ? (
                       <Stat
-                        label={t.distance}
+                        label={search.kind === 'bfs' ? t.distance : t.pathLength}
                         value={search.path ? String(search.path.length - 1) : '∞'}
                       />
                     ) : (
@@ -1356,27 +1379,29 @@ export default function Observatory() {
                     )}
                     <Stat
                       label={
-                        search.kind === 'distance'
-                          ? t.reached
-                          : search.kind === 'bfs'
-                            ? t.eccentricity
-                            : t.depth
+                        search.target ? t.reached : search.kind === 'bfs' ? t.eccentricity : t.depth
                       }
-                      value={
-                        search.kind === 'distance'
-                          ? formatInt(search.reached)
-                          : String(search.depth)
-                      }
+                      value={search.target ? formatInt(search.reached) : String(search.depth)}
                     />
                     <Stat label={t.time} value={formatMs(search.elapsedMs)} />
                   </div>
-                  {search.kind === 'distance' && (
+                  {search.target !== 0 && (
                     <p className={`mono ${styles.path}`} aria-label={t.path}>
                       {search.path ? (
-                        pathSteps(search.path).map((step, i) => (
+                        pathSteps(search.path).map((step, i, all) => (
                           <Fragment key={i}>
                             {i > 0 && <span className={styles.pathArrow}>→</span>}
-                            <span className={step === '…' ? styles.pathGap : styles.pathStep}>
+                            <span
+                              className={
+                                step === '…'
+                                  ? styles.pathGap
+                                  : i === 0
+                                    ? `${styles.pathBall} ${styles.pathOrigin}`
+                                    : i === all.length - 1
+                                      ? `${styles.pathBall} ${styles.pathTarget}`
+                                      : styles.pathBall
+                              }
+                            >
                               {step}
                             </span>
                           </Fragment>
@@ -1386,11 +1411,11 @@ export default function Observatory() {
                       )}
                     </p>
                   )}
-                  {search.kind !== 'dfs' ? (
+                  {search.kind === 'bfs' ? (
                     <LevelProfile
                       t={t}
                       sizes={search.levelSizes}
-                      kind="bfs"
+                      kind={search.kind}
                       current={revealLevel}
                       onSelect={scrubToLevel}
                     />
@@ -1785,7 +1810,15 @@ export default function Observatory() {
             </div>
 
             <div className={styles.legend}>
-              {search ? (
+              {search?.target ? (
+                <>
+                  <span className={styles.swatchOrigin} /> {t.origin.toLowerCase()}
+                  <span className={styles.legendSep} />
+                  <span className={styles.swatchTarget} /> {t.target.toLowerCase()}
+                  <span className={styles.legendSep} />
+                  <span className={styles.swatchDim} /> {t.notReached}
+                </>
+              ) : search ? (
                 <>
                   <span className={styles.swatchA} /> {t.level(0)}
                   <span className={styles.swatchBar} />
@@ -1841,11 +1874,11 @@ export default function Observatory() {
   );
 }
 
-/** The path as labels, the middle elided past twelve vertices. */
+/** The path as labels, the middle elided past ten vertices. */
 function pathSteps(path: Uint32Array): string[] {
   const all = Array.from(path, String);
-  if (all.length <= 12) return all;
-  return [...all.slice(0, 5), '…', ...all.slice(-5)];
+  if (all.length <= 10) return all;
+  return [...all.slice(0, 4), '…', ...all.slice(-4)];
 }
 
 function Panel({
