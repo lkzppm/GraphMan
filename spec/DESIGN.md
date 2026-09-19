@@ -144,7 +144,8 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   `lib/sample.ts`), more minimal than the home. A rail fixed on the left
   and centred on the viewport lists the eight chapters as vertices on one
   vertical edge; the edge is drawn in blue down to the current stop, whose
-  vertex is filled and larger (hidden below 1240 px). One 760 px column,
+  vertex is filled and larger (hidden below 1240 px; it fades out when the
+  footer scrolls up to it and returns when the footer leaves). One 760 px column,
   centred, with no head of its own: the first chapter opens the page.
   Each chapter: mono index, title, a link to the source file
   it documents, one paragraph, the Rust example (plain usage with results

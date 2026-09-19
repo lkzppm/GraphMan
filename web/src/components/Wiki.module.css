@@ -23,6 +23,22 @@
   left: max(24px, calc((100vw - var(--container)) / 2 - 220px));
   top: 50%;
   transform: translateY(-50%);
+  transition:
+    opacity 0.35s var(--ease),
+    transform 0.35s var(--ease),
+    visibility 0s linear 0s;
+}
+
+/* Out of the footer's way: it fades and slips up a little, and cannot be
+   tabbed to while gone. */
+.rail[data-hidden] {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(calc(-50% - 12px));
+  transition:
+    opacity 0.35s var(--ease),
+    transform 0.35s var(--ease),
+    visibility 0s linear 0.35s;
 }
 
 .rail ol {
