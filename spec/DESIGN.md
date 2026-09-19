@@ -16,7 +16,9 @@ drawn for.
 2. **Colour discipline.** White, greys and `--accent` blue. Blue means
    "alive": links, buttons, the origin vertex, level 0 of a search, the
    accent edge of a surface, flagged values. A lighter blue (`--accent-2`)
-   exists only so the level ramp has a far end. No green, no red, no amber.
+   exists only so the level ramp has a far end. One green (`--target`,
+   `#16a34a`) exists for exactly one thing: the destination of a distance
+   query, on the canvas and in the path balls. No red, no amber.
 3. **Light only.** No dark theme; `color-scheme: light`. The canvas reads
    the same CSS variables the UI uses.
 4. **Alive, not busy.** Everything actionable answers the pointer: buttons
@@ -123,17 +125,23 @@ Below 900 px the hero stacks and centres.
 The observatory renders under the nav (`calc(100dvh - var(--nav-height))`)
 with no header of its own: a 340 px sidebar and the stage. The sidebar never
 scrolls; it is a column of panels (Graph: file, 2 × 2 tiles, degree
-histogram, component bar, chips; Search: a BFS / DFS / DIST segmented
-control, then origin (and, in DIST, target) with a square play button,
-then result tiles, level profile and playback (replay + slider + count;
-download and clear live in the panel header). **Distance** is a BFS whose
-wave stops the moment the target is discovered; the tiles read distance
-(`∞` when the target is in another component), reached, time, and the
-shortest path follows as mono chips (`3 → 5 → 2`, the middle elided past
-twelve). On the canvas the path's vertices grow 1.4× with the `--fg` ring
-and its edges are drawn in `--fg`, appearing with the wave and never
-dropped by the sampling; in DIST a click on the canvas picks the target
-once the origin is set;
+histogram, component bar, chips; Search: two small segmented controls
+side by side — mode (Search / Distance) and traversal (BFS / DFS) — then
+origin (and, in Distance, target) with a square play button, then result
+tiles, level profile and playback (replay + slider + count; download and
+clear live in the panel header). Controls are compact: 28 px inputs,
+segments and play button, 11 px labels. **Distance** runs the chosen
+traversal from the origin and stops its wave the moment the target is
+discovered; the tiles read distance (steps, for a DFS; `∞` when the
+target is in another component), reached, time, and the path follows as
+a row of balls (`③ → ⑤ → ②`, the origin ball in the accent, the
+destination in `--target` green, the middle elided past ten). On the
+canvas the origin is drawn in the accent and the destination in green,
+the path's vertices grow 1.4× with the `--fg` ring, its edges are drawn
+in `--fg` (appearing with the wave, never dropped by the sampling) and
+every vertex off the path shrinks to a third; the legend reads origin ·
+destination · not reached. In Distance a click on the canvas picks the
+target once the origin is set;
 Diameter: a strip along the bottom that opens as a drawer over the panels,
 its body growing with a `grid-template-rows` transition). Search results
 are three compact stats (reached, eccentricity/depth, time) over a chart

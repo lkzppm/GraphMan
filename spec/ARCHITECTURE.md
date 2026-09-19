@@ -228,9 +228,12 @@ Searches come back from wasm as typed arrays and are uploaded as-is; the
 animation is the `reveal` uniform sweeping over discovery ranks at `rate`
 ranks per second: the shaders derive each vertex's age since discovery from
 those two numbers (pop + halo on vertices, draw-in + flash on tree edges).
-A distance query is the same BFS: the path is read back along the parents
-on the CPU, the timeline spans only the ranks up to the target, and the
-path goes to the renderer (`setPath`) as a small buffer. The selected
+A distance query is the same traversal (BFS for the shortest path, DFS
+for the tree path): the path is read back along the parents on the CPU,
+the timeline spans only the ranks up to the target, and the target and
+path go to the renderer (`setPath`) — a `dest` uniform (WGSL reserves
+`target`) colours the two ends and shrinks everything off the path, the
+path itself is a small buffer. The selected
 vertex's edges and the path's are the *extras*: `[a, b]` pairs the CPU
 builds (`updateExtras`) that a third edge draw (`Kind 2`) renders after the
 plain and tree draws, so they sit on top and no stride can drop them; the
