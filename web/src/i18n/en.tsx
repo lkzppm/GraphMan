@@ -166,6 +166,8 @@ export const en = {
   studies: {
     overview: 'Overview',
     views: 'Views',
+    average: (n: string) => `mean of the ${n} graphs`,
+    of: (k: string, n: string) => `${k} of ${n}`,
     emptyTitle: 'No results yet.',
     emptyLead: (
       <>
@@ -186,8 +188,7 @@ export const en = {
       bounds: 'Takes-Kosters',
       sweep: '4-sweep',
     },
-    logScale: 'log scale',
-    graphs: {
+    facts: {
       vertices: 'vertices',
       edges: 'edges',
       degree: (min: string, max: string, mean: string, median: string) =>
@@ -197,26 +198,22 @@ export const en = {
     questions: {
       memory: {
         title: 'Memory per representation',
-        note: 'process footprint after loading the graph',
         needs: (bytes: string) => `would need ${bytes}`,
       },
-      bfs: { title: 'Mean time of one BFS', note: '100 searches from distinct vertices' },
-      dfs: { title: 'Mean time of one DFS', note: '100 searches from distinct vertices' },
+      bfs: { title: 'Mean time of one BFS' },
+      dfs: { title: 'Mean time of one DFS' },
       parents: {
         title: 'Parents of 10, 20 and 30',
-        note: 'BFS and DFS trees rooted at 1, 2 and 3',
         root: (r: string) => `root ${r}`,
         vertex: (v: string) => `vertex ${v}`,
         level: 'level',
+        meanLevel: 'mean level',
+        reached: 'reached',
         unreached: 'another component',
       },
-      distances: {
-        title: 'Distances (10, 20), (10, 30), (20, 30)',
-        note: 'a dashed side joins two components',
-      },
+      distances: { title: 'Distances (10, 20), (10, 30), (20, 30)' },
       components: {
         title: 'Connected components',
-        note: 'the largest component as a share of the graph',
         count: (n: string) => `${n} components`,
         one: '1 component',
         largest: (n: string) => `largest ${n}`,
@@ -224,12 +221,11 @@ export const en = {
       },
       diameter: {
         title: 'Diameter',
-        note: 'BFS runs per method; ≥ is a lower bound',
         bfs: (count: string) => `${count} BFS`,
         stopped: (elapsed: string) => `stopped at ${elapsed}`,
+        exact: 'exact',
       },
     },
-    source: 'Every table, in studies/RESULTS.md',
   },
 
   observatory: {
