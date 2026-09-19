@@ -55,7 +55,7 @@ npm install
 npm run dev          # builds the wasm + syncs data, then http://localhost:3000
 npm run build        # same, then `next build`
 npm run wasm         # only rebuild crates/graphman-wasm → src/wasm + public/wasm
-npm run data         # only copy studies/results.json → src/data
+npm run data         # only copy studies/results.json and the wiki examples → src/data
 ```
 
 `npm run wasm` needs `cargo` with the `wasm32-unknown-unknown` target

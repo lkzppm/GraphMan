@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from 'react';
 import { useT } from '@/i18n/LocaleProvider';
+import { SAMPLE_EDGES, SAMPLE_POSITIONS } from '@/lib/sample';
 import styles from './Representations.module.css';
 
 /* One small graph (five vertices, six edges) encoded the three ways the
@@ -13,25 +14,9 @@ import styles from './Representations.module.css';
    figure is hovered. */
 
 const N = 5;
-
-/** Edges as [min, max], sorted and deduped: what the parser hands the builders. */
-const EDGES: [number, number][] = [
-  [1, 2],
-  [1, 3],
-  [2, 3],
-  [2, 4],
-  [3, 5],
-  [4, 5],
-];
-
-/** Where each vertex sits in the drawing (a 200 × 176 box). */
-const POSITIONS: [number, number][] = [
-  [100, 26],
-  [30, 78],
-  [170, 78],
-  [58, 152],
-  [142, 152],
-];
+const EDGES = SAMPLE_EDGES;
+/** Where each vertex sits in the drawing (a 200 × 176 box), 0-based here. */
+const POSITIONS = SAMPLE_POSITIONS.slice(1);
 
 /** Ascending neighbour rows, as every representation keeps them. */
 const ROWS: number[][] = Array.from({ length: N }, () => []);

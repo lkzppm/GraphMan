@@ -1,0 +1,54 @@
+.figure {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.edge {
+  stroke: var(--border-2);
+  stroke-width: 1.5;
+  transition:
+    stroke 0.3s var(--ease),
+    stroke-width 0.3s var(--ease);
+}
+
+.edge[data-kind='tree'] {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.edge[data-kind='path'] {
+  stroke: var(--accent);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+}
+
+.vertex circle {
+  stroke: var(--border-2);
+  stroke-width: 1.5;
+  transition:
+    fill 0.3s var(--ease),
+    stroke 0.3s var(--ease);
+}
+
+.vertex circle[data-coloured] {
+  stroke: none;
+}
+
+.vertex[data-marked] circle {
+  /* Visible on white and on the blues alike. */
+  stroke: var(--level-0);
+  stroke-width: 3;
+}
+
+.vertex text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--fg-2);
+  pointer-events: none;
+}
+
+.vertex text[data-light] {
+  fill: #fff;
+  font-weight: 500;
+}
