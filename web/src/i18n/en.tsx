@@ -164,13 +164,8 @@ export const en = {
   },
 
   studies: {
-    title: 'Measured, not estimated.',
-    lead: (
-      <>
-        Every number comes from <code className="mono">graphman study</code> on the six course
-        graphs; times exclude reading and writing.
-      </>
-    ),
+    overview: 'Overview',
+    views: 'Views',
     emptyTitle: 'No results yet.',
     emptyLead: (
       <>

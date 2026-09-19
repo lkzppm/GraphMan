@@ -171,30 +171,42 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   and three lines of the representations chapter, not a chapter of its
   own, and the design decisions belong to the presentation.
 - **Case studies** (`components/Studies.tsx`, `/studies`): the seven
-  questions of the assignment and nothing else, one chapter each in the
-  library's chapter voice (mono index, title, a grey note on the right,
-  no prose), everything read from `studies/results.json`. Under the title
-  and a one-line lead, the six graphs sit as vertices on one edge, each
+  questions of the assignment and nothing else, no title and no prose,
+  everything read from `studies/results.json`. A menu stuck under the
+  site's nav (blurred white, a hairline under it) lists the views as
+  vertices on one edge: `∗ Geral` first and the default, then the six
+  graphs; the current view's vertex is filled blue, and the view is kept
+  in the hash (`#geral`, `#grafo-3`) so a graph can be linked to.
+  Every bar scale is computed over all six graphs and shared by every
+  view, so a bar's length means the same wherever it is.
+  The overview compares the graphs: the six as vertices on one edge, each
   ball's radius the vertex count on a log scale (16 px at 10 000, 9 px
   more per decade), with the output file's facts under it (vertices,
-  edges, degree min/max/mean/median, loops and duplicates dropped).
-  Then: memory as three bars per graph on a log scale (list in the accent,
-  CSR in the navy, matrix in the light blue; a dashed outline where the
-  matrix was refused, labelled with what it would need); mean BFS and mean
-  DFS as the same bars on one shared scale, in two chapters; the parents
-  of 10, 20 and 30 behind a picker (the six graphs as vertices on an edge,
-  the chosen one filled blue) showing two accent-washed tables, BFS and
-  DFS, parent over level, a dot for another component; the three distances
-  as a triangle per graph (10 on top, 20 and 30 below), each side labelled
-  in a white pill, dashed and grey with `∞` across components; the
-  components as one bar per graph, the largest component's share in blue
-  with count, largest and smallest written beside it; the diameter as the
-  BFS runs each method spent (brute force navy, Takes-Kosters accent, iFUB
-  mid blue, 4-sweep light), the answer in blue when certified and grey with
-  `≥` when a bound, a dashed bar and `stopped at` where the budget ran out.
-  Bars grow from nothing when their chapter comes into view. Below 600 px
-  the values drop under their bars and the picker wraps. A link to
-  `studies/RESULTS.md` closes the page.
+  edges, degree min/max/mean/median, loops and duplicates dropped); then
+  one chapter per question in the library's chapter voice (mono index,
+  title, a grey note on the right): memory as three bars per graph on a
+  log scale (list in the accent, CSR in the navy, matrix in the light
+  blue; a dashed outline where the matrix was refused, labelled with what
+  it would need); mean BFS and mean DFS as the same bars on one shared
+  scale, in two chapters; the parents of 10, 20 and 30 behind a picker
+  showing two accent-washed tables, BFS and DFS, parent over level, a dot
+  for another component; the three distances as a triangle per graph (10
+  on top, 20 and 30 below), each side labelled in a white pill, dashed and
+  grey with `∞` across components; the components as one bar per graph,
+  the largest component's share in blue with count, largest and smallest
+  beside it; the diameter as the BFS runs each method spent (brute force
+  navy, Takes-Kosters accent, iFUB mid blue, 4-sweep light), the answer
+  in blue when certified and grey with `≥` when a bound, a dashed bar and
+  `stopped at` where the budget ran out. A link to `studies/RESULTS.md`
+  closes it.
+  A graph's view puts its seven answers on one screen: its name with the
+  facts on the same line, then two columns of compact chapters (17 px
+  titles, no notes, no legends): memory, BFS, DFS and diameter on the
+  left; the two parent tables stacked (level inline) and, under them,
+  the distance triangle beside the components bar on the right.
+  Bars grow from nothing when their chapter comes into view. Below 900 px
+  the columns stack and the menu wraps; below 600 px the values drop under
+  their bars.
 - **Footer**: a small graph. One 1.5 px edge runs across the top and each
   of the four columns (project, stack, author, course) hangs from a 12 px
   vertex on it; hovering a column fills its vertex blue. The author column
