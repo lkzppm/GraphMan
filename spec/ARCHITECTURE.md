@@ -232,8 +232,12 @@ A distance query is the same traversal (BFS for the shortest path, DFS
 for the tree path): the path is read back along the parents on the CPU,
 the timeline spans only the ranks up to the target, and the target and
 path go to the renderer (`setPath`) — a `dest` uniform (WGSL reserves
-`target`) colours the two ends and shrinks everything off the path, the
-path itself is a small buffer. The selected
+`target`) colours the two ends and shrinks everything off the path, a
+`mute` uniform greys the rest of the traversal on request, and the path
+itself is a small buffer read by the node draw (its vertices as extra
+instances) and by `PATH_SHADER`, one instanced quad per edge, drawn
+after the edge samples so it sits on top. The sidebar's counts for a
+distance query are cut at the target's discovery rank. The selected
 vertex's edges and the path's are the *extras*: `[a, b]` pairs the CPU
 builds (`updateExtras`) that a third edge draw (`Kind 2`) renders after the
 plain and tree draws, so they sit on top and no stride can drop them; the

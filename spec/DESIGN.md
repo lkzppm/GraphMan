@@ -131,17 +131,21 @@ origin (and, in Distance, target) with a square play button, then result
 tiles, level profile and playback (replay + slider + count; download and
 clear live in the panel header). Controls are compact: 28 px inputs,
 segments and play button, 11 px labels. **Distance** runs the chosen
-traversal from the origin and stops its wave the moment the target is
-discovered; the tiles read distance (steps, for a DFS; `∞` when the
-target is in another component), reached, time, and the path follows as
-a row of balls (`③ → ⑤ → ②`, the origin ball in the accent, the
-destination in `--target` green, the middle elided past ten). On the
+traversal from the origin and stops it the moment the target is
+discovered: the tiles read distance (steps, for a DFS; `∞` when the
+target is in another component), reached and time, and the level profile
+or depth trace cover only what was visited until then. The path floats
+at the top centre of the canvas as a row of balls (`③ → ⑤ → ②`, coloured
+from the origin's accent to the destination's `--target` green, the
+middle elided past ten) with two icon buttons beside it: grey out
+everything but the path (a toggle), and fit the path to the view. On the
 canvas the origin is drawn in the accent and the destination in green,
-the path's vertices grow 1.4× with the `--fg` ring, its edges are drawn
-in `--fg` (appearing with the wave, never dropped by the sampling) and
-every vertex off the path shrinks to a third; the legend reads origin ·
-destination · not reached. In Distance a click on the canvas picks the
-target once the origin is set;
+the path's vertices grow 1.6× with the `--fg` ring and wear the same
+gradient, its edges are thick gradient segments drawn over everything
+(appearing with the wave, never dropped by the sampling), every vertex
+off the path shrinks to a third, and the view frames the path when it is
+found; the legend reads origin · destination · not reached. In Distance a
+click on the canvas picks the target once the origin is set;
 Diameter: a strip along the bottom that opens as a drawer over the panels,
 its body growing with a `grid-template-rows` transition). Search results
 are three compact stats (reached, eccentricity/depth, time) over a chart

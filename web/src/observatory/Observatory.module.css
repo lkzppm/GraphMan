@@ -727,13 +727,21 @@
   transform: translateX(100%);
 }
 
-/* The path of a distance query: one ball per vertex, the origin in the
-   accent and the destination in green, like the canvas. */
+/* The path of a distance query, floating over the canvas: one ball per
+   vertex, coloured from the origin's blue to the destination's green. */
 .path {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 4px 5px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   font-size: 11px;
   line-height: 1;
 }
@@ -745,20 +753,6 @@
   height: 22px;
   padding: 0 6px;
   border-radius: 999px;
-  border: 1px solid var(--border-2);
-  background: var(--bg);
-  color: var(--fg);
-}
-
-.pathOrigin {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.pathTarget {
-  background: var(--target);
-  border-color: var(--target);
   color: #fff;
 }
 
@@ -922,6 +916,20 @@
   left: 14px;
   flex-direction: column;
   align-items: flex-start;
+}
+
+/* Centred with auto margins (the rise animation ends on `transform: none`). */
+.floatingTopCenter {
+  top: 14px;
+  left: 70px;
+  right: 130px;
+  justify-content: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.floatingTopCenter > * {
+  pointer-events: auto;
 }
 
 /* The controls popover under the help button. */

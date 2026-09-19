@@ -32,7 +32,14 @@ import {
   type Target,
 } from 'vgpu';
 import { UNREACHED } from '@/lib/graphman';
-import { COMPOSITE_SHADER, EDGE_SHADER, MORPH_SHADER, NODE_SHADER, SIM_SHADER } from './shaders';
+import {
+  COMPOSITE_SHADER,
+  EDGE_SHADER,
+  MORPH_SHADER,
+  NODE_SHADER,
+  PATH_SHADER,
+  SIM_SHADER,
+} from './shaders';
 
 export type Rgba = [number, number, number, number];
 
@@ -126,6 +133,7 @@ type ViewValues = {
   pathLength: number;
   incident: number;
   dest: number;
+  mute: number;
   base: Rgba;
   dim: Rgba;
   colorA: Rgba;
@@ -158,6 +166,7 @@ const EMPTY_VIEW: ViewValues = {
   pathLength: 0,
   incident: 0,
   dest: 0,
+  mute: 0,
   base: [0.5, 0.5, 0.5, 1],
   dim: [0.5, 0.5, 0.5, 1],
   colorA: [0, 0, 1, 1],
@@ -187,6 +196,8 @@ export class Renderer {
   private edges: Draw;
   private treeEdges: Draw;
   private extraEdges: Draw;
+  /** The path of a distance query, as thick segments over everything. */
+  private pathEdges: Draw;
   private composite: Effect;
   private sim: Compute;
   private morph: Compute;
@@ -301,6 +312,12 @@ export class Renderer {
       blend: 'premultiplied',
       geometry: { topology: 'line-list' },
       set: { kind: uniforms(gpu, { tree: 2 }) },
+    });
+    this.pathEdges = draw(gpu, {
+      shader: PATH_SHADER,
+      label: 'path',
+      blend: 'premultiplied',
+      vertices: 6, // one quad per segment
     });
     this.composite = effect(gpu, COMPOSITE_SHADER, { label: 'composite', blend: 'premultiplied' });
     this.sim = compute(gpu, SIM_SHADER, { label: 'layout' });
@@ -432,6 +449,7 @@ export class Renderer {
     this.edges.set(edgeBindings);
     this.treeEdges.set(edgeBindings);
     this.extraEdges.set(edgeBindings);
+    this.pathEdges.set({ view: this.view, ranks: this.ranks, path: this.path });
     this.nodes.set({
       view: this.view,
       levels: this.levels,
@@ -649,6 +667,7 @@ export class Renderer {
       if (this.path.size < length * 4) this.path = storage(this.gpu, length * 4, 'read');
       this.path.write(bytes(path));
       this.nodes.set({ path: this.path });
+      this.pathEdges.set({ path: this.path });
     }
     this.pathVertices = length > 0 ? path : null;
     this.viewValues.pathLength = length;
@@ -657,25 +676,17 @@ export class Renderer {
   }
 
   /**
-   * Rebuilds the extra edge segments the edge draw appends to its sample:
-   * the selected vertex's edges (from the CSR row), then the path's.
+   * Rebuilds the extra edge segments drawn over the sample: the selected
+   * vertex's edges, from the CSR row.
    */
   private updateExtras() {
     if (!this.extras) return;
     const v = this.viewValues.selected;
     const degree = this.selectedDegree;
-    const path = this.pathVertices;
-    const pathSegments = path ? Math.max(0, path.length - 1) : 0;
-    const pairs = new Uint32Array(Math.max(1, degree + pathSegments) * 2);
+    const pairs = new Uint32Array(Math.max(1, degree) * 2);
     for (let i = 0; i < degree; i++) {
       pairs[2 * i] = v;
       pairs[2 * i + 1] = this.csrTargets[this.csrOffsets[v] + i];
-    }
-    if (path) {
-      for (let i = 0; i < pathSegments; i++) {
-        pairs[2 * (degree + i)] = path[i];
-        pairs[2 * (degree + i) + 1] = path[i + 1];
-      }
     }
     if (this.extras.size < pairs.byteLength) {
       this.extras = storage(this.gpu, pairs.byteLength, 'read');
@@ -683,6 +694,14 @@ export class Renderer {
     this.extras.write(bytes(pairs));
     this.extraEdges.set({ extras: this.extras });
     this.viewValues.incident = degree;
+  }
+
+  /** In a distance query, greys everything but the path (the traversal's colours otherwise). */
+  setPathOnly(on: boolean) {
+    const mute = on ? 1 : 0;
+    if (mute === this.viewValues.mute) return;
+    this.viewValues.mute = mute;
+    this.touch(true);
   }
 
   /** Lights one component (its id, 1 = largest) and dims the rest; 0 shows all. */
@@ -706,7 +725,7 @@ export class Renderer {
     this.touch(true);
   }
 
-  /** Edges of the lit path: extra segments after the sample and the neighbourhood. */
+  /** Edges of the lit path, one thick segment each. */
   private get pathSegments(): number {
     return Math.max(0, this.viewValues.pathLength - 1);
   }
@@ -910,6 +929,7 @@ export class Renderer {
         this.edges.set({ positions: current });
         this.treeEdges.set({ positions: current });
         this.extraEdges.set({ positions: current });
+        this.pathEdges.set({ positions: current });
         this.nodes.set({ positions: current });
       }
       // While the picture keeps moving draw a sample of the edges and of
@@ -934,8 +954,10 @@ export class Renderer {
           if (this.viewValues.mode !== 0) {
             pass.draw(this.treeEdges, { vertices: Math.ceil(this.edgeCount / stride[1]) * 2 });
           }
-          const extras = this.selectedDegree + this.pathSegments;
-          if (extras > 0) pass.draw(this.extraEdges, { vertices: extras * 2 });
+          if (this.selectedDegree > 0) {
+            pass.draw(this.extraEdges, { vertices: this.selectedDegree * 2 });
+          }
+          if (this.pathSegments > 0) pass.draw(this.pathEdges, { instances: this.pathSegments });
         });
       }
       this.dirty = false;

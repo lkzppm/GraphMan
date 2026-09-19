@@ -11,6 +11,7 @@ import {
   FlaskConical,
   Focus,
   Hash,
+  Highlighter,
   Magnet,
   Orbit,
   Rows3,
@@ -24,6 +25,7 @@ import {
   RefreshCw,
   RotateCcw,
   Ruler,
+  Scan,
   Trash2,
   Upload,
   X,
@@ -148,6 +150,8 @@ const LAYOUTS: { id: LayoutId; icon: ReactNode }[] = [
 
 /** How long a layout change takes to slide into place. */
 const MORPH_MS = 700;
+/** Share of the view a framed path fills (the path label floats over the top). */
+const PATH_FILL = 0.62;
 /** Pointer travel (CSS px) under which a press is a click, not a drag or a pan. */
 const CLICK_SLOP = 4;
 
@@ -176,6 +180,8 @@ export default function Observatory() {
   const [mode, setMode] = useState<SearchMode>('search');
   const [rootInput, setRootInput] = useState('');
   const [targetInput, setTargetInput] = useState('');
+  /** In a distance query, grey everything but the path. */
+  const [pathOnly, setPathOnly] = useState(false);
   const [search, setSearch] = useState<Search | null>(null);
   const [reveal, setReveal] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -320,9 +326,9 @@ export default function Observatory() {
     [applyCamera],
   );
 
-  /** Glides the camera to frame the vertices `keep` accepts. */
+  /** Glides the camera to frame the vertices `keep` accepts, filling `fill` of the view. */
   const fitVertices = useCallback(
-    (keep: (v: number) => boolean) => {
+    (keep: (v: number) => boolean, fill = 0.8) => {
       const renderer = rendererRef.current;
       if (!renderer || !renderer.hasGraph) return;
       const positions = renderer.positionsMirror;
@@ -344,7 +350,7 @@ export default function Observatory() {
       // A lone origin still gets a neighbourhood, not a giant disc.
       const bw = Math.max(maxX - minX, 220);
       const bh = Math.max(maxY - minY, 220);
-      const zoom = Math.min((w * 0.8) / bw, (h * 0.8) / bh, 6);
+      const zoom = Math.min((w * fill) / bw, (h * fill) / bh, 6);
       glideTo({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, zoom });
     },
     [glideTo],
@@ -364,7 +370,7 @@ export default function Observatory() {
    * or only those of the vertices `keep` accepts, gliding.
    */
   const glideToFit = useCallback(
-    (positions: Float32Array, keep?: (v: number) => boolean) => {
+    (positions: Float32Array, keep?: (v: number) => boolean, fill = 0.86) => {
       const renderer = rendererRef.current;
       if (!renderer) return;
       let minX = Infinity;
@@ -387,7 +393,7 @@ export default function Observatory() {
       glideTo({
         x: (minX + maxX) / 2,
         y: (minY + maxY) / 2,
-        zoom: Math.min((w * 0.86) / bw, (h * 0.86) / bh, 40),
+        zoom: Math.min((w * fill) / bw, (h * fill) / bh, 40),
       });
     },
     [glideTo],
@@ -397,11 +403,12 @@ export default function Observatory() {
    * Rearranges the graph: the level layouts start at `root`, the force
    * layout returns to the initial placement and warms the simulation up
    * again. Vertices slide to their new places and the view follows: the
-   * whole graph, or with `frame: 'component'` only the root's component
-   * (a new search origin re-arranges that one, the rest just makes room).
+   * whole graph, with `frame: 'component'` only the root's component (a new
+   * search origin re-arranges that one, the rest just makes room), or a
+   * given set of vertices (a distance query's path).
    */
   const applyLayout = useCallback(
-    (id: LayoutId, root: number, frame: 'graph' | 'component' = 'graph') => {
+    (id: LayoutId, root: number, frame: 'graph' | 'component' | Set<number> = 'graph') => {
       const wasm = wasmRef.current;
       const graph = graphRef.current;
       const renderer = rendererRef.current;
@@ -433,7 +440,16 @@ export default function Observatory() {
       autoFit.current = false;
       const labels = metaRef.current?.componentLabels;
       const home = labels && frame === 'component' ? labels[root] : 0;
-      glideToFit(positions, labels && home ? (v) => labels[v] === home : undefined);
+      // A path gets more room around it: the label floats over the top of the view.
+      glideToFit(
+        positions,
+        frame instanceof Set
+          ? (v) => frame.has(v)
+          : labels && home
+            ? (v) => labels[v] === home
+            : undefined,
+        frame instanceof Set ? PATH_FILL : undefined,
+      );
     },
     [glideToFit],
   );
@@ -445,7 +461,10 @@ export default function Observatory() {
   useEffect(() => {
     if (!searchRoot) return;
     const id = layoutRef.current;
-    if (id === 'radial' || id === 'layered') applyLayout(id, searchRoot, 'component');
+    if (id !== 'radial' && id !== 'layered') return;
+    // A distance query frames its path; a search frames the origin's component.
+    const path = searchRef.current?.path;
+    applyLayout(id, searchRoot, path ? new Set(path) : 'component');
   }, [searchRoot, applyLayout]);
 
   /** Lights component `c` (0 clears), frames it, and hands the arrow keys to it. */
@@ -652,6 +671,9 @@ export default function Observatory() {
 
   // ---- searches --------------------------------------------------------------
 
+  const followRef = useRef(false);
+  followRef.current = follow;
+
   const runSearch = useCallback(
     (which: SearchKindName, root: number, target = 0) => {
       const wasm = wasmRef.current;
@@ -673,26 +695,43 @@ export default function Observatory() {
         // (the shortest one for a BFS, the tree path for a DFS).
         let path: Uint32Array | null = null;
         let span = result.reached;
+        let order = result.order();
+        let levelSizes = result.levelSizes();
+        let depth = result.depth;
         if (target && levels[target] !== UNREACHED) {
           path = new Uint32Array(levels[target] + 1);
           for (let v = target, i = path.length - 1; i >= 0; i--, v = parents[v]) path[i] = v;
+          // The traversal stops at the target: the sidebar describes only
+          // what was visited until then.
           span = ranks[target] + 1;
+          order = order.slice(0, span);
+          depth = 0;
+          for (let r = 0; r < span; r++) depth = Math.max(depth, levels[order[r]]);
+          levelSizes = new Uint32Array(depth + 1);
+          for (let r = 0; r < span; r++) levelSizes[levels[order[r]]] += 1;
         }
-        renderer.setSearch({ kind: which, levels, ranks, parents, depth: result.depth });
+        renderer.setSearch({ kind: which, levels, ranks, parents, depth });
         renderer.setPath(target, path);
+        renderer.setPathOnly(pathOnly);
+        // A path found is the picture: frame it (unless the camera is following the wave).
+        if (path && !followRef.current) {
+          const onPath = new Set(path);
+          autoFit.current = false;
+          fitVertices((v) => onPath.has(v), PATH_FILL);
+        }
         setSearch({
           kind: which,
           root,
           target,
           path,
-          depth: result.depth,
-          reached: result.reached,
+          depth,
+          reached: span,
           span,
           elapsedMs: result.elapsedMs,
           levels,
           parents,
-          levelSizes: result.levelSizes(),
-          order: result.order(),
+          levelSizes,
+          order,
           ranks,
           result,
         });
@@ -707,7 +746,7 @@ export default function Observatory() {
         setNotice(error instanceof Error ? error.message : String(error));
       }
     },
-    [search],
+    [search, fitVertices, pathOnly],
   );
 
   // The reveal animation: discovery ranks light up over a duration that
@@ -738,9 +777,6 @@ export default function Observatory() {
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [playing, search, fitDiscovered]);
-
-  const followRef = useRef(false);
-  followRef.current = follow;
 
   const scrub = (rank: number) => {
     keysTarget.current = 'search';
@@ -1385,32 +1421,6 @@ export default function Observatory() {
                     />
                     <Stat label={t.time} value={formatMs(search.elapsedMs)} />
                   </div>
-                  {search.target !== 0 && (
-                    <p className={`mono ${styles.path}`} aria-label={t.path}>
-                      {search.path ? (
-                        pathSteps(search.path).map((step, i, all) => (
-                          <Fragment key={i}>
-                            {i > 0 && <span className={styles.pathArrow}>→</span>}
-                            <span
-                              className={
-                                step === '…'
-                                  ? styles.pathGap
-                                  : i === 0
-                                    ? `${styles.pathBall} ${styles.pathOrigin}`
-                                    : i === all.length - 1
-                                      ? `${styles.pathBall} ${styles.pathTarget}`
-                                      : styles.pathBall
-                              }
-                            >
-                              {step}
-                            </span>
-                          </Fragment>
-                        ))
-                      ) : (
-                        <span className={styles.pathGap}>{t.noPath}</span>
-                      )}
-                    </p>
-                  )}
                   {search.kind === 'bfs' ? (
                     <LevelProfile
                       t={t}
@@ -1700,6 +1710,60 @@ export default function Observatory() {
                 </div>
               )}
             </div>
+
+            {/* The path of a distance query, top centre */}
+            {search?.target !== 0 && search && (
+              <div className={`${styles.floating} ${styles.floatingTopCenter}`}>
+                {search.path && (
+                  <div className={styles.cluster}>
+                    <IconButton
+                      label={pathOnly ? t.colourSearch : t.pathOnly}
+                      pressed={pathOnly}
+                      onClick={() => {
+                        setPathOnly(!pathOnly);
+                        rendererRef.current?.setPathOnly(!pathOnly);
+                      }}
+                    >
+                      <Highlighter size={15} />
+                    </IconButton>
+                    <IconButton
+                      label={t.fitPath}
+                      onClick={() => {
+                        const onPath = new Set(search.path);
+                        autoFit.current = false;
+                        fitVertices((v) => onPath.has(v), PATH_FILL);
+                      }}
+                    >
+                      <Scan size={15} />
+                    </IconButton>
+                  </div>
+                )}
+                <p className={`mono ${styles.path}`} aria-label={t.path}>
+                  {search.path ? (
+                    pathSteps(search.path).map((step, i, all) => (
+                      <Fragment key={i}>
+                        {i > 0 && <span className={styles.pathArrow}>→</span>}
+                        {step === '…' ? (
+                          <span className={styles.pathGap}>{step}</span>
+                        ) : (
+                          <span
+                            className={styles.pathBall}
+                            style={{
+                              // The canvas gradient: the origin's blue to the destination's green.
+                              background: `color-mix(in srgb, var(--accent) ${Math.round(100 - (100 * i) / Math.max(all.length - 1, 1))}%, var(--target))`,
+                            }}
+                          >
+                            {step}
+                          </span>
+                        )}
+                      </Fragment>
+                    ))
+                  ) : (
+                    <span className={styles.pathGap}>{t.noPath}</span>
+                  )}
+                </p>
+              </div>
+            )}
 
             {/* Layout tools, top right */}
             <div ref={layoutMenuRef} className={`${styles.floating} ${styles.floatingTopRight}`}>
