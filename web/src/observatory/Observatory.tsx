@@ -370,7 +370,7 @@ export default function Observatory() {
    * or only those of the vertices `keep` accepts, gliding.
    */
   const glideToFit = useCallback(
-    (positions: Float32Array, keep?: (v: number) => boolean, fill = 0.86) => {
+    (positions: Float32Array, keep?: (v: number) => boolean) => {
       const renderer = rendererRef.current;
       if (!renderer) return;
       let minX = Infinity;
@@ -393,7 +393,7 @@ export default function Observatory() {
       glideTo({
         x: (minX + maxX) / 2,
         y: (minY + maxY) / 2,
-        zoom: Math.min((w * fill) / bw, (h * fill) / bh, 40),
+        zoom: Math.min((w * 0.86) / bw, (h * 0.86) / bh, 40),
       });
     },
     [glideTo],
@@ -403,12 +403,11 @@ export default function Observatory() {
    * Rearranges the graph: the level layouts start at `root`, the force
    * layout returns to the initial placement and warms the simulation up
    * again. Vertices slide to their new places and the view follows: the
-   * whole graph, with `frame: 'component'` only the root's component (a new
-   * search origin re-arranges that one, the rest just makes room), or a
-   * given set of vertices (a distance query's path).
+   * whole graph, or with `frame: 'component'` only the root's component
+   * (a new search origin re-arranges that one, the rest just makes room).
    */
   const applyLayout = useCallback(
-    (id: LayoutId, root: number, frame: 'graph' | 'component' | Set<number> = 'graph') => {
+    (id: LayoutId, root: number, frame: 'graph' | 'component' = 'graph') => {
       const wasm = wasmRef.current;
       const graph = graphRef.current;
       const renderer = rendererRef.current;
@@ -440,16 +439,7 @@ export default function Observatory() {
       autoFit.current = false;
       const labels = metaRef.current?.componentLabels;
       const home = labels && frame === 'component' ? labels[root] : 0;
-      // A path gets more room around it: the label floats over the top of the view.
-      glideToFit(
-        positions,
-        frame instanceof Set
-          ? (v) => frame.has(v)
-          : labels && home
-            ? (v) => labels[v] === home
-            : undefined,
-        frame instanceof Set ? PATH_FILL : undefined,
-      );
+      glideToFit(positions, labels && home ? (v) => labels[v] === home : undefined);
     },
     [glideToFit],
   );
@@ -461,10 +451,7 @@ export default function Observatory() {
   useEffect(() => {
     if (!searchRoot) return;
     const id = layoutRef.current;
-    if (id !== 'radial' && id !== 'layered') return;
-    // A distance query frames its path; a search frames the origin's component.
-    const path = searchRef.current?.path;
-    applyLayout(id, searchRoot, path ? new Set(path) : 'component');
+    if (id === 'radial' || id === 'layered') applyLayout(id, searchRoot, 'component');
   }, [searchRoot, applyLayout]);
 
   /** Lights component `c` (0 clears), frames it, and hands the arrow keys to it. */
@@ -713,12 +700,6 @@ export default function Observatory() {
         renderer.setSearch({ kind: which, levels, ranks, parents, depth });
         renderer.setPath(target, path);
         renderer.setPathOnly(pathOnly);
-        // A path found is the picture: frame it (unless the camera is following the wave).
-        if (path && !followRef.current) {
-          const onPath = new Set(path);
-          autoFit.current = false;
-          fitVertices((v) => onPath.has(v), PATH_FILL);
-        }
         setSearch({
           kind: which,
           root,
@@ -746,7 +727,7 @@ export default function Observatory() {
         setNotice(error instanceof Error ? error.message : String(error));
       }
     },
-    [search, fitVertices, pathOnly],
+    [search, pathOnly],
   );
 
   // The reveal animation: discovery ranks light up over a duration that

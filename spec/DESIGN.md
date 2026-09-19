@@ -143,8 +143,9 @@ canvas the origin is drawn in the accent and the destination in green,
 the path's vertices grow 1.6× with the `--fg` ring and wear the same
 gradient, its edges are thick gradient segments drawn over everything
 (appearing with the wave, never dropped by the sampling), every vertex
-off the path shrinks to a third, and the view frames the path when it is
-found; the legend reads origin · destination · not reached. In Distance a
+off the path shrinks to a third (the fit button frames the path; the
+view otherwise stays where it was); the legend reads origin ·
+destination · not reached. In Distance a
 click on the canvas picks the target once the origin is set;
 Diameter: a strip along the bottom that opens as a drawer over the panels,
 its body growing with a `grid-template-rows` transition). Search results
