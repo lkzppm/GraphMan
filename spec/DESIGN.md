@@ -98,7 +98,7 @@ copies in `globals.css` are only reachable from global classes.
 One sticky nav, like Golem's: the mark + wordmark on the left is the home
 link (the wordmark turns blue on the home page), then a tab per other page
 — **Observatory** (`/observatory`), **Library** (`/library`, the
-interactive manual), **Case studies** (`/studies`, the tables), **Presentation**
+interactive manual), **Case studies** (`/studies`, the seven questions drawn), **Presentation**
 (`/presentation`, the five slides) — then, on the right, the language
 switch (two mono tags, `pt` · `en`, the current one in the blue-muted
 pill) and a bordered GitHub button. The current tab is marked in blue:
@@ -170,6 +170,31 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   (CLI). The memory budget is a paragraph
   and three lines of the representations chapter, not a chapter of its
   own, and the design decisions belong to the presentation.
+- **Case studies** (`components/Studies.tsx`, `/studies`): the seven
+  questions of the assignment and nothing else, one chapter each in the
+  library's chapter voice (mono index, title, a grey note on the right,
+  no prose), everything read from `studies/results.json`. Under the title
+  and a one-line lead, the six graphs sit as vertices on one edge, each
+  ball's radius the vertex count on a log scale (16 px at 10 000, 9 px
+  more per decade), with the output file's facts under it (vertices,
+  edges, degree min/max/mean/median, loops and duplicates dropped).
+  Then: memory as three bars per graph on a log scale (list in the accent,
+  CSR in the navy, matrix in the light blue; a dashed outline where the
+  matrix was refused, labelled with what it would need); mean BFS and mean
+  DFS as the same bars on one shared scale, in two chapters; the parents
+  of 10, 20 and 30 behind a picker (the six graphs as vertices on an edge,
+  the chosen one filled blue) showing two accent-washed tables, BFS and
+  DFS, parent over level, a dot for another component; the three distances
+  as a triangle per graph (10 on top, 20 and 30 below), each side labelled
+  in a white pill, dashed and grey with `∞` across components; the
+  components as one bar per graph, the largest component's share in blue
+  with count, largest and smallest written beside it; the diameter as the
+  BFS runs each method spent (brute force navy, Takes-Kosters accent, iFUB
+  mid blue, 4-sweep light), the answer in blue when certified and grey with
+  `≥` when a bound, a dashed bar and `stopped at` where the budget ran out.
+  Bars grow from nothing when their chapter comes into view. Below 600 px
+  the values drop under their bars and the picker wraps. A link to
+  `studies/RESULTS.md` closes the page.
 - **Footer**: a small graph. One 1.5 px edge runs across the top and each
   of the four columns (project, stack, author, course) hangs from a 12 px
   vertex on it; hovering a column fills its vertex blue. The author column
