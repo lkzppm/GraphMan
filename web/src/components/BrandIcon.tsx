@@ -1,12 +1,13 @@
 import type { SimpleIcon } from 'simple-icons';
 
-/** A brand glyph from simple-icons, drawn in the current text colour. */
+/** A brand glyph from simple-icons (or anything with a title and a 24-box
+    path), drawn in the current text colour. */
 export default function BrandIcon({
   icon,
   size = 18,
   className,
 }: {
-  icon: SimpleIcon;
+  icon: Pick<SimpleIcon, 'title' | 'path'>;
   size?: number;
   className?: string;
 }) {

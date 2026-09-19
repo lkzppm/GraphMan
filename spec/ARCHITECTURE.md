@@ -125,7 +125,7 @@ src/app/page.tsx                  Home tab: Hero + Pipeline
 src/app/library/, studies/        Library tab (Decisions), Case studies tab (tables)
 src/app/presentation/             Presentation tab: the five slides (Deck)
 src/app/observatory/              the tool, client-only (dynamic import, ssr: false)
-src/components/                   Nav, Logo, BrandIcon, Reveal, Deck, page sections + CSS modules
+src/components/                   Nav, Logo, BrandIcon, Reveal, Deck, Representations, Field, page sections + CSS modules
 src/i18n/                         en.tsx (the schema), pt.tsx, LocaleProvider (useT / useLocale)
 src/lib/graphman.ts               loads the wasm glue once
 src/lib/studies.ts                types of studies/results.json (synced into src/data)

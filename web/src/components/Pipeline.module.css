@@ -1,118 +1,141 @@
+/* The centred words over the globe, on a field of dots (Field.tsx), then
+   the three steps as plain columns. */
+
+.section {
+  position: relative;
+  overflow: hidden;
+  padding-top: 72px;
+}
+
+.head {
+  position: relative;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 76px 0 56px;
+  text-align: center;
+}
+
+/* The globe: a blue watermark behind the words, fading out towards its
+   rim, a little under the head's centre so its equator runs between the
+   title and the lead. It never moves; its opacity is `--blink`, which
+   Field.tsx sets on the section so the blue blinks the moment each wave
+   leaves it. */
+.globe {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: calc(50% + 36px);
+  width: 520px;
+  height: 520px;
+  color: var(--accent);
+  opacity: var(--blink, 0.2);
+  transform: translate(-50%, -50%);
+  mask-image: radial-gradient(circle, #000 30%, transparent 68%);
+  -webkit-mask-image: radial-gradient(circle, #000 30%, transparent 68%);
+  pointer-events: none;
+}
+
+.title,
+.lead {
+  position: relative;
+  z-index: 2;
+  max-width: none;
+  margin-inline: auto;
+}
+
+.title {
+  font-size: clamp(30px, 3.6vw, 40px);
+}
+
+.lead {
+  max-width: 560px;
+  margin-top: 16px;
+}
+
+/* The two steps as cards on the field, framed the way the site draws a
+   graph: a vertex on each corner joined by an edge along each side (the
+   Frame SVG), white inside so the words read over the dots, the icon bare
+   in blue beside the title. Hover lifts a card and turns its frame blue. */
 .steps {
+  position: relative;
+  z-index: 1;
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 48px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--border);
-  gap: 1px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 36px;
+  padding: 8px 6px 6px;
 }
 
 .step {
   position: relative;
-  background: var(--bg);
-  padding: 28px 24px 32px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  transition: background 0.3s var(--ease);
-}
-
-.step::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--accent);
-  transform: scaleY(0);
-  transform-origin: top;
-  transition: transform 0.45s var(--ease);
+  gap: 14px;
+  padding: 26px 28px;
+  background: var(--bg);
+  transition: transform 0.35s var(--ease);
 }
 
 .step:hover {
-  background: var(--bg-2);
+  transform: translateY(-3px);
 }
 
-.step:hover::before {
-  transform: scaleY(1);
+.frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.frame line {
+  stroke: var(--border-2);
+  stroke-width: 1.5;
+  transition: stroke 0.35s var(--ease);
+}
+
+.frame circle {
+  fill: var(--bg);
+  stroke: var(--border-2);
+  stroke-width: 1.5;
+  transition:
+    fill 0.35s var(--ease),
+    stroke 0.35s var(--ease);
+}
+
+.step:hover .frame line,
+.step:hover .frame circle {
+  stroke: var(--accent);
+}
+
+.step:hover .frame circle {
+  fill: var(--accent);
 }
 
 .stepHead {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
 }
 
 .stepIcon {
+  flex: 0 0 auto;
   display: inline-grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--fg-2);
-  background: var(--bg);
-  transition:
-    color 0.25s var(--ease),
-    border-color 0.25s var(--ease),
-    transform 0.35s var(--ease-spring);
+  color: var(--accent);
+  transition: transform 0.35s var(--ease-spring);
 }
 
 .step:hover .stepIcon {
-  color: var(--accent);
-  border-color: var(--accent);
   transform: rotate(-8deg) scale(1.08);
-}
-
-.index {
-  font-size: 11px;
-  letter-spacing: 0.2em;
-  color: var(--fg-3);
-  transition:
-    color 0.3s var(--ease),
-    transform 0.3s var(--ease);
-}
-
-.step:hover .stepHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.stepIcon {
-  display: inline-grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--fg-2);
-  background: var(--bg);
-  transition:
-    color 0.25s var(--ease),
-    border-color 0.25s var(--ease),
-    transform 0.35s var(--ease-spring);
-}
-
-.step:hover .stepIcon {
-  color: var(--accent);
-  border-color: var(--accent);
-  transform: rotate(-8deg) scale(1.08);
-}
-
-.index {
-  color: var(--accent);
-  transform: translateX(4px);
 }
 
 .stepTitle {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  line-height: 1.3;
 }
 
 .stepBody {
@@ -122,7 +145,17 @@
 }
 
 @media (max-width: 840px) {
+  .head {
+    padding: 24px 0 40px;
+  }
+
+  .globe {
+    width: 400px;
+    height: 400px;
+  }
+
   .steps {
     grid-template-columns: 1fr;
+    gap: 16px;
   }
 }

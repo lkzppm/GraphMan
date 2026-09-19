@@ -21,15 +21,14 @@ export const en = {
     eyebrow: 'built for cos 242 · graph theory · ufrj 2026/2',
     brief: (
       <>
-        A Rust graph library that measures itself — one <code>Graph</code> trait, three ways to
-        store a graph, four ways to find its diameter — running in your browser.
+        A Rust graph library: one <code>Graph</code> trait, three ways to store a graph, four ways
+        to find its diameter, running in your browser.
       </>
     ),
     open: 'Open the observatory',
     library: 'The library',
     discover: '// discover more',
     discoverLabel: 'Discover more',
-    whatEyebrow: 'what it is',
     whatTitle: 'One trait, three representations, four diameters',
     whatLead: (
       <>
@@ -46,14 +45,25 @@ export const en = {
       oneTrait: 'one Graph trait',
       methods: 'diameter methods',
       cancellable: 'all cancellable',
-      servers: 'servers',
-      inTab: 'the library runs in your tab',
+    },
+    // The figure beside the lead: one small graph and its three encodings.
+    figure: {
+      graph: 'the graph',
+      list: 'adjacency list',
+      matrix: 'bitset matrix',
+      csr: 'CSR',
+      offsets: 'offsets',
+      targets: 'targets',
     },
   },
 
   pipeline: {
-    eyebrow: 'In the browser',
-    title: 'No server, no pre-baked data: the library itself.',
+    title: (
+      <>
+        No server, no pre-baked data: the library itself{' '}
+        <span className="accent">in your browser</span>
+      </>
+    ),
     lead: 'The observatory starts empty. Load any graph in the course format and everything you see is computed on the spot.',
     steps: [
       {
@@ -61,12 +71,8 @@ export const en = {
         body: 'The same crate that runs the case studies (crates/graphman) is bound with wasm-bindgen. Parsing, BFS, DFS, distances, components and the diameter run in your tab, single-threaded, from the file you drop.',
       },
       {
-        title: 'The search tree is the layout',
-        body: 'A BFS from the smallest vertex of every component gives each vertex a ring and an angle in O(n). That radial layout is the starting point, and the final one for graphs too large to simulate.',
-      },
-      {
         title: 'WebGPU through vgpu',
-        body: 'Positions, edges and the search tree live in GPU storage buffers. A compute shader relaxes the layout with a force simulation; two draws render every vertex and edge, coloured by the level the traversal reached them at.',
+        body: 'Positions, edges and the search tree live in GPU buffers. Compute shaders run the force simulation and morph between four layouts (force, radial, layered, degree); every vertex and edge is drawn coloured by the level the search reached it at.',
       },
     ],
   },
@@ -108,11 +114,13 @@ export const en = {
     source: 'Source on GitHub',
     stack: 'Stack',
     licence: 'MIT licensed',
+    author: 'Author',
+    authorName: 'Lucas Pacheco',
+    github: 'GitHub',
+    linkedin: 'LinkedIn',
     course: 'Course',
     courseName: 'COS 242 · Graph Theory',
-    legal:
-      'Case-study timings were measured on the machine named in each study and exclude parsing and output, as the course requires.',
-    built: '// built sep 2026 · rio de janeiro',
+    copyright: '© 2026',
   },
 
   studies: {
@@ -364,7 +372,7 @@ export const en = {
         items: [
           {
             title: 'Normalise once',
-            body: 'Self-loops dropped, edges oriented [min, max], sorted and deduped — so every representation gets ascending neighbour rows and identical search trees. Tests enforce it.',
+            body: 'Self-loops dropped, edges oriented [min, max], sorted and deduped, so every representation gets ascending neighbour rows and identical search trees. Tests enforce it.',
           },
           {
             title: 'Traversals are observable',
@@ -412,7 +420,7 @@ export const en = {
             hint: 'graph 2, cached edge layer + level of detail',
           },
           { value: '1 s', label: 'to load graph 4', hint: '105 MB, 8.2M edges' },
-          { value: '4', label: 'layouts', hint: 'force, radial, layered, degree — GPU morph' },
+          { value: '4', label: 'layouts', hint: 'force, radial, layered, degree, GPU morph' },
           { value: '0', label: 'servers', hint: 'everything computed client-side' },
         ],
         cta: 'Open the observatory',
