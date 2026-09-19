@@ -166,13 +166,8 @@ export const pt: Dictionary = {
   },
 
   studies: {
-    title: 'Medido, não estimado.',
-    lead: (
-      <>
-        Todo número vem de <code className="mono">graphman study</code> nos seis grafos da
-        disciplina; os tempos excluem leitura e escrita.
-      </>
-    ),
+    overview: 'Geral',
+    views: 'Visões',
     emptyTitle: 'Ainda sem resultados.',
     emptyLead: (
       <>

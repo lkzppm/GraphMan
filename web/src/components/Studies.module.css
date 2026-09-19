@@ -2,8 +2,7 @@
    drawn as vertices, bars and triangles in the site's blues. */
 
 .section {
-  padding-top: 64px;
-  border-top: 0;
+  padding-bottom: 96px;
 }
 
 .content {
@@ -11,18 +10,46 @@
   display: flex;
   flex-direction: column;
   gap: 80px;
+  padding-top: 56px;
 }
 
-/* ---- head ----------------------------------------------------------------- */
+/* ---- the menu ------------------------------------------------------------- */
 
-.head {
+/* Under the site's nav and stuck to it: the overview and the six graphs
+   as vertices on one edge; the current view's vertex is filled. */
+.menu {
+  position: sticky;
+  top: var(--nav-height);
+  z-index: 4;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.menuInner {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  justify-content: space-between;
+  max-width: 920px;
+  padding-top: 14px;
+  padding-bottom: 12px;
 }
 
-.title {
-  font-size: clamp(34px, 4.4vw, 48px);
+.menuInner::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--gutter) + 24px);
+  right: calc(var(--gutter) + 24px);
+  top: 29px;
+  height: 1.5px;
+  background: var(--border-2);
+}
+
+/* The empty state, and a graph's name at the top of its screen. */
+.title,
+.singleTitle {
+  font-size: clamp(30px, 4vw, 40px);
   font-weight: 600;
   letter-spacing: -0.035em;
   line-height: 1.08;
@@ -68,6 +95,125 @@
   font-size: 12px;
   color: var(--fg-3);
   text-align: right;
+}
+
+/* On a graph's screen the chapters are small and close together. */
+.compact {
+  gap: 14px;
+}
+
+.compact .chapterHead {
+  padding-bottom: 8px;
+}
+
+.compact .chapterTitle {
+  font-size: 17px;
+}
+
+.compact .chapterNote {
+  display: none;
+}
+
+.compact .table th,
+.compact .table td {
+  padding: 7px 12px;
+}
+
+.compact .parent,
+.compact .level {
+  display: inline;
+}
+
+.compact .level {
+  margin-left: 8px;
+}
+
+.compact .bars {
+  gap: 10px;
+}
+
+.compact .legend {
+  display: none;
+}
+
+.compact .track {
+  padding-right: 150px;
+}
+
+/* ---- one graph's screen --------------------------------------------------- */
+
+.single {
+  gap: 28px;
+}
+
+.singleHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 28px;
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 20px;
+}
+
+.facts .stripFact {
+  font-size: 14px;
+}
+
+.facts .stripNote {
+  font-size: 12px;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 28px 48px;
+  align-items: start;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-width: 0;
+}
+
+/* Distances beside components, under the parents. */
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.pair > * {
+  min-width: 0;
+}
+
+.pair .track {
+  padding-right: 0;
+  flex-wrap: wrap;
+  height: auto;
+  row-gap: 4px;
+}
+
+.pair .value {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+
+/* One graph's parents: the two tables stacked, they are too wide side by side. */
+.compact .split {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+.compact .triangle {
+  width: 132px;
 }
 
 .split {
@@ -216,6 +362,10 @@
 
 .rowName {
   font-size: 11px;
+}
+
+.bars[data-single] .row {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .rowBars {
@@ -548,8 +698,20 @@ g[data-apart] .sideLabel {
     display: none;
   }
 
-  .split {
+  .split,
+  .columns,
+  .pair {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .menuInner {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px 18px;
+  }
+
+  .menuInner::before {
+    display: none;
   }
 
   .track {
