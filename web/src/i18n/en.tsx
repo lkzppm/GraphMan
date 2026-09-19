@@ -164,51 +164,77 @@ export const en = {
   },
 
   studies: {
-    eyebrow: 'Case studies',
     title: 'Measured, not estimated.',
     lead: (
       <>
-        Six course graphs, from 10 thousand to 4.8 million vertices. Every number below comes from{' '}
-        <code className="mono">graphman study</code>; memory is the process footprint measured in a
-        fresh subprocess per representation, times are wall-clock means over 100 searches from
-        distinct random roots.
+        Every number comes from <code className="mono">graphman study</code> on the six course
+        graphs; times exclude reading and writing.
       </>
     ),
     emptyTitle: 'No results yet.',
     emptyLead: (
       <>
         Run <code className="mono">graphman study</code> on the course graphs and rebuild the site;
-        the tables fill themselves from studies/results.json.
+        the page fills itself from studies/results.json.
       </>
     ),
     graph: (n: string) => `Graph ${n}`,
-    columns: {
-      graph: 'Graph',
-      vertices: 'Vertices',
-      edges: 'Edges',
-      components: 'Components',
-      largest: 'Largest',
-      smallest: 'Smallest',
-    },
     representations: {
       adjacency_list: 'Adjacency list',
       adjacency_matrix: 'Adjacency matrix',
       csr: 'CSR',
     },
+    short: { adjacency_list: 'list', adjacency_matrix: 'matrix', csr: 'CSR' },
     methods: {
       exact: 'Brute force',
       i_fub: 'iFUB',
-      bounds: 'Takes–Kosters',
+      bounds: 'Takes-Kosters',
       sweep: '4-sweep',
     },
-    memoryCaption: 'Process memory after loading the graph',
-    needed: (bytes: string) => `${bytes} needed`,
-    overBudget: 'over budget',
-    timeCaption: (algo: string) => `Mean ${algo} time, 100 searches`,
-    diameterCaption: 'Diameter: value and BFS runs per method',
-    bfsRuns: (count: string) => `${count} BFS`,
-    componentsCaption: 'Components and distances',
-    note: 'A flagged diameter (≥) is a lower bound: the 4-sweep never certifies, and the exact methods were stopped by their time budget on the two largest graphs. Random graphs are the worst case for iFUB and the bounding algorithm, and the BFS counts are reported as measured.',
+    logScale: 'log scale',
+    graphs: {
+      vertices: 'vertices',
+      edges: 'edges',
+      degree: (min: string, max: string, mean: string, median: string) =>
+        `degree ${min} to ${max}, mean ${mean}, median ${median}`,
+      dropped: (loops: string, dups: string) => `${loops} self-loops, ${dups} duplicates dropped`,
+    },
+    questions: {
+      memory: {
+        title: 'Memory per representation',
+        note: 'process footprint after loading the graph',
+        needs: (bytes: string) => `would need ${bytes}`,
+      },
+      bfs: { title: 'Mean time of one BFS', note: '100 searches from distinct vertices' },
+      dfs: { title: 'Mean time of one DFS', note: '100 searches from distinct vertices' },
+      parents: {
+        title: 'Parents of 10, 20 and 30',
+        note: 'BFS and DFS trees rooted at 1, 2 and 3',
+        root: (r: string) => `root ${r}`,
+        vertex: (v: string) => `vertex ${v}`,
+        level: 'level',
+        unreached: 'another component',
+      },
+      distances: {
+        title: 'Distances (10, 20), (10, 30), (20, 30)',
+        note: 'a dashed side joins two components',
+      },
+      components: {
+        title: 'Connected components',
+        note: 'the largest component as a share of the graph',
+        count: (n: string) => `${n} components`,
+        one: '1 component',
+        largest: (n: string) => `largest ${n}`,
+        smallest: (n: string) => `smallest ${n}`,
+      },
+      diameter: {
+        title: 'Diameter',
+        note: 'BFS runs per method; ≥ is a lower bound',
+        bfs: (count: string) => `${count} BFS`,
+        stopped: (elapsed: string) => `stopped at ${elapsed}`,
+      },
+    },
+    source: 'Every table, in studies/RESULTS.md',
   },
 
   observatory: {

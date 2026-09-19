@@ -166,51 +166,77 @@ export const pt: Dictionary = {
   },
 
   studies: {
-    eyebrow: 'Estudos de caso',
     title: 'Medido, não estimado.',
     lead: (
       <>
-        Seis grafos da disciplina, de 10 mil a 4,8 milhões de vértices. Todo número abaixo vem de{' '}
-        <code className="mono">graphman study</code>; memória é o footprint do processo medido em um
-        subprocesso novo por representação, tempos são médias de relógio de parede em 100 buscas a
-        partir de raízes aleatórias distintas.
+        Todo número vem de <code className="mono">graphman study</code> nos seis grafos da
+        disciplina; os tempos excluem leitura e escrita.
       </>
     ),
     emptyTitle: 'Ainda sem resultados.',
     emptyLead: (
       <>
         Rode <code className="mono">graphman study</code> nos grafos da disciplina e reconstrua o
-        site; as tabelas se preenchem a partir de studies/results.json.
+        site; a página se preenche a partir de studies/results.json.
       </>
     ),
     graph: (n: string) => `Grafo ${n}`,
-    columns: {
-      graph: 'Grafo',
-      vertices: 'Vértices',
-      edges: 'Arestas',
-      components: 'Componentes',
-      largest: 'Maior',
-      smallest: 'Menor',
-    },
     representations: {
       adjacency_list: 'Lista de adjacência',
       adjacency_matrix: 'Matriz de adjacência',
       csr: 'CSR',
     },
+    short: { adjacency_list: 'lista', adjacency_matrix: 'matriz', csr: 'CSR' },
     methods: {
       exact: 'Força bruta',
       i_fub: 'iFUB',
-      bounds: 'Takes–Kosters',
+      bounds: 'Takes-Kosters',
       sweep: '4-sweep',
     },
-    memoryCaption: 'Memória do processo após carregar o grafo',
-    needed: (bytes: string) => `precisa de ${bytes}`,
-    overBudget: 'acima do orçamento',
-    timeCaption: (algo: string) => `Tempo médio de ${algo}, 100 buscas`,
-    diameterCaption: 'Diâmetro: valor e número de BFS por método',
-    bfsRuns: (count: string) => `${count} BFS`,
-    componentsCaption: 'Componentes e distâncias',
-    note: 'Um diâmetro marcado (≥) é um limite inferior: o 4-sweep nunca certifica, e os métodos exatos foram interrompidos pelo orçamento de tempo nos dois maiores grafos. Grafos aleatórios são o pior caso para o iFUB e para o algoritmo de limites, e as contagens de BFS são reportadas como medidas.',
+    logScale: 'escala log',
+    graphs: {
+      vertices: 'vértices',
+      edges: 'arestas',
+      degree: (min: string, max: string, mean: string, median: string) =>
+        `grau de ${min} a ${max}, média ${mean}, mediana ${median}`,
+      dropped: (loops: string, dups: string) => `${loops} laços, ${dups} duplicatas descartados`,
+    },
+    questions: {
+      memory: {
+        title: 'Memória por representação',
+        note: 'footprint do processo após carregar o grafo',
+        needs: (bytes: string) => `precisaria de ${bytes}`,
+      },
+      bfs: { title: 'Tempo médio de uma BFS', note: '100 buscas a partir de vértices distintos' },
+      dfs: { title: 'Tempo médio de uma DFS', note: '100 buscas a partir de vértices distintos' },
+      parents: {
+        title: 'Pais de 10, 20 e 30',
+        note: 'árvores de BFS e DFS com raízes 1, 2 e 3',
+        root: (r: string) => `raiz ${r}`,
+        vertex: (v: string) => `vértice ${v}`,
+        level: 'nível',
+        unreached: 'outra componente',
+      },
+      distances: {
+        title: 'Distâncias (10, 20), (10, 30), (20, 30)',
+        note: 'um lado tracejado liga duas componentes',
+      },
+      components: {
+        title: 'Componentes conexas',
+        note: 'a maior componente como fração do grafo',
+        count: (n: string) => `${n} componentes`,
+        one: '1 componente',
+        largest: (n: string) => `maior ${n}`,
+        smallest: (n: string) => `menor ${n}`,
+      },
+      diameter: {
+        title: 'Diâmetro',
+        note: 'BFS por método; ≥ é um limite inferior',
+        bfs: (count: string) => `${count} BFS`,
+        stopped: (elapsed: string) => `parou em ${elapsed}`,
+      },
+    },
+    source: 'Todas as tabelas, em studies/RESULTS.md',
   },
 
   observatory: {

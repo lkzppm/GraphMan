@@ -1,71 +1,425 @@
-.tables {
+/* The case studies: one column of chapters, nothing boxed, the numbers
+   drawn as vertices, bars and triangles in the site's blues. */
+
+.section {
+  padding-top: 64px;
+  border-top: 0;
+}
+
+.content {
+  max-width: 920px;
+  display: flex;
+  flex-direction: column;
+  gap: 80px;
+}
+
+/* ---- head ----------------------------------------------------------------- */
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.title {
+  font-size: clamp(34px, 4.4vw, 48px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+
+.lead {
+  max-width: 680px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+
+/* ---- chapters ------------------------------------------------------------- */
+
+.chapter {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.chapterHead {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chapterIndex {
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.chapterTitle {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.chapterNote {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--fg-3);
+  text-align: right;
+}
+
+.split {
   display: grid;
-  gap: 32px;
-  margin-top: 48px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 40px;
+  align-items: start;
 }
 
-.tableWrap {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow-x: auto;
+.split > * {
+  min-width: 0;
+}
+
+/* ---- the strip ------------------------------------------------------- */
+
+/* Six vertices on one edge, each column its facts. The edge runs through
+   the vertices' centres; every ball hides it with a white halo. */
+.strip {
+  position: relative;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.strip::before {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 56px;
+  height: 1.5px;
+  background: var(--border-2);
+}
+
+.stripItem {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The same height for every vertex slot, so the balls sit on one line. */
+.stripVertex {
+  display: grid;
+  place-items: center;
+  height: 96px;
+  margin-bottom: 8px;
+}
+
+.stripBall {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--fg-2);
   background: var(--bg);
+  border: 1.5px solid var(--border-2);
+  box-shadow: 0 0 0 4px var(--bg);
   transition:
-    border-color 0.3s var(--ease),
-    box-shadow 0.4s var(--ease);
+    border-color 0.25s var(--ease),
+    background 0.25s var(--ease),
+    color 0.25s var(--ease),
+    transform 0.4s var(--ease-spring);
 }
 
-.tableWrap:hover {
-  border-color: var(--border-2);
-  box-shadow: 0 20px 40px -30px rgba(0, 0, 0, 0.25);
+.stripItem:hover .stripBall {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.08);
 }
 
-.table tbody tr {
-  transition: background 0.2s var(--ease);
+.stripName {
+  font-size: 11px;
+  margin-bottom: 4px;
 }
 
-.table tbody tr:hover {
-  background: var(--bg-2);
+.stripFact {
+  font-size: 12.5px;
+  color: var(--level-0);
+  white-space: nowrap;
 }
 
+.stripFact em {
+  font-style: normal;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.stripNote {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fg-3);
+}
+
+.stripNote:first-of-type {
+  margin-top: 6px;
+}
+
+/* ---- bars ----------------------------------------------------------------- */
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.scaleNote {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+
+.rowName {
+  font-size: 11px;
+}
+
+.rowBars {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bar {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.bar[data-bare] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.barLabel {
+  font-size: 11px;
+  color: var(--fg-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The track leaves room on the right for the value after the bar. */
+.track {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 14px;
+  padding-right: 200px;
+}
+
+/* Grows from nothing when the chapter comes into view. */
+.fill {
+  flex: none;
+  width: 0;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--colour);
+  transition: width 1.1s var(--ease);
+}
+
+.chapter:global(.is-visible) .fill {
+  width: var(--w);
+}
+
+.bar[data-ghost] .fill {
+  background: transparent;
+  border: 1.5px dashed var(--colour);
+  box-sizing: border-box;
+}
+
+.value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.bar[data-ghost] .value {
+  color: var(--fg-3);
+}
+
+/* The diameter answer, and the count beside it. */
+.answer {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.answer[data-bound] {
+  color: var(--fg-3);
+  font-weight: 400;
+}
+
+.detail {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+/* ---- 4: parents ---------------------------------------------------------- */
+
+.parents {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* The graphs to pick from, vertices on one edge like the strip. */
+.picker {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+
+.picker::before {
+  content: '';
+  position: absolute;
+  left: 48px;
+  right: 48px;
+  top: 15px;
+  height: 1.5px;
+  background: var(--border-2);
+}
+
+.pick {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.2s var(--ease);
+}
+
+.pick:hover {
+  color: var(--fg);
+}
+
+.pick[data-active] {
+  color: var(--accent);
+}
+
+.pickBall {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 11px;
+  color: var(--fg-2);
+  background: var(--bg);
+  border: 1.5px solid var(--border-2);
+  box-shadow: 0 0 0 4px var(--bg);
+  transition:
+    border-color 0.25s var(--ease),
+    background 0.25s var(--ease),
+    color 0.25s var(--ease),
+    transform 0.35s var(--ease-spring);
+}
+
+.pick:hover .pickBall {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pick[data-active] .pickBall {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.15);
+}
+
+.pickName {
+  white-space: nowrap;
+}
+
+/* Tables washed in the accent, as on the library page. */
 .table {
   width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.caption {
-  text-align: left;
-  padding: 14px 16px;
-  font-weight: 500;
-  font-size: 12px;
-  letter-spacing: var(--tracking);
-  text-transform: uppercase;
-  border-bottom: 1px solid var(--border);
-  border-left: 2px solid var(--accent);
-  background: var(--bg-2);
-  caption-side: top;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, white);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
 }
 
 .table th,
 .table td {
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
+  padding: 10px 14px;
   text-align: left;
-  white-space: nowrap;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 10%, white);
   vertical-align: top;
 }
 
 .table thead th {
+  font-size: 10px;
   font-weight: 500;
-  font-size: 11px;
   letter-spacing: var(--tracking);
   text-transform: uppercase;
-  color: var(--fg-2);
-  background: var(--bg-2);
+  color: var(--accent-hover);
+  background: color-mix(in srgb, var(--accent) 7%, white);
 }
 
 .table tbody th {
+  font-size: 11px;
   font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  white-space: nowrap;
 }
 
 .table tbody tr:last-child th,
@@ -73,24 +427,189 @@
   border-bottom: 0;
 }
 
-.num {
-  text-align: right !important;
+.table tbody tr:nth-child(even) th,
+.table tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--accent) 2.5%, white);
 }
 
-.flag {
+.table td {
+  display: table-cell;
+  font-size: 12.5px;
+  color: var(--level-0);
+}
+
+.parent {
+  display: block;
+}
+
+.level {
+  display: block;
+  font-size: 10.5px;
+  color: var(--fg-3);
+}
+
+.unreached {
+  color: var(--fg-3);
+}
+
+/* ---- 5: triangles -------------------------------------------------------- */
+
+.triangles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 32px 40px;
+}
+
+.triangleCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cardLabel {
+  font-size: 11px;
+}
+
+.triangle {
+  display: block;
+  width: 150px;
+  height: auto;
+}
+
+.side {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+g[data-apart] .side {
+  stroke: var(--border-2);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+.pill {
+  fill: var(--bg);
+}
+
+.sideLabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  fill: var(--accent);
+}
+
+g[data-apart] .sideLabel {
+  fill: var(--fg-3);
+  font-weight: 400;
+}
+
+.vertex circle {
+  fill: var(--bg);
+  stroke: var(--border-2);
+  stroke-width: 1.5;
+}
+
+.vertex text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--fg-2);
+}
+
+/* ---- the link out --------------------------------------------------------- */
+
+.source {
+  align-self: center;
+  font-size: 13px;
+}
+
+.source a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg-2);
+  transition: color 0.2s var(--ease);
+}
+
+.source a:hover {
   color: var(--accent);
 }
 
-.sub {
-  display: block;
-  font-size: 11px;
-  color: var(--fg-3);
+/* ---- folds ---------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 24px 12px;
+  }
+
+  .strip::before {
+    display: none;
+  }
+
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .track {
+    padding-right: 140px;
+  }
+
+  .triangles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
-.note {
-  margin-top: 20px;
-  font-size: 13px;
-  color: var(--fg-3);
-  max-width: 720px;
-  line-height: 1.6;
+@media (max-width: 600px) {
+  .content {
+    gap: 56px;
+  }
+
+  .strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  /* The value drops under the bar when it does not fit beside it. */
+  .track {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 14px;
+    row-gap: 2px;
+    padding-right: 0;
+  }
+
+  .bar {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .chapterHead {
+    flex-wrap: wrap;
+  }
+
+  .chapterNote {
+    flex-basis: 100%;
+    margin-left: 0;
+    text-align: left;
+  }
+
+  .picker {
+    flex-wrap: wrap;
+    gap: 16px 12px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .picker::before {
+    display: none;
+  }
+
+  .triangles {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
