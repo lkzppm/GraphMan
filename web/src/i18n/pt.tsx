@@ -168,6 +168,8 @@ export const pt: Dictionary = {
   studies: {
     overview: 'Geral',
     views: 'Visões',
+    average: (n: string) => `média dos ${n} grafos`,
+    of: (k: string, n: string) => `${k} de ${n}`,
     emptyTitle: 'Ainda sem resultados.',
     emptyLead: (
       <>
@@ -188,8 +190,7 @@ export const pt: Dictionary = {
       bounds: 'Takes-Kosters',
       sweep: '4-sweep',
     },
-    logScale: 'escala log',
-    graphs: {
+    facts: {
       vertices: 'vértices',
       edges: 'arestas',
       degree: (min: string, max: string, mean: string, median: string) =>
@@ -199,26 +200,22 @@ export const pt: Dictionary = {
     questions: {
       memory: {
         title: 'Memória por representação',
-        note: 'footprint do processo após carregar o grafo',
         needs: (bytes: string) => `precisaria de ${bytes}`,
       },
-      bfs: { title: 'Tempo médio de uma BFS', note: '100 buscas a partir de vértices distintos' },
-      dfs: { title: 'Tempo médio de uma DFS', note: '100 buscas a partir de vértices distintos' },
+      bfs: { title: 'Tempo médio de uma BFS' },
+      dfs: { title: 'Tempo médio de uma DFS' },
       parents: {
         title: 'Pais de 10, 20 e 30',
-        note: 'árvores de BFS e DFS com raízes 1, 2 e 3',
         root: (r: string) => `raiz ${r}`,
         vertex: (v: string) => `vértice ${v}`,
         level: 'nível',
+        meanLevel: 'nível médio',
+        reached: 'alcançado',
         unreached: 'outra componente',
       },
-      distances: {
-        title: 'Distâncias (10, 20), (10, 30), (20, 30)',
-        note: 'um lado tracejado liga duas componentes',
-      },
+      distances: { title: 'Distâncias (10, 20), (10, 30), (20, 30)' },
       components: {
         title: 'Componentes conexas',
-        note: 'a maior componente como fração do grafo',
         count: (n: string) => `${n} componentes`,
         one: '1 componente',
         largest: (n: string) => `maior ${n}`,
@@ -226,12 +223,11 @@ export const pt: Dictionary = {
       },
       diameter: {
         title: 'Diâmetro',
-        note: 'BFS por método; ≥ é um limite inferior',
         bfs: (count: string) => `${count} BFS`,
         stopped: (elapsed: string) => `parou em ${elapsed}`,
+        exact: 'exatos',
       },
     },
-    source: 'Todas as tabelas, em studies/RESULTS.md',
   },
 
   observatory: {

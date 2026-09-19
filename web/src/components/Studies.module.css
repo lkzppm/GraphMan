@@ -1,16 +1,16 @@
-/* The case studies: one column of chapters, nothing boxed, the numbers
-   drawn as vertices, bars and triangles in the site's blues. */
+/* The case studies: a menu stuck under the nav, then one sheet with the
+   seven answers on one screen, nothing boxed, the numbers drawn as bars,
+   tables and a triangle in the site's blues. */
 
 .section {
-  padding-bottom: 96px;
+  padding-bottom: 64px;
 }
 
 .content {
-  max-width: 920px;
   display: flex;
   flex-direction: column;
-  gap: 80px;
-  padding-top: 56px;
+  gap: 22px;
+  padding-top: 26px;
 }
 
 /* ---- the menu ------------------------------------------------------------- */
@@ -31,9 +31,8 @@
   position: relative;
   display: flex;
   justify-content: space-between;
-  max-width: 920px;
-  padding-top: 14px;
-  padding-bottom: 12px;
+  padding-top: 12px;
+  padding-bottom: 10px;
 }
 
 .menuInner::before {
@@ -41,438 +40,7 @@
   position: absolute;
   left: calc(var(--gutter) + 24px);
   right: calc(var(--gutter) + 24px);
-  top: 29px;
-  height: 1.5px;
-  background: var(--border-2);
-}
-
-/* The empty state, and a graph's name at the top of its screen. */
-.title,
-.singleTitle {
-  font-size: clamp(30px, 4vw, 40px);
-  font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1.08;
-}
-
-.lead {
-  max-width: 680px;
-  font-size: 16px;
-  line-height: 1.6;
-  color: var(--fg-2);
-}
-
-/* ---- chapters ------------------------------------------------------------- */
-
-.chapter {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.chapterHead {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.chapterIndex {
-  font-size: 12px;
-  color: var(--accent);
-}
-
-.chapterTitle {
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  line-height: 1.2;
-}
-
-.chapterNote {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--fg-3);
-  text-align: right;
-}
-
-/* On a graph's screen the chapters are small and close together. */
-.compact {
-  gap: 14px;
-}
-
-.compact .chapterHead {
-  padding-bottom: 8px;
-}
-
-.compact .chapterTitle {
-  font-size: 17px;
-}
-
-.compact .chapterNote {
-  display: none;
-}
-
-.compact .table th,
-.compact .table td {
-  padding: 7px 12px;
-}
-
-.compact .parent,
-.compact .level {
-  display: inline;
-}
-
-.compact .level {
-  margin-left: 8px;
-}
-
-.compact .bars {
-  gap: 10px;
-}
-
-.compact .legend {
-  display: none;
-}
-
-.compact .track {
-  padding-right: 150px;
-}
-
-/* ---- one graph's screen --------------------------------------------------- */
-
-.single {
-  gap: 28px;
-}
-
-.singleHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px 28px;
-}
-
-.facts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 20px;
-}
-
-.facts .stripFact {
-  font-size: 14px;
-}
-
-.facts .stripNote {
-  font-size: 12px;
-}
-
-.columns {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 28px 48px;
-  align-items: start;
-}
-
-.column {
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-  min-width: 0;
-}
-
-/* Distances beside components, under the parents. */
-.pair {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 28px;
-  align-items: start;
-}
-
-.pair > * {
-  min-width: 0;
-}
-
-.pair .track {
-  padding-right: 0;
-  flex-wrap: wrap;
-  height: auto;
-  row-gap: 4px;
-}
-
-.pair .value {
-  flex-wrap: wrap;
-  white-space: normal;
-}
-
-/* One graph's parents: the two tables stacked, they are too wide side by side. */
-.compact .split {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
-}
-
-.compact .triangle {
-  width: 132px;
-}
-
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 40px;
-  align-items: start;
-}
-
-.split > * {
-  min-width: 0;
-}
-
-/* ---- the strip ------------------------------------------------------- */
-
-/* Six vertices on one edge, each column its facts. The edge runs through
-   the vertices' centres; every ball hides it with a white halo. */
-.strip {
-  position: relative;
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
-  padding-top: 8px;
-}
-
-.strip::before {
-  content: '';
-  position: absolute;
-  left: 8%;
-  right: 8%;
-  top: 56px;
-  height: 1.5px;
-  background: var(--border-2);
-}
-
-.stripItem {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 4px;
-  min-width: 0;
-}
-
-/* The same height for every vertex slot, so the balls sit on one line. */
-.stripVertex {
-  display: grid;
-  place-items: center;
-  height: 96px;
-  margin-bottom: 8px;
-}
-
-.stripBall {
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  color: var(--fg-2);
-  background: var(--bg);
-  border: 1.5px solid var(--border-2);
-  box-shadow: 0 0 0 4px var(--bg);
-  transition:
-    border-color 0.25s var(--ease),
-    background 0.25s var(--ease),
-    color 0.25s var(--ease),
-    transform 0.4s var(--ease-spring);
-}
-
-.stripItem:hover .stripBall {
-  color: #fff;
-  background: var(--accent);
-  border-color: var(--accent);
-  transform: scale(1.08);
-}
-
-.stripName {
-  font-size: 11px;
-  margin-bottom: 4px;
-}
-
-.stripFact {
-  font-size: 12.5px;
-  color: var(--level-0);
-  white-space: nowrap;
-}
-
-.stripFact em {
-  font-style: normal;
-  font-family: var(--font-sans);
-  font-size: 11px;
-  color: var(--fg-3);
-}
-
-.stripNote {
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--fg-3);
-}
-
-.stripNote:first-of-type {
-  margin-top: 6px;
-}
-
-/* ---- bars ----------------------------------------------------------------- */
-
-.bars {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 20px;
-  font-size: 12px;
-  color: var(--fg-2);
-}
-
-.legendItem {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-}
-
-.scaleNote {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--fg-3);
-}
-
-.row {
-  display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
-  gap: 16px;
-  align-items: center;
-}
-
-.rowName {
-  font-size: 11px;
-}
-
-.bars[data-single] .row {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.rowBars {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.bar {
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-}
-
-.bar[data-bare] {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.barLabel {
-  font-size: 11px;
-  color: var(--fg-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* The track leaves room on the right for the value after the bar. */
-.track {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 14px;
-  padding-right: 200px;
-}
-
-/* Grows from nothing when the chapter comes into view. */
-.fill {
-  flex: none;
-  width: 0;
-  height: 10px;
-  border-radius: 2px;
-  background: var(--colour);
-  transition: width 1.1s var(--ease);
-}
-
-.chapter:global(.is-visible) .fill {
-  width: var(--w);
-}
-
-.bar[data-ghost] .fill {
-  background: transparent;
-  border: 1.5px dashed var(--colour);
-  box-sizing: border-box;
-}
-
-.value {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--fg);
-  white-space: nowrap;
-}
-
-.bar[data-ghost] .value {
-  color: var(--fg-3);
-}
-
-/* The diameter answer, and the count beside it. */
-.answer {
-  color: var(--accent);
-  font-weight: 500;
-}
-
-.answer[data-bound] {
-  color: var(--fg-3);
-  font-weight: 400;
-}
-
-.detail {
-  font-size: 11px;
-  color: var(--fg-3);
-}
-
-/* ---- 4: parents ---------------------------------------------------------- */
-
-.parents {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-/* The graphs to pick from, vertices on one edge like the strip. */
-.picker {
-  position: relative;
-  display: flex;
-  justify-content: space-between;
-  padding: 0 24px;
-}
-
-.picker::before {
-  content: '';
-  position: absolute;
-  left: 48px;
-  right: 48px;
-  top: 15px;
+  top: 27px;
   height: 1.5px;
   background: var(--border-2);
 }
@@ -482,7 +50,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 0;
   border: 0;
   background: none;
@@ -535,12 +103,222 @@
   white-space: nowrap;
 }
 
+/* ---- head ----------------------------------------------------------------- */
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 24px;
+}
+
+.title {
+  font-size: clamp(28px, 3.4vw, 36px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+
+.subtitle {
+  font-size: 12px;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.lead {
+  max-width: 680px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 20px;
+}
+
+.fact {
+  font-size: 14px;
+  color: var(--level-0);
+  white-space: nowrap;
+}
+
+.fact em {
+  font-style: normal;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.note {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+/* ---- the rows ------------------------------------------------------------- */
+
+.rowThree {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 36px;
+  align-items: start;
+}
+
+.rowLast {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr);
+  gap: 36px;
+  align-items: start;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+/* ---- chapters ------------------------------------------------------------- */
+
+.chapter {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.chapterHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chapterIndex {
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.chapterTitle {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+/* ---- bars ----------------------------------------------------------------- */
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bar {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.rowThree .bar {
+  grid-template-columns: 48px minmax(0, 1fr);
+}
+
+.bar[data-bare] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.barLabel {
+  font-size: 11px;
+  color: var(--fg-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The track leaves room on the right for the value after the bar; how
+   much depends on the row, so bars of one kind share their pixel scale. */
+.track {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 14px;
+  padding-right: 200px;
+}
+
+.rowThree .track {
+  padding-right: 150px;
+}
+
+/* Grows from nothing when the chapter comes into view. */
+.fill {
+  flex: none;
+  width: 0;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--colour);
+  transition: width 1.1s var(--ease);
+}
+
+.chapter:global(.is-visible) .fill {
+  width: var(--w);
+}
+
+.bar[data-ghost] .fill {
+  background: transparent;
+  border: 1.5px dashed var(--colour);
+  box-sizing: border-box;
+}
+
+.value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.bar[data-ghost] .value {
+  color: var(--fg-3);
+}
+
+/* An answer in blue, and the detail beside it. */
+.answer {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.answer[data-bound] {
+  color: var(--fg-3);
+  font-weight: 400;
+}
+
+.detail {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+/* ---- parents -------------------------------------------------------------- */
+
+.tables {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+}
+
 /* Tables washed in the accent, as on the library page. */
 .table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 13px;
+  font-size: 12.5px;
   border: 1px solid color-mix(in srgb, var(--accent) 14%, white);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -548,10 +326,14 @@
 
 .table th,
 .table td {
-  padding: 10px 14px;
+  padding: 6px 12px;
   text-align: left;
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 10%, white);
-  vertical-align: top;
+  vertical-align: middle;
+}
+
+.table thead th:first-child {
+  width: 68px;
 }
 
 .table thead th {
@@ -564,12 +346,11 @@
 }
 
 .table tbody th {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: var(--tracking);
   text-transform: uppercase;
   color: var(--fg-2);
-  white-space: nowrap;
 }
 
 .table tbody tr:last-child th,
@@ -583,15 +364,16 @@
 }
 
 .table td {
-  display: table-cell;
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--level-0);
 }
 
-.parent {
-  display: block;
+.table td {
+  padding-top: 5px;
+  padding-bottom: 5px;
 }
 
+/* The level under the parent, so every row is two lines tall. */
 .level {
   display: block;
   font-size: 10.5px;
@@ -602,30 +384,13 @@
   color: var(--fg-3);
 }
 
-/* ---- 5: triangles -------------------------------------------------------- */
-
-.triangles {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 32px 40px;
-}
-
-.triangleCard {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.cardLabel {
-  font-size: 11px;
-}
+/* ---- the triangle --------------------------------------------------------- */
 
 .triangle {
   display: block;
-  width: 150px;
+  width: 140px;
   height: auto;
+  margin: 2px auto 0;
 }
 
 .side {
@@ -667,41 +432,11 @@ g[data-apart] .sideLabel {
   fill: var(--fg-2);
 }
 
-/* ---- the link out --------------------------------------------------------- */
-
-.source {
-  align-self: center;
-  font-size: 13px;
-}
-
-.source a {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--fg-2);
-  transition: color 0.2s var(--ease);
-}
-
-.source a:hover {
-  color: var(--accent);
-}
-
 /* ---- folds ---------------------------------------------------------------- */
 
 @media (max-width: 900px) {
-  .strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 24px 12px;
-  }
-
-  .strip::before {
-    display: none;
-  }
-
-  .split,
-  .columns,
-  .pair {
-    grid-template-columns: minmax(0, 1fr);
+  .content {
+    gap: 28px;
   }
 
   .menuInner {
@@ -714,31 +449,26 @@ g[data-apart] .sideLabel {
     display: none;
   }
 
-  .track {
-    padding-right: 140px;
+  .rowThree,
+  .rowLast,
+  .tables {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .triangles {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .rowThree .bar {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .track,
+  .rowThree .track {
+    padding-right: 160px;
   }
 }
 
 @media (max-width: 600px) {
-  .content {
-    gap: 56px;
-  }
-
-  .strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
-  }
-
   /* The value drops under the bar when it does not fit beside it. */
-  .track {
+  .track,
+  .rowThree .track {
     flex-wrap: wrap;
     height: auto;
     min-height: 14px;
@@ -746,32 +476,8 @@ g[data-apart] .sideLabel {
     padding-right: 0;
   }
 
-  .bar {
+  .bar,
+  .rowThree .bar {
     grid-template-columns: 64px minmax(0, 1fr);
-  }
-
-  .chapterHead {
-    flex-wrap: wrap;
-  }
-
-  .chapterNote {
-    flex-basis: 100%;
-    margin-left: 0;
-    text-align: left;
-  }
-
-  .picker {
-    flex-wrap: wrap;
-    gap: 16px 12px;
-    justify-content: center;
-    padding: 0;
-  }
-
-  .picker::before {
-    display: none;
-  }
-
-  .triangles {
-    grid-template-columns: minmax(0, 1fr);
   }
 }

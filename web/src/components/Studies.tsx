@@ -1,26 +1,21 @@
 'use client';
 
-import { ArrowUpRight } from 'lucide-react';
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/lib/format';
-import type { DiameterMethod, GraphStudy, MemoryReport, Representation } from '@/lib/studies';
+import type { DiameterMethod, GraphStudy, Representation } from '@/lib/studies';
 import { useT } from '@/i18n/LocaleProvider';
 import Reveal from './Reveal';
 import styles from './Studies.module.css';
 
-/* The case studies, one chapter per question of the assignment and nothing
-   else, all read from results.json. A menu under the site's nav picks a
-   view: the overview compares the six graphs (vertices on one edge with
-   the output file's facts, then memory, search times and diameter as bars
-   on a log scale, the parents of 10, 20 and 30, the three distances as a
-   triangle per graph, the components as the largest one's share); a graph
-   view puts that graph's seven answers on one screen. The bar scales are
-   shared by every view, so a bar means the same wherever it is. */
+/* The case studies: one sheet per view, the seven questions of the
+   assignment on one screen and nothing else, all read from results.json.
+   A menu stuck under the site's nav picks the view: the overview first
+   (the same sheet, every number the mean over the six graphs) and then
+   one graph each. Every bar scale is computed over all the graphs and
+   shared by every sheet, so a bar's length means the same on each. */
 
-/** The hash a view is kept under, so a graph can be linked to. */
+/** The hash the overview is kept under; a graph is `#grafo-<n>`. */
 const OVERVIEW = 'geral';
-
-const RESULTS = 'https://github.com/lkzppm/GraphMan/blob/main/studies/RESULTS.md';
 
 /** The representations in the order the bars show them, and their blues. */
 const REPRESENTATIONS: Representation[] = ['adjacency_list', 'csr', 'adjacency_matrix'];
@@ -44,15 +39,323 @@ function logScale(floor: number, top: number) {
   return (value: number) => Math.min(1, Math.max(0, (Math.log10(value) - lo) / (hi - lo)));
 }
 
-function repr(study: GraphStudy, r: Representation) {
-  return study.representations.find((x) => x.representation === r);
+const mean = (values: number[]) =>
+  values.length === 0 ? null : values.reduce((a, b) => a + b, 0) / values.length;
+
+/** The bytes a representation took, or would have taken. */
+function memoryBytes(
+  s: GraphStudy,
+  r: Representation,
+): { bytes: number; feasible: boolean } | null {
+  const m = s.representations.find((x) => x.representation === r)?.memory;
+  if (!m) return null;
+  return m.feasible
+    ? { bytes: m.footprint_bytes ?? m.resident_bytes ?? m.required_bytes, feasible: true }
+    : { bytes: m.required_bytes, feasible: false };
 }
 
-type Name = (s: GraphStudy) => string;
+function timing(s: GraphStudy, r: Representation, algo: 'bfs' | 'dfs'): number | null {
+  return s.representations.find((x) => x.representation === r)?.[algo]?.mean_ms ?? null;
+}
+
+/* ---- the sheet: what one view shows ------------------------------------- */
+
+interface Bar {
+  key: string;
+  label: string;
+  colour: string;
+  /** 0..1 of the track; null draws nothing but the value. */
+  width: number | null;
+  value: ReactNode;
+  /** Dashed outline instead of a fill: something that was not measured. */
+  ghost?: boolean;
+}
+
+interface Sheet {
+  title: string;
+  /** A note beside the title, for the mean sheet. */
+  subtitle?: string;
+  facts: {
+    vertices: number;
+    edges: number;
+    degree: { min: number; max: number; mean: number; median: number };
+    loops: number;
+    duplicates: number;
+  };
+  memory: Bar[];
+  bfs: Bar[];
+  dfs: Bar[];
+  parents: {
+    roots: number[];
+    vertices: number[];
+    cell: (algo: 'bfs' | 'dfs', root: number, vertex: number) => ReactNode;
+  };
+  /** A label per pair, null when the ends are in different components. */
+  distances: { from: number; to: number; label: string | null }[];
+  components: { share: number; text: ReactNode };
+  diameter: Bar[];
+}
+
+interface Scales {
+  memory: (bytes: number) => number;
+  time: (ms: number) => number;
+  bfs: (count: number) => number;
+}
+
+type T = ReturnType<typeof useT>;
+
+/** `k de n`, only when it is not everyone. */
+function share(t: T, k: number, n: number): ReactNode {
+  return k === n ? null : (
+    <span className={styles.detail}>{t.studies.of(String(k), String(n))}</span>
+  );
+}
+
+function unreached(t: T): ReactNode {
+  return (
+    <span className={styles.unreached} title={t.studies.questions.parents.unreached}>
+      ·
+    </span>
+  );
+}
+
+function timeBar(t: T, r: Representation, ms: number | null, scales: Scales): Bar {
+  return {
+    key: r,
+    label: t.studies.short[r],
+    colour: REPR_COLOUR[r],
+    width: ms === null ? null : scales.time(ms),
+    value: ms === null ? '·' : formatMs(ms),
+  };
+}
+
+function emptyBar(t: T, m: DiameterMethod): Bar {
+  return { key: m, label: t.studies.methods[m], colour: METHOD_COLOUR[m], width: null, value: '·' };
+}
+
+/** One graph's sheet. */
+function graphSheet(s: GraphStudy, t: T, scales: Scales): Sheet {
+  const q = t.studies.questions;
+  return {
+    title: t.studies.graph(graphNumber(s.name)),
+    facts: {
+      vertices: s.vertices,
+      edges: s.edges,
+      degree: s.degree,
+      loops: s.self_loops_dropped,
+      duplicates: s.duplicates_dropped,
+    },
+    memory: REPRESENTATIONS.map((r) => {
+      const m = memoryBytes(s, r);
+      return {
+        key: r,
+        label: t.studies.short[r],
+        colour: REPR_COLOUR[r],
+        width: m ? scales.memory(m.bytes) : null,
+        ghost: m ? !m.feasible : false,
+        value: !m ? '·' : m.feasible ? formatBytes(m.bytes) : q.memory.needs(formatBytes(m.bytes)),
+      };
+    }),
+    bfs: REPRESENTATIONS.map((r) => timeBar(t, r, timing(s, r, 'bfs'), scales)),
+    dfs: REPRESENTATIONS.map((r) => timeBar(t, r, timing(s, r, 'dfs'), scales)),
+    parents: {
+      roots: [...new Set(s.parents.map((p) => p.root))],
+      vertices: [...new Set(s.parents.map((p) => p.vertex))],
+      cell: (algo, root, vertex) => {
+        const p = s.parents.find(
+          (x) => x.algorithm === algo && x.root === root && x.vertex === vertex,
+        );
+        if (p?.parent == null) return unreached(t);
+        return (
+          <>
+            <span className={styles.parent}>{formatInt(p.parent)}</span>
+            <span className={styles.level}>
+              {q.parents.level} {formatInt(p.level ?? 0)}
+            </span>
+          </>
+        );
+      },
+    },
+    distances: s.distances.map((d) => ({
+      from: d.from,
+      to: d.to,
+      label: d.distance === null ? null : String(d.distance),
+    })),
+    components: {
+      share: s.components.largest / s.vertices,
+      text: (
+        <>
+          <span className={styles.answer}>
+            {s.components.count === 1
+              ? q.components.one
+              : q.components.count(formatInt(s.components.count))}
+          </span>
+          <span className={styles.detail}>
+            {q.components.largest(formatInt(s.components.largest))} ·{' '}
+            {q.components.smallest(formatInt(s.components.smallest))}
+          </span>
+        </>
+      ),
+    },
+    diameter: METHODS.map((m) => {
+      const d = s.diameters.find((x) => x.method === m);
+      if (!d) return emptyBar(t, m);
+      const bound = !d.is_exact || d.cancelled;
+      return {
+        key: m,
+        label: t.studies.methods[m],
+        colour: METHOD_COLOUR[m],
+        width: scales.bfs(d.bfs_count),
+        ghost: d.cancelled,
+        value: (
+          <>
+            <span className={styles.answer} data-bound={bound || undefined}>
+              {bound ? '≥ ' : ''}
+              {d.value}
+            </span>
+            <span className={styles.detail}>
+              {q.diameter.bfs(formatCompact(d.bfs_count))}
+              {d.cancelled ? ` · ${q.diameter.stopped(formatMs(d.elapsed_ms))}` : ''}
+            </span>
+          </>
+        ),
+      };
+    }),
+  };
+}
+
+/** The mean over every graph, in the same shape; where a number is not
+    measured on every graph, how many it comes from is written beside it. */
+function meanSheet(studies: GraphStudy[], t: T, scales: Scales): Sheet {
+  const q = t.studies.questions;
+  const n = studies.length;
+  const avg = (pick: (s: GraphStudy) => number) => mean(studies.map(pick)) ?? 0;
+  const some = (pick: (s: GraphStudy) => number | null) =>
+    studies.map(pick).filter((v): v is number => v !== null);
+  const timeBars = (algo: 'bfs' | 'dfs') =>
+    REPRESENTATIONS.map((r) => {
+      const values = some((s) => timing(s, r, algo));
+      const bar = timeBar(t, r, mean(values), scales);
+      return {
+        ...bar,
+        value: (
+          <>
+            {bar.value}
+            {values.length > 0 && share(t, values.length, n)}
+          </>
+        ),
+      };
+    });
+  return {
+    title: t.studies.overview,
+    subtitle: t.studies.average(String(n)),
+    facts: {
+      vertices: avg((s) => s.vertices),
+      edges: avg((s) => s.edges),
+      degree: {
+        min: avg((s) => s.degree.min),
+        max: avg((s) => s.degree.max),
+        mean: avg((s) => s.degree.mean),
+        median: avg((s) => s.degree.median),
+      },
+      loops: avg((s) => s.self_loops_dropped),
+      duplicates: avg((s) => s.duplicates_dropped),
+    },
+    memory: REPRESENTATIONS.map((r) => {
+      const built = some((s) => {
+        const m = memoryBytes(s, r);
+        return m?.feasible ? m.bytes : null;
+      });
+      const bytes = mean(built);
+      return {
+        key: r,
+        label: t.studies.short[r],
+        colour: REPR_COLOUR[r],
+        width: bytes === null ? null : scales.memory(bytes),
+        value: (
+          <>
+            {bytes === null ? '·' : formatBytes(bytes)}
+            {share(t, built.length, n)}
+          </>
+        ),
+      };
+    }),
+    bfs: timeBars('bfs'),
+    dfs: timeBars('dfs'),
+    parents: {
+      roots: [...new Set(studies.flatMap((s) => s.parents.map((p) => p.root)))],
+      vertices: [...new Set(studies.flatMap((s) => s.parents.map((p) => p.vertex)))],
+      cell: (algo, root, vertex) => {
+        const levels = some(
+          (s) =>
+            s.parents.find((x) => x.algorithm === algo && x.root === root && x.vertex === vertex)
+              ?.level ?? null,
+        );
+        if (levels.length === 0) return unreached(t);
+        return (
+          <>
+            <span className={styles.parent}>{t.studies.of(String(levels.length), String(n))}</span>
+            <span className={styles.level}>
+              {q.parents.meanLevel} {formatInt(mean(levels) ?? 0)}
+            </span>
+          </>
+        );
+      },
+    },
+    distances: studies[0].distances.map((d) => {
+      const values = some(
+        (s) => s.distances.find((x) => x.from === d.from && x.to === d.to)?.distance ?? null,
+      );
+      const m = mean(values);
+      return { from: d.from, to: d.to, label: m === null ? null : m.toFixed(1) };
+    }),
+    components: {
+      share: avg((s) => s.components.largest / s.vertices),
+      text: (
+        <>
+          <span className={styles.answer}>
+            {q.components.count(avg((s) => s.components.count).toFixed(1))}
+          </span>
+          <span className={styles.detail}>
+            {q.components.largest(formatInt(avg((s) => s.components.largest)))} ·{' '}
+            {q.components.smallest(formatInt(avg((s) => s.components.smallest)))}
+          </span>
+        </>
+      ),
+    },
+    diameter: METHODS.map((m) => {
+      const runs = studies.flatMap((s) => s.diameters.filter((d) => d.method === m));
+      if (runs.length === 0) return emptyBar(t, m);
+      const exact = runs.filter((d) => d.is_exact && !d.cancelled).length;
+      const value = mean(runs.map((d) => d.value)) ?? 0;
+      const bfs = mean(runs.map((d) => d.bfs_count)) ?? 1;
+      return {
+        key: m,
+        label: t.studies.methods[m],
+        colour: METHOD_COLOUR[m],
+        width: scales.bfs(bfs),
+        ghost: exact === 0,
+        value: (
+          <>
+            <span className={styles.answer} data-bound={exact < runs.length || undefined}>
+              {exact < runs.length ? '≥ ' : ''}
+              {value.toFixed(1)}
+            </span>
+            <span className={styles.detail}>
+              {q.diameter.bfs(formatCompact(bfs))} ·{' '}
+              {t.studies.of(String(exact), String(runs.length))} {q.diameter.exact}
+            </span>
+          </>
+        ),
+      };
+    }),
+  };
+}
+
+/* ---- the page ------------------------------------------------------------ */
 
 export default function Studies({ studies }: { studies: GraphStudy[] }) {
   const t = useT();
-  const name: Name = (study) => t.studies.graph(graphNumber(study.name));
   // The view: the overview, or the index of one graph. Kept in the hash.
   const [view, setView] = useState<number | null>(null);
   useEffect(() => {
@@ -85,22 +388,26 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
     );
   }
 
-  // One scale per quantity across every graph, so the views compare.
+  // One scale per quantity across every graph, so the sheets compare.
   const scales: Scales = {
     memory: logScale(
       1 << 20,
-      Math.max(...studies.flatMap((s) => s.representations.map((r) => memoryBytes(r.memory)))),
+      Math.max(
+        ...studies.flatMap((s) => REPRESENTATIONS.map((r) => memoryBytes(s, r)?.bytes ?? 0)),
+      ),
     ),
     time: logScale(
       0.1,
       Math.max(
         ...studies.flatMap((s) =>
-          s.representations.flatMap((r) => [r.bfs?.mean_ms ?? 0, r.dfs?.mean_ms ?? 0]),
+          REPRESENTATIONS.flatMap((r) => [timing(s, r, 'bfs') ?? 0, timing(s, r, 'dfs') ?? 0]),
         ),
       ),
     ),
     bfs: logScale(1, Math.max(...studies.flatMap((s) => s.diameters.map((d) => d.bfs_count)))),
   };
+  const sheet =
+    view === null ? meanSheet(studies, t, scales) : graphSheet(studies[view], t, scales);
 
   return (
     <section className={styles.section}>
@@ -112,7 +419,11 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
             data-active={view === null || undefined}
             onClick={() => choose(null)}
           >
-            <span className={`mono ${styles.pickBall}`}>∗</span>
+            <span className={`mono ${styles.pickBall}`}>
+              <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
+                <circle cx="5" cy="5" r="3" fill="currentColor" />
+              </svg>
+            </span>
             <span className={styles.pickName}>{t.studies.overview}</span>
           </button>
           {studies.map((s, i) => (
@@ -124,498 +435,198 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
               onClick={() => choose(i)}
             >
               <span className={`mono ${styles.pickBall}`}>{graphNumber(s.name)}</span>
-              <span className={styles.pickName}>{name(s)}</span>
+              <span className={styles.pickName}>{t.studies.graph(graphNumber(s.name))}</span>
             </button>
           ))}
         </div>
       </nav>
-
-      {view === null ? (
-        <Overview studies={studies} name={name} scales={scales} />
-      ) : (
-        <Single key={studies[view].name} study={studies[view]} name={name} scales={scales} />
-      )}
+      <SheetView key={view ?? OVERVIEW} sheet={sheet} />
     </section>
   );
 }
 
-interface Scales {
-  memory: (bytes: number) => number;
-  time: (ms: number) => number;
-  bfs: (count: number) => number;
-}
-
-/** Every graph compared, question by question. */
-function Overview({
-  studies,
-  name,
-  scales,
-}: {
-  studies: GraphStudy[];
-  name: Name;
-  scales: Scales;
-}) {
+/** The seven answers on one screen: the facts on top, then the three bar
+    charts in a row, the two parent tables side by side, and the triangle
+    beside the components bar over the diameter bars. */
+function SheetView({ sheet }: { sheet: Sheet }) {
   const t = useT();
   const q = t.studies.questions;
+  const f = sheet.facts;
   return (
     <div className={`container ${styles.content}`}>
-      <Reveal>
-        <GraphStrip studies={studies} name={name} />
+      <Reveal className={styles.head}>
+        <h1 className={styles.title}>{sheet.title}</h1>
+        {sheet.subtitle && <span className={styles.subtitle}>{sheet.subtitle}</span>}
+        <div className={styles.facts}>
+          <span className={`mono ${styles.fact}`}>
+            {formatInt(f.vertices)} <em>{t.studies.facts.vertices}</em>
+          </span>
+          <span className={`mono ${styles.fact}`}>
+            {formatInt(f.edges)} <em>{t.studies.facts.edges}</em>
+          </span>
+          <span className={styles.note}>
+            {t.studies.facts.degree(
+              formatInt(f.degree.min),
+              formatInt(f.degree.max),
+              f.degree.mean.toFixed(1),
+              formatInt(f.degree.median),
+            )}
+          </span>
+          <span className={styles.note}>
+            {t.studies.facts.dropped(formatInt(f.loops), formatInt(f.duplicates))}
+          </span>
+        </div>
       </Reveal>
 
-      <Chapter index={1} title={q.memory.title} note={q.memory.note}>
-        <MemoryChart studies={studies} name={name} scale={scales.memory} />
-      </Chapter>
+      <div className={styles.rowThree}>
+        <Chapter index={1} title={q.memory.title} delay={0.05}>
+          <Bars bars={sheet.memory} />
+        </Chapter>
+        <Chapter index={2} title={q.bfs.title} delay={0.1}>
+          <Bars bars={sheet.bfs} />
+        </Chapter>
+        <Chapter index={3} title={q.dfs.title} delay={0.15}>
+          <Bars bars={sheet.dfs} />
+        </Chapter>
+      </div>
 
-      <Chapter index={2} title={q.bfs.title} note={q.bfs.note}>
-        <TimeChart algo="bfs" scale={scales.time} studies={studies} name={name} />
-      </Chapter>
-
-      <Chapter index={3} title={q.dfs.title} note={q.dfs.note}>
-        <TimeChart algo="dfs" scale={scales.time} studies={studies} name={name} />
-      </Chapter>
-
-      <Chapter index={4} title={q.parents.title} note={q.parents.note}>
-        <Parents studies={studies} name={name} />
-      </Chapter>
-
-      <Chapter index={5} title={q.distances.title} note={q.distances.note}>
-        <div className={styles.triangles}>
-          {studies.map((study, i) => (
-            <Reveal key={study.name} delay={i * 0.06} className={styles.triangleCard}>
-              <span className={`label ${styles.cardLabel}`}>{name(study)}</span>
-              <Triangle study={study} />
-            </Reveal>
+      <Chapter index={4} title={q.parents.title} delay={0.2}>
+        <div className={styles.tables}>
+          {(['bfs', 'dfs'] as const).map((algo) => (
+            <table key={algo} className={styles.table}>
+              <thead>
+                <tr>
+                  <th>{algo.toUpperCase()}</th>
+                  {sheet.parents.vertices.map((v) => (
+                    <th key={v}>{q.parents.vertex(String(v))}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sheet.parents.roots.map((root) => (
+                  <tr key={root}>
+                    <th scope="row">{q.parents.root(String(root))}</th>
+                    {sheet.parents.vertices.map((v) => (
+                      <td key={v} className="mono">
+                        {sheet.parents.cell(algo, root, v)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ))}
         </div>
       </Chapter>
 
-      <Chapter index={6} title={q.components.title} note={q.components.note}>
-        <ComponentsChart studies={studies} name={name} />
-      </Chapter>
-
-      <Chapter index={7} title={q.diameter.title} note={q.diameter.note}>
-        <DiameterChart studies={studies} name={name} scale={scales.bfs} />
-      </Chapter>
-
-      <Reveal as="p" className={styles.source}>
-        <a href={RESULTS} target="_blank" rel="noreferrer">
-          {t.studies.source}
-          <ArrowUpRight size={13} aria-hidden="true" />
-        </a>
-      </Reveal>
-    </div>
-  );
-}
-
-/** One graph, its seven answers on one screen. */
-function Single({ study, name, scales }: { study: GraphStudy; name: Name; scales: Scales }) {
-  const t = useT();
-  const q = t.studies.questions;
-  const one = [study];
-  return (
-    <div className={`container ${styles.content} ${styles.single}`}>
-      <Reveal className={styles.singleHead}>
-        <h1 className={styles.singleTitle}>{name(study)}</h1>
-        <Facts study={study} />
-      </Reveal>
-      <div className={styles.columns}>
-        <div className={styles.column}>
-          <Chapter index={1} title={q.memory.title} note={q.memory.note} compact>
-            <MemoryChart studies={one} name={name} scale={scales.memory} single />
+      <div className={styles.rowLast}>
+        <Chapter index={5} title={q.distances.title} delay={0.25}>
+          <Triangle distances={sheet.distances} />
+        </Chapter>
+        <div className={styles.stack}>
+          <Chapter index={6} title={q.components.title} delay={0.3}>
+            <Bars
+              bars={[
+                {
+                  key: 'largest',
+                  label: '',
+                  colour: 'var(--accent)',
+                  width: sheet.components.share,
+                  value: sheet.components.text,
+                },
+              ]}
+            />
           </Chapter>
-          <Chapter index={2} title={q.bfs.title} note={q.bfs.note} compact>
-            <TimeChart algo="bfs" scale={scales.time} studies={one} name={name} single />
+          <Chapter index={7} title={q.diameter.title} delay={0.35}>
+            <Bars bars={sheet.diameter} />
           </Chapter>
-          <Chapter index={3} title={q.dfs.title} note={q.dfs.note} compact>
-            <TimeChart algo="dfs" scale={scales.time} studies={one} name={name} single />
-          </Chapter>
-          <Chapter index={7} title={q.diameter.title} note={q.diameter.note} compact>
-            <DiameterChart studies={one} name={name} scale={scales.bfs} single />
-          </Chapter>
-        </div>
-        <div className={styles.column}>
-          <Chapter index={4} title={q.parents.title} note={q.parents.note} compact>
-            <ParentTables study={study} />
-          </Chapter>
-          <div className={styles.pair}>
-            <Chapter index={5} title={q.distances.title} note={q.distances.note} compact>
-              <Triangle study={study} />
-            </Chapter>
-            <Chapter index={6} title={q.components.title} note={q.components.note} compact>
-              <ComponentsChart studies={one} name={name} single />
-            </Chapter>
-          </div>
         </div>
       </div>
     </div>
   );
 }
 
-/** The output file's facts about one graph, in a row. */
-function Facts({ study }: { study: GraphStudy }) {
-  const c = useT().studies.graphs;
-  return (
-    <div className={styles.facts}>
-      <span className={`mono ${styles.stripFact}`}>
-        {formatInt(study.vertices)} <em>{c.vertices}</em>
-      </span>
-      <span className={`mono ${styles.stripFact}`}>
-        {formatInt(study.edges)} <em>{c.edges}</em>
-      </span>
-      <span className={styles.stripNote}>
-        {c.degree(
-          formatInt(study.degree.min),
-          formatInt(study.degree.max),
-          study.degree.mean.toFixed(1),
-          formatInt(study.degree.median),
-        )}
-      </span>
-      <span className={styles.stripNote}>
-        {c.dropped(formatInt(study.self_loops_dropped), formatInt(study.duplicates_dropped))}
-      </span>
-    </div>
-  );
-}
-
-/** The bytes a representation took, or would have taken. */
-function memoryBytes(m: MemoryReport): number {
-  return m.feasible
-    ? (m.footprint_bytes ?? m.resident_bytes ?? m.required_bytes)
-    : m.required_bytes;
-}
-
-/** A question of the assignment: mono index, title, a note on the right. */
+/** A question of the assignment: mono index, title, hairline, the drawing. */
 function Chapter({
   index,
   title,
-  note,
-  compact,
+  delay,
   children,
 }: {
   index: number;
   title: string;
-  note: string;
-  compact?: boolean;
+  delay: number;
   children: ReactNode;
 }) {
   return (
-    <Reveal as="article" className={`${styles.chapter} ${compact ? styles.compact : ''}`}>
+    <Reveal as="article" className={styles.chapter} delay={delay}>
       <header className={styles.chapterHead}>
         <span className={`mono ${styles.chapterIndex}`}>{String(index).padStart(2, '0')}</span>
         <h2 className={styles.chapterTitle}>{title}</h2>
-        <span className={styles.chapterNote}>{note}</span>
       </header>
       {children}
     </Reveal>
   );
 }
 
-/* ---- the six graphs ------------------------------------------------------ */
-
-/** One vertex per graph on a single edge, its radius the vertex count on a
-    log scale, the output file's facts under it. */
-function GraphStrip({ studies, name }: { studies: GraphStudy[]; name: Name }) {
-  const c = useT().studies.graphs;
-  const radius = (n: number) => 16 + (Math.log10(n) - 4) * 9;
+/** Horizontal bars, label on the left, value after the bar. */
+function Bars({ bars }: { bars: Bar[] }) {
   return (
-    <ol className={styles.strip}>
-      {studies.map((study) => {
-        const r = radius(study.vertices);
-        return (
-          <li key={study.name} className={styles.stripItem}>
-            <span className={styles.stripVertex}>
+    <div className={styles.bars}>
+      {bars.map((bar) => (
+        <div
+          key={bar.key}
+          className={styles.bar}
+          data-ghost={bar.ghost || undefined}
+          data-bare={bar.label === '' || undefined}
+        >
+          {bar.label !== '' && <span className={`mono ${styles.barLabel}`}>{bar.label}</span>}
+          <span className={styles.track}>
+            {bar.width !== null && (
               <span
-                className={`mono ${styles.stripBall}`}
-                style={{ width: r * 2, height: r * 2, fontSize: 11 + (r - 16) / 3 }}
-              >
-                {graphNumber(study.name)}
-              </span>
-            </span>
-            <span className={`label ${styles.stripName}`}>{name(study)}</span>
-            <span className={`mono ${styles.stripFact}`}>
-              {formatInt(study.vertices)} <em>{c.vertices}</em>
-            </span>
-            <span className={`mono ${styles.stripFact}`}>
-              {formatInt(study.edges)} <em>{c.edges}</em>
-            </span>
-            <span className={styles.stripNote}>
-              {c.degree(
-                formatInt(study.degree.min),
-                formatInt(study.degree.max),
-                study.degree.mean.toFixed(1),
-                formatInt(study.degree.median),
-              )}
-            </span>
-            <span className={styles.stripNote}>
-              {c.dropped(formatInt(study.self_loops_dropped), formatInt(study.duplicates_dropped))}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-/* ---- bars ---------------------------------------------------------------- */
-
-interface Bar {
-  key: string;
-  label: string;
-  colour: string;
-  /** 0..1 of the track; null draws nothing but the value. */
-  width: number | null;
-  value: ReactNode;
-  /** Dashed outline instead of a fill: something that was not measured. */
-  ghost?: boolean;
-}
-
-/** Rows of horizontal bars, one row per graph, with a legend on top. */
-function Bars({
-  rows,
-  legend,
-  scaleNote,
-  single,
-}: {
-  rows: { key: string; name: string; bars: Bar[] }[];
-  legend?: { label: string; colour: string }[];
-  scaleNote?: string;
-  /** One graph only: no row names. */
-  single?: boolean;
-}) {
-  return (
-    <div className={styles.bars} data-single={single || undefined}>
-      {(legend || scaleNote) && (
-        <div className={styles.legend}>
-          {legend?.map((item) => (
-            <span key={item.label} className={styles.legendItem}>
-              <span className={styles.swatch} style={{ background: item.colour }} />
-              {item.label}
-            </span>
-          ))}
-          {scaleNote && <span className={`mono ${styles.scaleNote}`}>{scaleNote}</span>}
-        </div>
-      )}
-      {rows.map((row) => (
-        <div key={row.key} className={styles.row}>
-          {!single && <span className={`label ${styles.rowName}`}>{row.name}</span>}
-          <div className={styles.rowBars}>
-            {row.bars.map((bar) => (
-              <div
-                key={bar.key}
-                className={styles.bar}
-                data-ghost={bar.ghost || undefined}
-                data-bare={bar.label === '' || undefined}
-              >
-                {bar.label !== '' && <span className={`mono ${styles.barLabel}`}>{bar.label}</span>}
-                <span className={styles.track}>
-                  {bar.width !== null && (
-                    <span
-                      className={styles.fill}
-                      style={
-                        {
-                          '--w': `${Math.max(0.6, bar.width * 100)}%`,
-                          '--colour': bar.colour,
-                        } as CSSProperties
-                      }
-                    />
-                  )}
-                  <span className={`mono ${styles.value}`}>{bar.value}</span>
-                </span>
-              </div>
-            ))}
-          </div>
+                className={styles.fill}
+                style={
+                  {
+                    '--w': `${Math.max(0.6, bar.width * 100)}%`,
+                    '--colour': bar.colour,
+                  } as CSSProperties
+                }
+              />
+            )}
+            <span className={`mono ${styles.value}`}>{bar.value}</span>
+          </span>
         </div>
       ))}
     </div>
   );
 }
-
-/* ---- 1: memory ----------------------------------------------------------- */
-
-function MemoryChart({
-  studies,
-  name,
-  scale,
-  single,
-}: {
-  studies: GraphStudy[];
-  name: Name;
-  scale: (bytes: number) => number;
-  single?: boolean;
-}) {
-  const t = useT();
-  const c = t.studies.questions.memory;
-  return (
-    <Bars
-      single={single}
-      scaleNote={t.studies.logScale}
-      legend={REPRESENTATIONS.map((r) => ({
-        label: t.studies.representations[r],
-        colour: REPR_COLOUR[r],
-      }))}
-      rows={studies.map((s) => ({
-        key: s.name,
-        name: name(s),
-        bars: REPRESENTATIONS.map((r) => {
-          const m = repr(s, r)?.memory;
-          const b = m ? memoryBytes(m) : null;
-          return {
-            key: r,
-            label: t.studies.short[r],
-            colour: REPR_COLOUR[r],
-            width: b === null ? null : scale(b),
-            ghost: m ? !m.feasible : false,
-            value: b === null ? '·' : m?.feasible ? formatBytes(b) : c.needs(formatBytes(b)),
-          };
-        }),
-      }))}
-    />
-  );
-}
-
-/* ---- 2 and 3: search times ----------------------------------------------- */
-
-function TimeChart({
-  algo,
-  scale,
-  studies,
-  name,
-  single,
-}: {
-  algo: 'bfs' | 'dfs';
-  scale: (ms: number) => number;
-  studies: GraphStudy[];
-  name: Name;
-  single?: boolean;
-}) {
-  const t = useT();
-  return (
-    <Bars
-      single={single}
-      scaleNote={t.studies.logScale}
-      legend={REPRESENTATIONS.map((r) => ({
-        label: t.studies.representations[r],
-        colour: REPR_COLOUR[r],
-      }))}
-      rows={studies.map((s) => ({
-        key: s.name,
-        name: name(s),
-        bars: REPRESENTATIONS.map((r) => {
-          const timing = repr(s, r)?.[algo];
-          return {
-            key: r,
-            label: t.studies.short[r],
-            colour: REPR_COLOUR[r],
-            width: timing ? scale(timing.mean_ms) : null,
-            value: timing ? formatMs(timing.mean_ms) : '·',
-          };
-        }),
-      }))}
-    />
-  );
-}
-
-/* ---- 4: parents ---------------------------------------------------------- */
-
-/** The six graphs as a row of vertices to pick from; the chosen one's
-    parents and levels in two grids, BFS and DFS. */
-function Parents({ studies, name }: { studies: GraphStudy[]; name: Name }) {
-  const [chosen, setChosen] = useState(0);
-  return (
-    <div className={styles.parents}>
-      <div className={styles.picker} role="tablist">
-        {studies.map((s, i) => (
-          <button
-            key={s.name}
-            type="button"
-            role="tab"
-            aria-selected={i === chosen}
-            className={styles.pick}
-            data-active={i === chosen || undefined}
-            onClick={() => setChosen(i)}
-          >
-            <span className={`mono ${styles.pickBall}`}>{graphNumber(s.name)}</span>
-            <span className={styles.pickName}>{name(s)}</span>
-          </button>
-        ))}
-      </div>
-      <ParentTables study={studies[chosen]} />
-    </div>
-  );
-}
-
-/** Parent over level for every root and vertex asked, BFS beside DFS. */
-function ParentTables({ study }: { study: GraphStudy }) {
-  const c = useT().studies.questions.parents;
-  const roots = [...new Set(study.parents.map((p) => p.root))];
-  const vertices = [...new Set(study.parents.map((p) => p.vertex))];
-  return (
-    <div className={styles.split}>
-      {(['bfs', 'dfs'] as const).map((algo) => (
-        <table key={algo} className={styles.table}>
-          <thead>
-            <tr>
-              <th>{algo.toUpperCase()}</th>
-              {vertices.map((v) => (
-                <th key={v}>{c.vertex(String(v))}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {roots.map((root) => (
-              <tr key={root}>
-                <th scope="row">{c.root(String(root))}</th>
-                {vertices.map((v) => {
-                  const p = study.parents.find(
-                    (x) => x.algorithm === algo && x.root === root && x.vertex === v,
-                  );
-                  return (
-                    <td key={v} className="mono">
-                      {p?.parent == null ? (
-                        <span className={styles.unreached} title={c.unreached}>
-                          ·
-                        </span>
-                      ) : (
-                        <>
-                          <span className={styles.parent}>{formatInt(p.parent)}</span>
-                          <span className={styles.level}>
-                            {c.level} {formatInt(p.level ?? 0)}
-                          </span>
-                        </>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ))}
-    </div>
-  );
-}
-
-/* ---- 5: distances -------------------------------------------------------- */
 
 /** Vertices 10, 20 and 30 as a triangle, each side labelled with the
     distance between its ends, dashed when they are in different components. */
-function Triangle({ study }: { study: GraphStudy }) {
+function Triangle({ distances }: { distances: Sheet['distances'] }) {
   const pos: Record<number, [number, number]> = { 10: [70, 22], 20: [16, 108], 30: [124, 108] };
   const ids = Object.keys(pos).map(Number);
   return (
     <svg viewBox="0 0 140 130" className={styles.triangle} aria-hidden="true">
-      {study.distances.map((d) => {
+      {distances.map((d) => {
         const [x1, y1] = pos[d.from];
         const [x2, y2] = pos[d.to];
         const mx = (x1 + x2) / 2;
         const my = (y1 + y2) / 2;
+        const half = (d.label?.length ?? 1) > 2 ? 15 : 11;
         return (
-          <g key={`${d.from}-${d.to}`} data-apart={d.distance === null || undefined}>
+          <g key={`${d.from}-${d.to}`} data-apart={d.label === null || undefined}>
             <line x1={x1} y1={y1} x2={x2} y2={y2} className={styles.side} />
-            <rect x={mx - 11} y={my - 8} width={22} height={16} rx={8} className={styles.pill} />
+            <rect
+              x={mx - half}
+              y={my - 8}
+              width={half * 2}
+              height={16}
+              rx={8}
+              className={styles.pill}
+            />
             <text x={mx} y={my} dy="0.35em" textAnchor="middle" className={styles.sideLabel}>
-              {d.distance ?? '∞'}
+              {d.label ?? '∞'}
             </text>
           </g>
         );
@@ -629,110 +640,5 @@ function Triangle({ study }: { study: GraphStudy }) {
         </g>
       ))}
     </svg>
-  );
-}
-
-/* ---- 6: components ------------------------------------------------------- */
-
-/** One bar per graph, the whole graph, its largest component the blue part. */
-function ComponentsChart({
-  studies,
-  name,
-  single,
-}: {
-  studies: GraphStudy[];
-  name: Name;
-  single?: boolean;
-}) {
-  const c = useT().studies.questions.components;
-  return (
-    <Bars
-      single={single}
-      rows={studies.map((s) => {
-        const { count, largest, smallest } = s.components;
-        return {
-          key: s.name,
-          name: name(s),
-          bars: [
-            {
-              key: 'largest',
-              label: '',
-              colour: 'var(--accent)',
-              width: largest / s.vertices,
-              value: (
-                <>
-                  <span className={styles.answer}>
-                    {count === 1 ? c.one : c.count(formatInt(count))}
-                  </span>
-                  <span className={styles.detail}>
-                    {c.largest(formatInt(largest))} · {c.smallest(formatInt(smallest))}
-                  </span>
-                </>
-              ),
-            },
-          ],
-        };
-      })}
-    />
-  );
-}
-
-/* ---- 7: diameter --------------------------------------------------------- */
-
-function DiameterChart({
-  studies,
-  name,
-  scale,
-  single,
-}: {
-  studies: GraphStudy[];
-  name: Name;
-  scale: (count: number) => number;
-  single?: boolean;
-}) {
-  const t = useT();
-  const c = t.studies.questions.diameter;
-  return (
-    <Bars
-      single={single}
-      scaleNote={t.studies.logScale}
-      legend={METHODS.map((m) => ({ label: t.studies.methods[m], colour: METHOD_COLOUR[m] }))}
-      rows={studies.map((s) => ({
-        key: s.name,
-        name: name(s),
-        bars: METHODS.map((m) => {
-          const d = s.diameters.find((x) => x.method === m);
-          if (!d) {
-            return {
-              key: m,
-              label: t.studies.methods[m],
-              colour: METHOD_COLOUR[m],
-              width: null,
-              value: '·',
-            };
-          }
-          const bound = !d.is_exact || d.cancelled;
-          return {
-            key: m,
-            label: t.studies.methods[m],
-            colour: METHOD_COLOUR[m],
-            width: scale(d.bfs_count),
-            ghost: d.cancelled,
-            value: (
-              <>
-                <span className={styles.answer} data-bound={bound || undefined}>
-                  {bound ? '≥ ' : ''}
-                  {d.value}
-                </span>
-                <span className={styles.detail}>
-                  {c.bfs(formatCompact(d.bfs_count))}
-                  {d.cancelled ? ` · ${c.stopped(formatMs(d.elapsed_ms))}` : ''}
-                </span>
-              </>
-            ),
-          };
-        }),
-      }))}
-    />
   );
 }
