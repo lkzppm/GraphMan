@@ -155,16 +155,38 @@
 
 .panelSummary {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
+  min-width: 0;
   margin-left: auto;
   font-size: 12px;
   color: var(--fg-3);
 }
 
+/* Collapsed, the summary says which method the number came from. */
+.summaryTag {
+  min-width: 0;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .panelSummaryValue {
+  flex: none;
   font-size: 13px;
   color: var(--accent);
+}
+
+.summaryCount {
+  flex: none;
+  white-space: nowrap;
 }
 
 /* The ≥ that marks every bound or budget-stopped value. */
@@ -313,31 +335,13 @@
   border: 1px solid var(--border);
 }
 
-.statsTwo {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .stat {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 7px 10px 8px;
   background: var(--bg);
   min-width: 0;
-  overflow: hidden;
-}
-
-/* A count read against its budget: a fill along the cell's bottom edge. */
-.statMeter {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background: var(--accent);
-  transform-origin: left;
-  transition: transform 0.6s var(--ease);
 }
 
 .statValue {
@@ -888,54 +892,29 @@
   animation: spin 0.9s linear infinite;
 }
 
-/* The result: an accent-edged card holding a measuring bar. */
+/* The result, unboxed under a hairline: the ruler, then one grey line
+   saying how good the number is and what it cost. */
 .measure {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 9px 12px 11px;
-  border: 1px solid var(--border);
-  border-left: 2px solid var(--accent);
-  border-radius: var(--radius);
-  background: var(--bg);
+  gap: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
   animation: rise 0.35s var(--ease) both;
 }
 
-.measureHead {
+.measureMeta {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.measureMethod {
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: var(--tracking);
-  text-transform: uppercase;
-  color: var(--fg-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Exact, a lower bound, or stopped by the budget. */
-.badge {
-  flex: none;
-  padding: 2px 6px;
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-sm);
-  font-size: 9px;
-  font-weight: 500;
-  letter-spacing: var(--tracking);
-  text-transform: uppercase;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  font-size: 11px;
   color: var(--fg-3);
 }
 
-.badge[data-exact='true'] {
-  border-color: var(--accent);
-  background: var(--accent-muted);
-  color: var(--accent);
+.measureMeta > * + *::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--border-2);
 }
 
 /* The ruler: the two far vertices, the distance measured between them.
