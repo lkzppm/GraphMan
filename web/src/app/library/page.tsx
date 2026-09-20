@@ -1,17 +1,19 @@
 import type { Metadata } from 'next';
-import Decisions from '@/components/Decisions';
 import Footer from '@/components/Footer';
+import Wiki from '@/components/Wiki';
+import examples from '@/data/wiki.json';
 
 export const metadata: Metadata = {
-  title: 'Library',
-  description: 'The GraphMan Rust library: one Graph trait, three representations, four diameters.',
+  title: 'Biblioteca',
+  description:
+    'Como usar a biblioteca Rust do GraphMan, capítulo a capítulo, com exemplos testados.',
 };
 
 export default function LibraryPage() {
   return (
     <>
       <main className="page">
-        <Decisions />
+        <Wiki examples={examples} />
       </main>
       <Footer />
     </>

@@ -87,19 +87,6 @@ export interface GraphStudy {
   diameters: DiameterAnswer[];
 }
 
-export const REPRESENTATION_LABEL: Record<Representation, string> = {
-  adjacency_list: 'Adjacency list',
-  adjacency_matrix: 'Adjacency matrix',
-  csr: 'CSR',
-};
-
-export const DIAMETER_LABEL: Record<DiameterMethod, string> = {
-  exact: 'Brute force',
-  i_fub: 'iFUB',
-  bounds: 'Takes–Kosters',
-  sweep: '4-sweep',
-};
-
 export const studies: GraphStudy[] = (results as GraphStudy[])
   .slice()
   .sort((a, b) => a.vertices - b.vertices || a.edges - b.edges);

@@ -24,6 +24,8 @@
   /* Search level ramp ends: level 0 is a deep navy (the accent at 42 %),
      the deepest level the light blue. */
   --level-0: #002f66;
+  /* The one green: the destination of a distance query. */
+  --target: #16a34a;
   --warning: var(--accent);
 
   --node: #0070f3;
@@ -256,18 +258,21 @@ button {
   cursor: not-allowed;
 }
 
-/* Route change: the page rises in. */
+/* Route change: the page rises in. `backwards`, not `both`: once the rise
+   is over the transform must be gone, or the page would become the
+   containing block of anything fixed inside it (the library's rail). */
 .page {
-  animation: rise 0.35s var(--ease) both;
+  animation: rise 0.35s var(--ease) backwards;
 }
 
-/* Scroll reveal (src/components/Reveal.tsx): children rise into place once. */
+/* Scroll reveal (src/components/Reveal.tsx): children rise into place once,
+   slowly, each in its turn (`--delay`) as the page is scrolled. */
 .reveal {
   opacity: 0;
-  transform: translateY(18px);
+  transform: translateY(26px);
   transition:
-    opacity 0.7s var(--ease),
-    transform 0.7s var(--ease);
+    opacity 0.9s var(--ease),
+    transform 1s var(--ease);
   transition-delay: var(--delay, 0s);
 }
 

@@ -140,8 +140,43 @@
   color: var(--accent);
 }
 
-.github {
+/* The language switch: two small mono tags, the current one in the accent pill. */
+.language {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.languageButton,
+.languageActive {
+  padding: 4px 8px;
+  border-radius: calc(var(--radius) - 2px);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  transition:
+    color 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+.languageButton:hover {
+  color: var(--fg);
+  background: var(--bg-3);
+}
+
+.languageActive {
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.github {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -185,5 +220,10 @@
 
   .github {
     padding: 7px 9px;
+  }
+
+  .languageButton,
+  .languageActive {
+    padding: 4px 6px;
   }
 }

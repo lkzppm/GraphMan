@@ -9,7 +9,11 @@ core, so keep the `Graph` trait small and the algorithms generic.
 
 Everything in the repo is in English. The presentation and report are in
 Portuguese (the course language), but code, comments, docs and commits are
-English.
+English. The web site's interface is bilingual (Portuguese by default,
+English by a switch): every visible string lives in `web/src/i18n/`
+(`en.tsx` is the schema, `pt.tsx` must match it), never inline in a
+component. Never use the em dash (—) in anything the visitor reads, site
+or slides: a comma, a colon or a full stop takes its place.
 
 ## Read these first
 
@@ -63,6 +67,10 @@ cd web && npm run typecheck && npm run lint # must be green (CI enforces)
   `default-features = false` (no mmap, no rayon).
 - The observatory computes everything client-side from the uploaded file:
   no pre-exported data, no server.
+- The library page's code examples live in `crates/graphman/tests/wiki.rs`
+  (blocks between `// wiki:start <id>` and `// wiki:end`, extracted by
+  `web/scripts/sync-data.mjs`); change them there, never in the web code,
+  so the page only ever shows what `cargo test` has run.
 - Every representation keeps neighbour rows ascending; tests rely on all
   representations producing identical search trees.
 - Timings in studies exclude parsing and file output (course rule).

@@ -160,66 +160,60 @@
   transform: translateY(-2px);
 }
 
-/* Fact tiles: bordered, a blue line grows along the bottom on hover. */
+/* The "what it is" section: words and facts beside the figure. */
+.what {
+  display: grid;
+  grid-template-columns: minmax(0, 4.4fr) minmax(0, 6.6fr);
+  align-items: center;
+  gap: 56px;
+}
+
+.whatText {
+  min-width: 0;
+}
+
+/* The three facts: a hairline above, then value, label and hint in a row,
+   with nothing boxed. The value underlines in blue on hover. */
 .facts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  margin-top: 28px;
-  background: var(--border);
-  border: 1px solid var(--border);
-}
-
-.fact {
-  position: relative;
-  overflow: hidden;
-  padding: 16px 16px 18px;
-  background: var(--bg);
-  transition: background 0.25s var(--ease);
-}
-
-.fact::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background: var(--accent);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 0.4s var(--ease);
-}
-
-.fact:hover {
-  background: var(--bg-2);
-}
-
-.fact:hover::after {
-  transform: scaleX(1);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 36px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
 }
 
 .fact dt {
+  order: 2;
   font-size: 11px;
   line-height: 1.35;
-  min-height: 30px;
 }
 
 .fact dd {
-  margin-top: 8px;
+  display: contents;
+}
+
+.fact {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .value {
-  font-size: 28px;
+  order: 1;
+  font-size: 34px;
   line-height: 1;
   color: var(--accent);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  transition: transform 0.35s var(--ease);
+}
+
+.fact:hover .value {
+  transform: translateY(-2px);
 }
 
 .hint {
+  order: 3;
   font-size: 12px;
   color: var(--fg-3);
 }
@@ -245,11 +239,14 @@
   }
 }
 
-@media (max-width: 720px) {
-  .facts {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 900px) {
+  .what {
+    grid-template-columns: 1fr;
+    gap: 40px;
   }
+}
 
+@media (max-width: 720px) {
   .float > * {
     width: 240px !important;
     height: 240px !important;

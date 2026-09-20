@@ -4,9 +4,9 @@ import Studies from '@/components/Studies';
 import { studies } from '@/lib/studies';
 
 export const metadata: Metadata = {
-  title: 'Case studies',
+  title: 'Estudos de caso',
   description:
-    'Memory, BFS/DFS timings, diameters, components and distances on the six course graphs.',
+    'Memória, tempos de BFS/DFS, diâmetros, componentes e distâncias nos seis grafos da disciplina.',
 };
 
 export default function StudiesPage() {

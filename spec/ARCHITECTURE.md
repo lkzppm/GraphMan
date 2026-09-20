@@ -90,7 +90,12 @@ output, `distance`, `diameter(kind, bfsBudget)` (cancellable through the
 library's progress callback), degree statistics, components, and
 `initialLayout()`: a BFS-radial layout per component (rings whose area is
 proportional to the number of vertices on them), components packed largest
-first on concentric rings. Every per-vertex array is indexed by vertex id
+first on concentric rings; and `layout(kind, root)` for the canvas menu —
+`Radial` (BFS levels from `root` as evenly spaced rings, subtrees in
+wedges), `Layered` (levels as rows, level 0 on top, a vertex's x from its
+wedge angle so subtrees stay contiguous) and `Degree` (one circle, sorted
+by degree), the root's component at the origin and the others packed
+around it with the same disc packing. All O(n + m). Every per-vertex array is indexed by vertex id
 with slot 0 unused, like the library's raw arrays, so GPU buffers are
 indexed by vertex id directly. Timings use `performance.now()` around the
 traversal only.
@@ -115,11 +120,13 @@ libraries. Deployed on Vercel with the root directory set to
 `web/`; `web/vercel.json` pins the install and build commands.
 
 ```
-src/app/layout.tsx, globals.css   fonts, metadata, the shared tabbed Nav, design tokens
+src/app/layout.tsx, globals.css   fonts, metadata, the LocaleProvider, the shared tabbed Nav, design tokens
 src/app/page.tsx                  Home tab: Hero + Pipeline
-src/app/library/, studies/        Library tab (Decisions), Case studies tab (tables)
+src/app/library/, studies/        Library tab (Wiki, the interactive manual), Case studies tab (tables)
+src/app/presentation/             Presentation tab: the five slides (Deck)
 src/app/observatory/              the tool, client-only (dynamic import, ssr: false)
-src/components/                   Nav, Logo, BrandIcon, Reveal, page sections + CSS modules
+src/components/                   Nav, Logo, BrandIcon, Reveal, Deck, Representations, Field, Wiki, Code, GraphFigure, page sections + CSS modules
+src/i18n/                         en.tsx (the schema), pt.tsx, LocaleProvider (useT / useLocale)
 src/lib/graphman.ts               loads the wasm glue once
 src/lib/studies.ts                types of studies/results.json (synced into src/data)
 src/lib/format.ts                 number formatting
@@ -127,6 +134,20 @@ src/observatory/Observatory.tsx   state, file loading, pointer interaction, pane
 src/observatory/renderer.ts       vgpu: buffers, compute step, node + edge draws
 src/observatory/shaders.ts        WGSL (plain strings, reflected by vgpu)
 ```
+
+### Languages
+
+The site speaks Portuguese by default and English on request. All prose is
+in `src/i18n/`: `en.tsx` is a plain object (strings, small JSX fragments
+where a sentence carries a `<code>`, and functions where a sentence takes
+a value, so word order stays the language's business); `Dictionary =
+typeof en`, and `pt.tsx` is typed as one, so a missing key is a type error.
+`LocaleProvider` keeps the choice in `localStorage` behind
+`useSyncExternalStore` (the server and the hydrating client render the
+default, the stored choice applies right after, no mismatch) and sets
+`<html lang>`; components call `useT()` and hold no text of their own.
+Page `metadata` (titles, descriptions) is static and Portuguese. Code,
+comments, docs and commits stay English.
 
 ### The observatory
 
@@ -139,6 +160,12 @@ parsed by the wasm `Graph`, and the renderer receives:
 - `edges` (`[u, v]` pairs), `csrOffsets` / `csrTargets` (the springs);
 - `levels`, `ranks`, `parents` — the current search tree, `UNREACHED`
   when there is none.
+- `labels` — the component id of every vertex, so a `component` uniform
+  can light one component and dim the rest (node and edge shaders). The
+  CSR rows are bound to the draws too: the node shader finds the
+  neighbours of the selected vertex with a binary search of its row, and
+  the edge draw appends the selected vertex's row as extra segments so
+  its edges are lit whatever the sampling stride.
 
 Per frame: if the simulation is warm or a vertex is being dragged, one
 compute dispatch (`SIM_SHADER`, 256-wide workgroups) does a d3-style step —
@@ -169,8 +196,9 @@ renderer does three things:
   the picture moves the strides come from budgets (200 000 edges, 1M
   vertices per frame); once it has been still for 120 ms a "settled" frame
   draws the resting sample. The resting sample is not always everything:
-  `measure()` estimates, from the densest big component (edges over its
-  layout disc, mean edge length), how many edges cross a pixel at the
+  `measure()` estimates, from the densest big component (edges over the
+  area its layout occupies, mean edge length; measured again for every
+  layout change), how many edges cross a pixel at the
   current zoom, and `fades()` scales the edge alpha so the pile adds up to
   a readable grey (`EDGE_COVERAGE`) instead of a black disc; edges too
   faint for half-float blending (`MIN_EDGE_ALPHA`) are instead drawn as a
@@ -184,20 +212,56 @@ a search at 60 fps; grafo_4 (105 MB) the same; grafo_5 (4.8M vertices,
 The CPU keeps a mirror of the positions (one `read()` in flight at a time
 while they change) for picking: hover and click scan for the nearest
 vertex within 10 px, drags write the pointer's world position into the
-`Params` uniform. Graphs above 30 000 vertices skip the O(n²) repulsion by
-default and keep the radial layout, but stay draggable (the compute step
-still runs in "static" mode).
+`Params` uniform. Graphs above 30 000 vertices skip the O(n²) repulsion,
+open in the `Radial` layout (rooted in the largest component) and stay
+draggable (the compute step still runs in "static" mode).
+
+A layout change (`morphTo`) uploads the target positions and slides every
+vertex there over 700 ms with a small compute pass (`MORPH_SHADER`, eased
+on the CPU), the simulation cooled meanwhile; the force layout returns to
+`initialLayout()` and warms the simulation up again, the other layouts
+switch it off (it can be turned on to relax them). The level layouts
+follow the search: a new origin re-arranges the graph around it and the
+view frames the origin's component.
 
 Searches come back from wasm as typed arrays and are uploaded as-is; the
 animation is the `reveal` uniform sweeping over discovery ranks at `rate`
 ranks per second: the shaders derive each vertex's age since discovery from
 those two numbers (pop + halo on vertices, draw-in + flash on tree edges).
+A distance query is the same traversal (BFS for the shortest path, DFS
+for the tree path): the path is read back along the parents on the CPU,
+the timeline spans only the ranks up to the target, and the target and
+path go to the renderer (`setPath`) — a `dest` uniform (WGSL reserves
+`target`) colours the two ends and shrinks everything off the path, a
+`mute` uniform greys the rest of the traversal on request, and the path
+itself is a small buffer read by the node draw (its vertices as extra
+instances) and by `PATH_SHADER`, one instanced quad per edge, drawn
+after the edge samples so it sits on top. The sidebar's counts for a
+distance query are cut at the target's discovery rank. The selected
+vertex's edges and the path's are the *extras*: `[a, b]` pairs the CPU
+builds (`updateExtras`) that a third edge draw (`Kind 2`) renders after the
+plain and tree draws, so they sit on top and no stride can drop them; the
+node draw appends the path's vertices as instances the same way. The edge
+shader stays within WebGPU's default eight storage buffers per vertex
+stage, which is why the extras are built on the CPU rather than read from
+the CSR rows in the shader.
 
 ### Data
 
 `studies/results.json` is copied to `web/src/data/results.json` by
 `scripts/sync-data.mjs` (Turbopack only bundles files under `web/`) and
 rendered as tables at build time.
+
+The library page's code examples live in `crates/graphman/tests/wiki.rs`:
+each test holds one block between `// wiki:start <id>` and `// wiki:end`
+that reads as plain usage with the results in comments, followed by the
+assertions that check those comments. The same script copies the blocks
+into `web/src/data/wiki.json` and `Wiki.tsx` shows them verbatim; `cargo
+test` runs them, so the page cannot document behaviour the library does
+not have. The page's drawings are worked out on the same sample graph in
+`web/src/lib/sample.ts`, whose BFS, DFS, components and shortest path
+mirror the library's order (ascending neighbours, DFS over neighbour
+iterators), so what is drawn is what the examples' comments say.
 
 ### Timing in the browser
 

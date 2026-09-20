@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
 import Nav from '@/components/Nav';
+import LocaleProvider from '@/i18n/LocaleProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
     template: '%s · GraphMan',
   },
   description:
-    'A Rust graph library that measures itself, running in your browser: load a graph, drag its vertices and watch BFS and DFS unfold.',
+    'Uma biblioteca de grafos em Rust que mede a si mesma, rodando no seu navegador: carregue um grafo, arraste seus vértices e veja BFS e DFS acontecerem.',
   icons: {
     icon: [
       { url: '/brand/graphman.svg', type: 'image/svg+xml' },
@@ -27,10 +28,12 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="pt-BR" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
-        <Nav />
-        {children}
+        <LocaleProvider>
+          <Nav />
+          {children}
+        </LocaleProvider>
       </body>
     </html>
   );

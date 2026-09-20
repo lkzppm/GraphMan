@@ -1,3 +1,6 @@
+/* The footer as a small graph: an edge across the top, a vertex per
+   column, the wordmark at the end of the line. */
+
 .footer {
   border-top: 1px solid var(--border);
   background: var(--bg-2);
@@ -5,16 +8,31 @@
 
 .inner {
   padding-top: 56px;
-  padding-bottom: 40px;
+  padding-bottom: 36px;
 }
 
-.cols {
+/* The edge: a hairline the columns hang from. */
+.rail {
+  position: relative;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 32px;
+  padding-top: 26px;
 }
 
-.cols > div {
+.rail::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1.5px;
+  background: var(--border-2);
+}
+
+/* A vertex on the edge, at the column's start; blue while hovered. */
+.vertex {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -22,15 +40,37 @@
   color: var(--fg-2);
 }
 
-.cols a {
+.vertex::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: -32px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg-2);
+  border: 1.5px solid var(--border-2);
+  transition:
+    background 0.3s var(--ease),
+    border-color 0.3s var(--ease),
+    transform 0.35s var(--ease-spring);
+}
+
+.vertex:hover::before {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.25);
+}
+
+.vertex a {
   width: fit-content;
   transition:
     color 0.2s var(--ease),
     transform 0.25s var(--ease);
 }
 
-.cols a:hover {
-  color: var(--fg);
+.vertex a:hover {
+  color: var(--accent);
   transform: translateX(3px);
 }
 
@@ -38,21 +78,58 @@
   margin-bottom: 6px;
 }
 
-.comment {
-  margin-top: 12px;
+.name {
+  color: var(--fg);
 }
 
-.legal {
-  margin-top: 40px;
-  padding-top: 20px;
+.social {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The mark and the wordmark, centred, the year beside them. */
+.bottom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 44px;
+  padding-top: 24px;
   border-top: 1px solid var(--border);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--fg);
+  transition: color 0.2s var(--ease);
+}
+
+.brand:hover {
+  color: var(--accent);
+}
+
+.wordmark {
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
+.copyright {
   font-size: 13px;
   color: var(--fg-3);
-  max-width: 640px;
 }
 
-@media (max-width: 640px) {
-  .cols {
-    grid-template-columns: 1fr;
+@media (max-width: 720px) {
+  .rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 36px 24px;
+  }
+
+  /* Only the first row of vertices sits on the edge. */
+  .vertex:nth-child(n + 3)::before {
+    display: none;
   }
 }

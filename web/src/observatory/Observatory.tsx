@@ -2,13 +2,20 @@
 
 import {
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleDashed,
   CircleHelp,
   Download,
   Expand,
   FlaskConical,
   Focus,
   Hash,
+  Highlighter,
   Magnet,
+  Orbit,
+  Rows3,
+  Shapes,
   Maximize2,
   Minimize2,
   Minus,
@@ -18,6 +25,7 @@ import {
   RefreshCw,
   RotateCcw,
   Ruler,
+  Scan,
   Trash2,
   Upload,
   X,
@@ -53,7 +61,11 @@ import {
   type Renderer,
 } from './renderer';
 import Constellation from '@/components/Constellation';
+import { useT } from '@/i18n/LocaleProvider';
+import type { Dictionary } from '@/i18n';
 import styles from './Observatory.module.css';
+
+type Strings = Dictionary['observatory'];
 
 type Status =
   | { kind: 'booting' }
@@ -76,16 +88,29 @@ interface GraphMeta {
   smallest: number;
   degrees: Uint32Array;
   componentSizes: Uint32Array;
+  /** Component id per vertex (1 = largest, ranked by size). */
+  componentLabels: Uint32Array;
+  /** Edges, minimum and maximum degree per component (index = id, 0 unused). */
+  componentEdges: Uint32Array;
+  componentDegree: { min: Uint32Array; max: Uint32Array };
   parseMs: number;
 }
 
 type SearchKindName = 'bfs' | 'dfs';
+/** What the panel asks for: the whole traversal, or the path to a destination. */
+type SearchMode = 'search' | 'distance';
 
 interface Search {
   kind: SearchKindName;
   root: number;
+  /** The distance query's other end (0 otherwise). */
+  target: number;
+  /** The shortest path root → target, `null` when the target is not reached. */
+  path: Uint32Array | null;
   depth: number;
   reached: number;
+  /** Discovery ranks the timeline covers: all of them, or up to the target. */
+  span: number;
   elapsedMs: number;
   levels: Uint32Array;
   parents: Uint32Array;
@@ -108,41 +133,35 @@ interface DiameterInfo {
   elapsedMs: number;
 }
 
-const DIAMETER_METHODS = [
-  { id: 'Sweep', label: '4-sweep (lower bound)' },
-  { id: 'IFub', label: 'iFUB (exact)' },
-  { id: 'Bounds', label: 'Takes–Kosters (exact)' },
-  { id: 'Exact', label: 'Brute force (exact)' },
-] as const;
+/** The wasm `DiameterKind` names; their labels live in the dictionary. */
+const DIAMETER_METHODS = ['Sweep', 'IFub', 'Bounds', 'Exact'] as const;
 
 const MAX_FILE_BYTES = 512 * 1024 * 1024;
 
-/** The empty sidebar's cheat sheet: gesture or key, what it does. */
-const CONTROLS: [string, string][] = [
-  ['click', 'pick the origin'],
-  ['drag', 'move a vertex'],
-  ['drag bg', 'pan'],
-  ['scroll', 'zoom'],
-  ['dbl-click', 'fit the graph'],
-  ['F', 'fit the graph'],
-  ['space', 'play / pause'],
-  ['← →', 'step a vertex'],
-  ['↑ ↓', 'step a level'],
-  ['esc', 'clear the origin'],
-  ['drop file', 'load a graph'],
+type LayoutId = 'force' | 'radial' | 'layered' | 'degree';
+
+/** The layouts of the canvas menu (words in the dictionary); the level-based ones start at the origin. */
+const LAYOUTS: { id: LayoutId; icon: ReactNode }[] = [
+  { id: 'force', icon: <Magnet size={14} /> },
+  { id: 'radial', icon: <Orbit size={14} /> },
+  { id: 'layered', icon: <Rows3 size={14} /> },
+  { id: 'degree', icon: <CircleDashed size={14} /> },
 ];
 
-/** The sample file, line by line, as the format explanation. */
-const FORMAT_LINES: [string, string][] = [
-  ['5', '// vertices'],
-  ['1 2', '// one edge per line'],
-  ['2 5', ''],
-  ['5 3', ''],
-  ['4 5', ''],
-  ['1 5', ''],
-];
+/** How long a layout change takes to slide into place. */
+const MORPH_MS = 700;
+/** Share of the view a framed path fills (the path label floats over the top). */
+const PATH_FILL = 0.62;
+/** Pointer travel (CSS px) under which a press is a click, not a drag or a pan. */
+const CLICK_SLOP = 4;
+
+/** The sample file's lines; the first two carry the format notes. */
+const FORMAT_LINES = ['5', '1 2', '2 5', '5 3', '4 5', '1 5'];
 
 export default function Observatory() {
+  const t = useT().observatory;
+  const tRef = useRef(t);
+  tRef.current = t;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -158,21 +177,38 @@ export default function Observatory() {
   const [hovered, setHovered] = useState(0);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [kind, setKind] = useState<SearchKindName>('bfs');
+  const [mode, setMode] = useState<SearchMode>('search');
   const [rootInput, setRootInput] = useState('');
+  const [targetInput, setTargetInput] = useState('');
+  /** In a distance query, grey everything but the path. */
+  const [pathOnly, setPathOnly] = useState(false);
   const [search, setSearch] = useState<Search | null>(null);
   const [reveal, setReveal] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [simulate, setSimulate] = useState(true);
   const [dragOver, setDragOver] = useState(false);
-  const [diameterMethod, setDiameterMethod] =
-    useState<(typeof DIAMETER_METHODS)[number]['id']>('IFub');
+  const [diameterMethod, setDiameterMethod] = useState<(typeof DIAMETER_METHODS)[number]>('IFub');
   const [diameterBudget, setDiameterBudget] = useState('2000');
   const [diameter, setDiameter] = useState<DiameterInfo | null>(null);
   const [diameterBusy, setDiameterBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   /** The controls popover, top left of the stage. */
+  const metaRef = useRef<GraphMeta | null>(null);
+  metaRef.current = meta;
+  const searchRef = useRef<Search | null>(null);
+  searchRef.current = search;
   const [helpOpen, setHelpOpen] = useState(false);
+  /** The lit component (1 = largest), 0 for none. */
+  const [component, setComponent] = useState(0);
+  /** The components browser, in place of the graph summary. */
+  const [componentsOpen, setComponentsOpen] = useState(false);
+  /** The current layout and its menu. */
+  const [layout, setLayout] = useState<LayoutId>('force');
+  const [layoutOpen, setLayoutOpen] = useState(false);
+  const layoutMenuRef = useRef<HTMLDivElement>(null);
+  /** What the arrow keys drive: the search timeline or the components. */
+  const keysTarget = useRef<'search' | 'components'>('search');
   const helpRef = useRef<HTMLDivElement>(null);
   const [showLabels, setShowLabels] = useState(true);
   /** Keep the discovered part of the tree in view while the search plays or is
@@ -290,19 +326,18 @@ export default function Observatory() {
     [applyCamera],
   );
 
-  /** Frames the vertices discovered up to `rank` (rank → level colours already lit). */
-  const fitDiscovered = useCallback(
-    (ranks: Uint32Array, rank: number) => {
+  /** Glides the camera to frame the vertices `keep` accepts, filling `fill` of the view. */
+  const fitVertices = useCallback(
+    (keep: (v: number) => boolean, fill = 0.8) => {
       const renderer = rendererRef.current;
       if (!renderer || !renderer.hasGraph) return;
       const positions = renderer.positionsMirror;
-      const limit = Math.round(rank);
       let minX = Infinity;
       let minY = Infinity;
       let maxX = -Infinity;
       let maxY = -Infinity;
       for (let v = 1, i = 2; i < positions.length; v++, i += 2) {
-        if (ranks[v] > limit) continue;
+        if (!keep(v)) continue;
         const x = positions[i];
         const y = positions[i + 1];
         if (x < minX) minX = x;
@@ -315,10 +350,123 @@ export default function Observatory() {
       // A lone origin still gets a neighbourhood, not a giant disc.
       const bw = Math.max(maxX - minX, 220);
       const bh = Math.max(maxY - minY, 220);
-      const zoom = Math.min((w * 0.8) / bw, (h * 0.8) / bh, 6);
+      const zoom = Math.min((w * fill) / bw, (h * fill) / bh, 6);
       glideTo({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, zoom });
     },
     [glideTo],
+  );
+
+  /** Frames the vertices discovered up to `rank` (rank → level colours already lit). */
+  const fitDiscovered = useCallback(
+    (ranks: Uint32Array, rank: number) => {
+      const limit = Math.round(rank);
+      fitVertices((v) => ranks[v] <= limit);
+    },
+    [fitVertices],
+  );
+
+  /**
+   * Frames the positions in `positions` (flat `[x, y, ...]`, slot 0 unused),
+   * or only those of the vertices `keep` accepts, gliding.
+   */
+  const glideToFit = useCallback(
+    (positions: Float32Array, keep?: (v: number) => boolean) => {
+      const renderer = rendererRef.current;
+      if (!renderer) return;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (let v = 1, i = 2; i < positions.length; v++, i += 2) {
+        if (keep && !keep(v)) continue;
+        const x = positions[i];
+        const y = positions[i + 1];
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+      if (!Number.isFinite(minX)) return;
+      const [w, h] = renderer.cssSize;
+      const bw = Math.max(maxX - minX, 1);
+      const bh = Math.max(maxY - minY, 1);
+      glideTo({
+        x: (minX + maxX) / 2,
+        y: (minY + maxY) / 2,
+        zoom: Math.min((w * 0.86) / bw, (h * 0.86) / bh, 40),
+      });
+    },
+    [glideTo],
+  );
+
+  /**
+   * Rearranges the graph: the level layouts start at `root`, the force
+   * layout returns to the initial placement and warms the simulation up
+   * again. Vertices slide to their new places and the view follows: the
+   * whole graph, or with `frame: 'component'` only the root's component
+   * (a new search origin re-arranges that one, the rest just makes room).
+   */
+  const applyLayout = useCallback(
+    (id: LayoutId, root: number, frame: 'graph' | 'component' = 'graph') => {
+      const wasm = wasmRef.current;
+      const graph = graphRef.current;
+      const renderer = rendererRef.current;
+      if (!wasm || !graph || !renderer) return;
+      setLayout(id);
+      let positions: Float32Array;
+      try {
+        positions =
+          id === 'force'
+            ? graph.initialLayout()
+            : graph.layout(
+                id === 'radial'
+                  ? wasm.LayoutKind.Radial
+                  : id === 'layered'
+                    ? wasm.LayoutKind.Layered
+                    : wasm.LayoutKind.Degree,
+                root,
+              );
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : String(error));
+        return;
+      }
+      // The force layout is the simulation's business; the others are
+      // exact, so it stays off until asked for (a "relax" step).
+      const simulateNext = id === 'force' && graph.vertexCount <= SIMULATION_LIMIT;
+      setSimulate(simulateNext);
+      renderer.morphTo(positions, MORPH_MS);
+      renderer.setSimulate(simulateNext);
+      autoFit.current = false;
+      const labels = metaRef.current?.componentLabels;
+      const home = labels && frame === 'component' ? labels[root] : 0;
+      glideToFit(positions, labels && home ? (v) => labels[v] === home : undefined);
+    },
+    [glideToFit],
+  );
+
+  /** The level layouts follow the search: a new origin re-arranges its component. */
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const searchRoot = search?.root ?? 0;
+  useEffect(() => {
+    if (!searchRoot) return;
+    const id = layoutRef.current;
+    if (id === 'radial' || id === 'layered') applyLayout(id, searchRoot, 'component');
+  }, [searchRoot, applyLayout]);
+
+  /** Lights component `c` (0 clears), frames it, and hands the arrow keys to it. */
+  const selectComponent = useCallback(
+    (c: number) => {
+      const labels = metaRef.current?.componentLabels;
+      setComponent(c);
+      rendererRef.current?.setComponent(c);
+      keysTarget.current = c ? 'components' : 'search';
+      if (c && labels) {
+        autoFit.current = false;
+        fitVertices((v) => labels[v] === c);
+      }
+    },
+    [fitVertices],
   );
 
   const toWorld = useCallback((clientX: number, clientY: number) => {
@@ -377,11 +525,28 @@ export default function Observatory() {
         const sizes = graph.componentSizes();
         const degrees = graph.degrees();
         const labels = graph.componentLabels();
-        const positions = graph.initialLayout();
+        // Graphs too large to simulate open in the radial layout, rooted in
+        // the largest component: the force placement is only a seed for
+        // the simulation.
+        const willSimulate = graph.vertexCount <= SIMULATION_LIMIT;
+        const positions = willSimulate
+          ? graph.initialLayout()
+          : graph.layout(wasm.LayoutKind.Radial, Math.max(1, labels.indexOf(1)));
+        const edges = graph.edges();
+        // Per component: edges (by one endpoint's label) and the degree range.
+        const componentEdges = new Uint32Array(sizes.length + 1);
+        for (let i = 0; i < edges.length; i += 2) componentEdges[labels[edges[i]]] += 1;
+        const degreeMin = new Uint32Array(sizes.length + 1).fill(0xffffffff);
+        const degreeMax = new Uint32Array(sizes.length + 1);
+        for (let v = 1; v < labels.length; v++) {
+          const c = labels[v];
+          if (degrees[v] < degreeMin[c]) degreeMin[c] = degrees[v];
+          if (degrees[v] > degreeMax[c]) degreeMax[c] = degrees[v];
+        }
         renderer.load(
           {
             vertexCount: graph.vertexCount,
-            edges: graph.edges(),
+            edges,
             csrOffsets: graph.csrOffsets(),
             csrTargets: graph.csrTargets(),
             positions,
@@ -403,8 +568,14 @@ export default function Observatory() {
           smallest: sizes[sizes.length - 1] ?? 0,
           degrees,
           componentSizes: sizes,
+          componentLabels: labels,
+          componentEdges,
+          componentDegree: { min: degreeMin, max: degreeMax },
           parseMs,
         });
+        setComponent(0);
+        setComponentsOpen(false);
+        setLayout(willSimulate ? 'force' : 'radial');
         setSearch(null);
         setDiameter(null);
         setSelected(0);
@@ -412,7 +583,6 @@ export default function Observatory() {
         setRootInput('1');
         setReveal(0);
         setPlaying(false);
-        const willSimulate = graph.vertexCount <= SIMULATION_LIMIT;
         setSimulate(willSimulate);
         renderer.setSimulate(willSimulate);
         renderer.setSearch(null);
@@ -425,7 +595,7 @@ export default function Observatory() {
         requestAnimationFrame(fit);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        setNotice(`Could not load ${name}: ${message}`);
+        setNotice(tRef.current.couldNotLoad(name, message));
         setStatus({ kind: 'ready' });
       }
     },
@@ -436,7 +606,7 @@ export default function Observatory() {
     async (file: File) => {
       if (file.size > MAX_FILE_BYTES) {
         setNotice(
-          `${file.name} is ${formatBytes(file.size)}; the observatory accepts files up to ${formatBytes(MAX_FILE_BYTES)}.`,
+          tRef.current.tooLarge(file.name, formatBytes(file.size), formatBytes(MAX_FILE_BYTES)),
         );
         return;
       }
@@ -452,15 +622,19 @@ export default function Observatory() {
 
   /** Unloads the graph: back to the empty stage, memory returned to wasm. */
   const closeGraph = useCallback(() => {
-    setSearch((current) => {
-      current?.result.free();
-      return null;
-    });
+    // Freed outside the state updater: StrictMode runs updaters twice, and
+    // a wasm object freed twice is a null pointer.
+    searchRef.current?.result.free();
+    setSearch(null);
     graphRef.current?.free();
     graphRef.current = null;
     rendererRef.current?.unload();
     setMeta(null);
     setDiameter(null);
+    setComponent(0);
+    setComponentsOpen(false);
+    setLayout('force');
+    setLayoutOpen(false);
     setSelected(0);
     setHovered(0);
     setReveal(0);
@@ -484,12 +658,16 @@ export default function Observatory() {
 
   // ---- searches --------------------------------------------------------------
 
+  const followRef = useRef(false);
+  followRef.current = follow;
+
   const runSearch = useCallback(
-    (which: SearchKindName, root: number) => {
+    (which: SearchKindName, root: number, target = 0) => {
       const wasm = wasmRef.current;
       const graph = graphRef.current;
       const renderer = rendererRef.current;
       if (!wasm || !graph || !renderer) return;
+      keysTarget.current = 'search';
       try {
         search?.result.free();
         const result = graph.search(
@@ -499,22 +677,48 @@ export default function Observatory() {
         const levels = result.levels();
         const parents = result.parents();
         const ranks = result.ranks();
-        renderer.setSearch({ kind: which, levels, ranks, parents, depth: result.depth });
+        // A distance query is the same traversal, its wave stopping when
+        // the target is discovered; the path is read back along the parents
+        // (the shortest one for a BFS, the tree path for a DFS).
+        let path: Uint32Array | null = null;
+        let span = result.reached;
+        let order = result.order();
+        let levelSizes = result.levelSizes();
+        let depth = result.depth;
+        if (target && levels[target] !== UNREACHED) {
+          path = new Uint32Array(levels[target] + 1);
+          for (let v = target, i = path.length - 1; i >= 0; i--, v = parents[v]) path[i] = v;
+          // The traversal stops at the target: the sidebar describes only
+          // what was visited until then.
+          span = ranks[target] + 1;
+          order = order.slice(0, span);
+          depth = 0;
+          for (let r = 0; r < span; r++) depth = Math.max(depth, levels[order[r]]);
+          levelSizes = new Uint32Array(depth + 1);
+          for (let r = 0; r < span; r++) levelSizes[levels[order[r]]] += 1;
+        }
+        renderer.setSearch({ kind: which, levels, ranks, parents, depth });
+        renderer.setPath(target, path);
+        renderer.setPathOnly(pathOnly);
         setSearch({
           kind: which,
           root,
-          depth: result.depth,
-          reached: result.reached,
+          target,
+          path,
+          depth,
+          reached: span,
+          span,
           elapsedMs: result.elapsedMs,
           levels,
           parents,
-          levelSizes: result.levelSizes(),
-          order: result.order(),
+          levelSizes,
+          order,
           ranks,
           result,
         });
-        setSelected(root);
-        renderer.setSelected(root);
+        // The search picture is the tree: no selection ring or neighbourhood on the origin.
+        setSelected(0);
+        renderer.setSelected(0);
         revealRef.current = 0;
         setReveal(0);
         renderer.setReveal(0);
@@ -523,7 +727,7 @@ export default function Observatory() {
         setNotice(error instanceof Error ? error.message : String(error));
       }
     },
-    [search],
+    [search, pathOnly],
   );
 
   // The reveal animation: discovery ranks light up over a duration that
@@ -531,7 +735,7 @@ export default function Observatory() {
   // ones finish within seconds.
   useEffect(() => {
     if (!playing || !search) return;
-    const total = search.reached;
+    const total = search.span;
     const duration = Math.min(8000, Math.max(1600, total * 6));
     rendererRef.current?.setRevealRate((Math.max(total - 1, 1) / duration) * 1000);
     let frame = 0;
@@ -555,10 +759,8 @@ export default function Observatory() {
     return () => cancelAnimationFrame(frame);
   }, [playing, search, fitDiscovered]);
 
-  const followRef = useRef(false);
-  followRef.current = follow;
-
   const scrub = (rank: number) => {
+    keysTarget.current = 'search';
     setPlaying(false);
     revealRef.current = rank;
     setReveal(rank);
@@ -577,7 +779,7 @@ export default function Observatory() {
     } else {
       while (rank < search.order.length - 1 && search.levels[search.order[rank]] !== level) rank++;
     }
-    scrub(Math.max(0, Math.min(rank, search.reached - 1)));
+    scrub(Math.max(0, Math.min(rank, search.span - 1)));
   };
 
   /** The level of the vertex the timeline is at. */
@@ -616,7 +818,7 @@ export default function Observatory() {
       const budget = Math.max(1, Number.parseInt(diameterBudget, 10) || 1);
       const result = graph.diameter(wasm.DiameterKind[diameterMethod], budget);
       setDiameter({
-        method: DIAMETER_METHODS.find((m) => m.id === diameterMethod)?.label ?? diameterMethod,
+        method: diameterMethod,
         value: result.value,
         from: result.from,
         to: result.to,
@@ -675,7 +877,7 @@ export default function Observatory() {
     }
     if (g.mode === 'maybe-click') {
       const moved = Math.hypot(clientX - g.startX, clientY - g.startY);
-      if (moved > 4) {
+      if (moved > CLICK_SLOP) {
         g.mode = 'drag';
         const { x, y } = toWorld(clientX, clientY);
         renderer.beginDrag(g.vertex, x, y);
@@ -705,8 +907,19 @@ export default function Observatory() {
     const g = gesture.current;
     if (g.mode === 'maybe-click' && g.vertex) {
       setSelected(g.vertex);
-      setRootInput(String(g.vertex));
       renderer?.setSelected(g.vertex);
+      // In distance mode, with an origin already chosen, a click on another
+      // vertex picks the target; otherwise it picks the origin.
+      if (mode === 'distance' && rootValid && g.vertex !== root) setTargetInput(String(g.vertex));
+      else setRootInput(String(g.vertex));
+    }
+    // A click on the background (a pan that never moved) clears the selection.
+    if (
+      g.mode === 'pan' &&
+      Math.hypot(event.clientX - g.startX, event.clientY - g.startY) <= CLICK_SLOP
+    ) {
+      setSelected(0);
+      renderer?.setSelected(0);
     }
     if (g.mode === 'drag') {
       renderer?.endDrag();
@@ -757,14 +970,35 @@ export default function Observatory() {
   }, []);
 
   // Latest search state for the key handler, without re-subscribing every frame.
-  const keysRef = useRef({ search, revealLevel: 0, scrub, scrubToLevel });
-  keysRef.current = { search, revealLevel, scrub, scrubToLevel };
+  const keysRef = useRef({
+    search,
+    revealLevel: 0,
+    scrub,
+    scrubToLevel,
+    component,
+    selectComponent,
+  });
+  keysRef.current = { search, revealLevel, scrub, scrubToLevel, component, selectComponent };
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement)
         return;
       const k = keysRef.current;
+      const arrow =
+        event.key === 'ArrowUp' || event.key === 'ArrowRight'
+          ? 1
+          : event.key === 'ArrowDown' || event.key === 'ArrowLeft'
+            ? -1
+            : 0;
+      const count = metaRef.current?.componentSizes.length ?? 0;
+      if (arrow && k.component && (keysTarget.current === 'components' || !k.search)) {
+        // Components are ranked by size: → / ↓ go to the next smaller one.
+        event.preventDefault();
+        const dir = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
+        k.selectComponent(Math.max(1, Math.min(count, k.component + dir)));
+        return;
+      }
       if (k.search && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
         // BFS: a level up or down; DFS: ten vertices.
         event.preventDefault();
@@ -773,7 +1007,7 @@ export default function Observatory() {
           k.scrubToLevel(Math.max(0, Math.min(k.search.depth, k.revealLevel + dir)));
         } else {
           k.scrub(
-            Math.max(0, Math.min(k.search.reached - 1, Math.round(revealRef.current) + dir * 10)),
+            Math.max(0, Math.min(k.search.span - 1, Math.round(revealRef.current) + dir * 10)),
           );
         }
         return;
@@ -781,13 +1015,15 @@ export default function Observatory() {
       if (k.search && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
         event.preventDefault();
         const step = (event.shiftKey ? 10 : 1) * (event.key === 'ArrowRight' ? 1 : -1);
-        k.scrub(Math.max(0, Math.min(k.search.reached - 1, Math.round(revealRef.current) + step)));
+        k.scrub(Math.max(0, Math.min(k.search.span - 1, Math.round(revealRef.current) + step)));
         return;
       }
       if (event.key === 'Escape') {
         setHelpOpen(false);
+        setLayoutOpen(false);
         setSelected(0);
         rendererRef.current?.setSelected(0);
+        if (k.component) k.selectComponent(0);
       } else if (event.key === ' ' && search) {
         event.preventDefault();
         setPlaying((p) => !p);
@@ -828,13 +1064,14 @@ export default function Observatory() {
   };
 
   useEffect(() => {
-    if (!helpOpen) return;
+    if (!helpOpen && !layoutOpen) return;
     const onDown = (event: PointerEvent) => {
       if (!helpRef.current?.contains(event.target as Node)) setHelpOpen(false);
+      if (!layoutMenuRef.current?.contains(event.target as Node)) setLayoutOpen(false);
     };
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
-  }, [helpOpen]);
+  }, [helpOpen, layoutOpen]);
 
   useEffect(() => {
     const onChange = () => setFullscreen(document.fullscreenElement !== null);
@@ -896,6 +1133,22 @@ export default function Observatory() {
 
   const root = Number.parseInt(rootInput, 10);
   const rootValid = meta !== null && Number.isInteger(root) && root >= 1 && root <= meta.vertices;
+  const target = Number.parseInt(targetInput, 10);
+  const targetValid =
+    meta !== null && Number.isInteger(target) && target >= 1 && target <= meta.vertices;
+  /** Whether the run button has what the current mode needs. */
+  const canRun = rootValid && (mode !== 'distance' || targetValid);
+  const run = () => {
+    if (canRun) runSearch(kind, root, mode === 'distance' ? target : 0);
+  };
+  const runLabel =
+    mode === 'distance'
+      ? t.runDistance(
+          kind.toUpperCase(),
+          rootValid ? String(root) : t.theOrigin,
+          targetValid ? String(target) : t.theTarget,
+        )
+      : t.runFrom(kind.toUpperCase(), rootValid ? String(root) : t.theOrigin);
 
   const hoverInfo = useMemo(() => {
     if (!hovered || !meta) return null;
@@ -932,23 +1185,23 @@ export default function Observatory() {
         onChange={onFileChange}
       />
 
-      <aside className={`${styles.sidebar} ${meta ? '' : styles.sidebarEmpty}`}>
+      <aside
+        className={`${styles.sidebar} ${meta ? '' : styles.sidebarEmpty}`}
+        data-search={search ? '' : undefined}
+      >
         {meta ? (
           <>
             <Panel
-              title="Graph"
+              title={t.graph}
               actions={
                 <>
-                  <IconButton
-                    label="Load a graph file"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
+                  <IconButton label={t.loadFile} onClick={() => fileInputRef.current?.click()}>
                     <Upload size={14} />
                   </IconButton>
-                  <IconButton label="Download the summary file" onClick={downloadSummary}>
+                  <IconButton label={t.downloadSummary} onClick={downloadSummary}>
                     <Download size={14} />
                   </IconButton>
-                  <IconButton label="Close the graph" onClick={closeGraph}>
+                  <IconButton label={t.closeGraph} onClick={closeGraph}>
                     <X size={14} />
                   </IconButton>
                 </>
@@ -959,48 +1212,72 @@ export default function Observatory() {
                   {meta.name}
                 </span>
                 <span className={styles.fileMeta}>
-                  {formatBytes(meta.bytes)} · parsed in {formatMs(meta.parseMs)}
+                  {formatBytes(meta.bytes)} · {t.parsedIn(formatMs(meta.parseMs))}
                 </span>
               </div>
-              <div className={styles.tiles}>
-                <Tile label="Vertices" value={formatInt(meta.vertices)} />
-                <Tile label="Edges" value={formatInt(meta.edges)} />
-                <Tile
-                  label="Components"
-                  value={formatInt(meta.components)}
-                  hint={`largest ${formatCompact(meta.largest)}`}
+              {componentsOpen ? (
+                <ComponentsView
+                  t={t}
+                  meta={meta}
+                  current={component}
+                  onSelect={selectComponent}
+                  onClose={() => {
+                    selectComponent(0);
+                    setComponentsOpen(false);
+                  }}
                 />
-                <Tile
-                  label="Mean degree"
-                  value={meta.degree.mean.toFixed(2)}
-                  hint={`${meta.degree.min} – ${meta.degree.max} · median ${meta.degree.median}`}
-                />
-              </div>
-              <DegreeHistogram degrees={meta.degrees} max={meta.degree.max} />
-              <ComponentBar sizes={meta.componentSizes} total={meta.vertices} />
-              <div className={`${styles.chips} ${styles.shedFirst}`}>
-                <span className={styles.chip}>{meta.selfLoops} loops dropped</span>
-                <span className={styles.chip}>{meta.duplicates} duplicates dropped</span>
-                <span className={styles.chip}>CSR {formatBytes(meta.heapBytes)}</span>
-              </div>
+              ) : (
+                <>
+                  <div className={styles.tiles}>
+                    <Tile label={t.vertices} value={formatInt(meta.vertices)} />
+                    <Tile label={t.edges} value={formatInt(meta.edges)} />
+                    <Tile
+                      label={t.components}
+                      value={formatInt(meta.components)}
+                      action={
+                        <button
+                          type="button"
+                          className={styles.tileAction}
+                          aria-label={t.browseComponents}
+                          title={t.browseComponents}
+                          onClick={() => {
+                            setComponentsOpen(true);
+                            selectComponent(1);
+                          }}
+                        >
+                          <ChevronRight size={13} />
+                        </button>
+                      }
+                    />
+                    <Tile label={t.meanDegree} value={meta.degree.mean.toFixed(2)} />
+                  </div>
+                  <DegreeHistogram t={t} degrees={meta.degrees} max={meta.degree.max} />
+                  <div className={`${styles.chips} ${styles.shedFirst}`}>
+                    <span className={styles.chip}>{t.loopsDropped(meta.selfLoops)}</span>
+                    <span className={styles.chip}>{t.duplicatesDropped(meta.duplicates)}</span>
+                    <span className={styles.chip}>CSR {formatBytes(meta.heapBytes)}</span>
+                  </div>
+                </>
+              )}
             </Panel>
 
             <Panel
-              title="Search"
+              title={t.search}
               grow
               actions={
                 search && (
                   <>
-                    <IconButton label="Download the tree file" onClick={downloadTree}>
+                    <IconButton label={t.downloadTree} onClick={downloadTree}>
                       <Download size={14} />
                     </IconButton>
                     <IconButton
-                      label="Clear the search"
+                      label={t.clearSearch}
                       onClick={() => {
                         search.result.free();
                         setSearch(null);
                         setPlaying(false);
                         rendererRef.current?.setSearch(null);
+                        rendererRef.current?.setPath(0, null);
                       }}
                     >
                       <Trash2 size={14} />
@@ -1011,32 +1288,35 @@ export default function Observatory() {
             >
               <div className={styles.searchRow}>
                 <div className={styles.field}>
-                  <label htmlFor="root">Origin</label>
-                  <input
-                    id="root"
-                    className={`mono ${styles.input}`}
-                    inputMode="numeric"
-                    value={rootInput}
-                    onChange={(event) => setRootInput(event.target.value)}
-                    onBlur={() => {
-                      if (rootValid) {
-                        setSelected(root);
-                        rendererRef.current?.setSelected(root);
-                      }
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && rootValid) runSearch(kind, root);
-                    }}
-                    placeholder="click a vertex"
-                  />
-                </div>
-                <div className={styles.field}>
-                  <span className={styles.fieldLabel}>Traversal</span>
+                  <span className={styles.fieldLabel}>{t.mode}</span>
                   <div
                     className={styles.segmented}
                     role="radiogroup"
-                    aria-label="Traversal"
-                    data-active={kind}
+                    aria-label={t.mode}
+                    data-active={mode === 'distance' ? 'second' : 'first'}
+                  >
+                    <span className={styles.thumb} aria-hidden="true" />
+                    {(['search', 'distance'] as const).map((which) => (
+                      <button
+                        key={which}
+                        type="button"
+                        role="radio"
+                        aria-checked={mode === which}
+                        className={mode === which ? styles.segmentActive : styles.segment}
+                        onClick={() => setMode(which)}
+                      >
+                        {which === 'search' ? t.modeSearch : t.modeDistance}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>{t.traversal}</span>
+                  <div
+                    className={styles.segmented}
+                    role="radiogroup"
+                    aria-label={t.traversal}
+                    data-active={kind === 'dfs' ? 'second' : 'first'}
                   >
                     <span className={styles.thumb} aria-hidden="true" />
                     {(['bfs', 'dfs'] as const).map((which) => (
@@ -1053,13 +1333,51 @@ export default function Observatory() {
                     ))}
                   </div>
                 </div>
+              </div>
+              <div className={styles.searchRow}>
+                <div className={styles.field}>
+                  <label htmlFor="root">{t.origin}</label>
+                  <input
+                    id="root"
+                    className={`mono ${styles.input}`}
+                    inputMode="numeric"
+                    value={rootInput}
+                    onChange={(event) => setRootInput(event.target.value)}
+                    onBlur={() => {
+                      if (rootValid) {
+                        setSelected(root);
+                        rendererRef.current?.setSelected(root);
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') run();
+                    }}
+                    placeholder={t.originPlaceholder}
+                  />
+                </div>
+                {mode === 'distance' && (
+                  <div className={styles.field}>
+                    <label htmlFor="target">{t.target}</label>
+                    <input
+                      id="target"
+                      className={`mono ${styles.input}`}
+                      inputMode="numeric"
+                      value={targetInput}
+                      onChange={(event) => setTargetInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') run();
+                      }}
+                      placeholder={t.targetPlaceholder}
+                    />
+                  </div>
+                )}
                 <button
                   type="button"
                   className={styles.run}
-                  disabled={!rootValid}
-                  onClick={() => rootValid && runSearch(kind, root)}
-                  aria-label={`Run ${kind.toUpperCase()} from ${rootValid ? root : 'the origin'}`}
-                  title={`Run ${kind.toUpperCase()} from ${rootValid ? root : 'the origin'}`}
+                  disabled={!canRun}
+                  onClick={run}
+                  aria-label={runLabel}
+                  title={runLabel}
                 >
                   <Play size={15} aria-hidden="true" />
                 </button>
@@ -1068,15 +1386,25 @@ export default function Observatory() {
               {search ? (
                 <div className={styles.result}>
                   <div className={styles.stats}>
-                    <Stat label="Reached" value={formatInt(search.reached)} />
+                    {search.target ? (
+                      <Stat
+                        label={search.kind === 'bfs' ? t.distance : t.pathLength}
+                        value={search.path ? String(search.path.length - 1) : '∞'}
+                      />
+                    ) : (
+                      <Stat label={t.reached} value={formatInt(search.reached)} />
+                    )}
                     <Stat
-                      label={search.kind === 'bfs' ? 'Eccentricity' : 'Depth'}
-                      value={String(search.depth)}
+                      label={
+                        search.target ? t.reached : search.kind === 'bfs' ? t.eccentricity : t.depth
+                      }
+                      value={search.target ? formatInt(search.reached) : String(search.depth)}
                     />
-                    <Stat label="Time" value={formatMs(search.elapsedMs)} />
+                    <Stat label={t.time} value={formatMs(search.elapsedMs)} />
                   </div>
                   {search.kind === 'bfs' ? (
                     <LevelProfile
+                      t={t}
                       sizes={search.levelSizes}
                       kind={search.kind}
                       current={revealLevel}
@@ -1084,6 +1412,7 @@ export default function Observatory() {
                     />
                   ) : (
                     <DepthTrace
+                      t={t}
                       order={search.order}
                       levels={search.levels}
                       depth={search.depth}
@@ -1093,13 +1422,13 @@ export default function Observatory() {
                   )}
                   <div className={styles.playback}>
                     <IconButton
-                      label={playing ? 'Pause' : reveal >= search.reached - 1 ? 'Replay' : 'Play'}
+                      label={playing ? t.pause : reveal >= search.span - 1 ? t.replay : t.play}
                       onClick={() => setPlaying((p) => !p)}
                       accent
                     >
                       {playing ? (
                         <Pause size={14} />
-                      ) : reveal >= search.reached - 1 ? (
+                      ) : reveal >= search.span - 1 ? (
                         <RotateCcw size={14} />
                       ) : (
                         <Play size={14} />
@@ -1108,21 +1437,19 @@ export default function Observatory() {
                     <input
                       type="range"
                       min={0}
-                      max={Math.max(search.reached - 1, 0)}
+                      max={Math.max(search.span - 1, 0)}
                       step={1}
                       value={Math.round(reveal)}
                       onChange={(event) => scrub(Number(event.target.value))}
-                      aria-label="Discovery progress"
+                      aria-label={t.progress}
                     />
                     <span className={`mono ${styles.hint}`}>
-                      {formatInt(Math.min(Math.round(reveal) + 1, search.reached))}
+                      {formatInt(Math.min(Math.round(reveal) + 1, search.span))}
                     </span>
                   </div>
                 </div>
               ) : (
-                <p className={styles.hint}>
-                  Click a vertex on the canvas to make it the origin, or type its number.
-                </p>
+                <p className={styles.hint}>{t.searchHint}</p>
               )}
             </Panel>
 
@@ -1133,11 +1460,11 @@ export default function Observatory() {
                 onClick={() => setDiameterOpen((o) => !o)}
                 aria-expanded={diameterOpen}
               >
-                <span className={styles.panelTitle}>Diameter</span>
+                <span className={styles.panelTitle}>{t.diameter}</span>
                 {diameter && !diameterOpen && (
                   <span className={`mono ${styles.panelSummary}`}>
                     {diameter.isExact && !diameter.cancelled ? '' : '≥ '}
-                    {diameter.value} · {formatCompact(diameter.bfsCount)} BFS
+                    {diameter.value} · {t.bfsCount(formatCompact(diameter.bfsCount))}
                   </span>
                 )}
                 <ChevronDown
@@ -1151,7 +1478,7 @@ export default function Observatory() {
                   <div className={styles.panelBody}>
                     <div className={styles.searchRow}>
                       <div className={styles.field}>
-                        <label htmlFor="method">Method</label>
+                        <label htmlFor="method">{t.method}</label>
                         <select
                           id="method"
                           className={styles.select}
@@ -1161,14 +1488,14 @@ export default function Observatory() {
                           }
                         >
                           {DIAMETER_METHODS.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.label}
+                            <option key={m} value={m}>
+                              {t.diameterMethods[m]}
                             </option>
                           ))}
                         </select>
                       </div>
                       <div className={`${styles.field} ${styles.fieldNarrow}`}>
-                        <label htmlFor="budget">BFS budget</label>
+                        <label htmlFor="budget">{t.bfsBudget}</label>
                         <input
                           id="budget"
                           className={`mono ${styles.input}`}
@@ -1186,7 +1513,7 @@ export default function Observatory() {
                         disabled={diameterBusy}
                       >
                         <Ruler size={14} aria-hidden="true" />
-                        {diameterBusy ? 'Computing…' : 'Compute'}
+                        {diameterBusy ? t.computing : t.compute}
                       </button>
                       {diameter && (
                         <span className={styles.diameterResult}>
@@ -1195,9 +1522,9 @@ export default function Observatory() {
                             {diameter.value}
                           </span>
                           <span className={styles.hint}>
-                            {diameter.from} ↔ {diameter.to} · {formatInt(diameter.bfsCount)} BFS
-                            {diameter.cancelled ? ' (budget hit)' : ''} ·{' '}
-                            {formatMs(diameter.elapsedMs)}
+                            {diameter.from} ↔ {diameter.to} ·{' '}
+                            {t.bfsCount(formatInt(diameter.bfsCount))}
+                            {diameter.cancelled ? t.budgetHit : ''} · {formatMs(diameter.elapsedMs)}
                           </span>
                         </span>
                       )}
@@ -1209,7 +1536,7 @@ export default function Observatory() {
           </>
         ) : (
           <>
-            <Panel title="Graph">
+            <Panel title={t.graph}>
               <div className={styles.starters}>
                 <button
                   type="button"
@@ -1218,8 +1545,8 @@ export default function Observatory() {
                   disabled={status.kind !== 'ready'}
                 >
                   <FlaskConical size={18} strokeWidth={1.75} aria-hidden="true" />
-                  <span className={styles.starterTitle}>Sample</span>
-                  <span className={styles.starterHint}>5 vertices · 5 edges</span>
+                  <span className={styles.starterTitle}>{t.sample}</span>
+                  <span className={styles.starterHint}>{t.sampleHint}</span>
                 </button>
                 <button
                   type="button"
@@ -1228,23 +1555,21 @@ export default function Observatory() {
                   disabled={status.kind !== 'ready'}
                 >
                   <Upload size={18} strokeWidth={1.75} aria-hidden="true" />
-                  <span className={styles.starterTitle}>Open a file</span>
-                  <span className={styles.starterHint}>.txt · course format</span>
+                  <span className={styles.starterTitle}>{t.openFile}</span>
+                  <span className={styles.starterHint}>{t.openFileHint}</span>
                 </button>
               </div>
             </Panel>
-            <Panel title="Controls" grow>
+            <Panel title={t.controlsTitle} grow>
               <ul className={styles.keys}>
-                {CONTROLS.map(([key, does]) => (
+                {t.controls.map(([key, does]) => (
                   <li key={key}>
                     <kbd className="mono">{key}</kbd>
                     <span>{does}</span>
                   </li>
                 ))}
               </ul>
-              <p className={`comment ${styles.keysNote}`}>
-                {'// rust → wasm · webgpu · runs in your tab'}
-              </p>
+              <p className={`comment ${styles.keysNote}`}>{t.keysNote}</p>
             </Panel>
           </>
         )}
@@ -1270,7 +1595,7 @@ export default function Observatory() {
           ref={canvasRef}
           className={styles.canvas}
           style={{ opacity: canvasVisible ? 1 : 0 }}
-          aria-label="Graph canvas"
+          aria-label={t.canvas}
         />
         <canvas ref={labelCanvasRef} className={styles.labels} aria-hidden="true" />
 
@@ -1279,16 +1604,13 @@ export default function Observatory() {
           <div className={styles.empty}>
             {status.kind === 'unsupported' ? (
               <div className={styles.emptyCard}>
-                <h2>WebGPU is not available</h2>
+                <h2>{t.noWebGpu}</h2>
                 <p>{status.message}</p>
-                <p className={styles.hint}>
-                  The observatory needs a browser with WebGPU (Chrome, Edge, Safari 26 or Firefox
-                  141 and newer).
-                </p>
+                <p className={styles.hint}>{t.noWebGpuHint}</p>
               </div>
             ) : status.kind === 'failed' ? (
               <div className={styles.emptyCard}>
-                <h2>Something went wrong</h2>
+                <h2>{t.failed}</h2>
                 <p>{status.message}</p>
               </div>
             ) : (
@@ -1298,18 +1620,20 @@ export default function Observatory() {
                 </span>
                 <span className={styles.dropTitle}>
                   {status.kind === 'booting'
-                    ? 'Starting the library…'
+                    ? t.booting
                     : status.kind === 'parsing'
-                      ? `Parsing ${status.name}…`
-                      : 'Drop a graph file anywhere'}
+                      ? t.parsing(status.name)
+                      : t.drop}
                 </span>
-                <div className={`mono ${styles.format}`} aria-label="File format">
+                <div className={`mono ${styles.format}`} aria-label={t.fileFormat}>
                   <span className={styles.formatName}>sample.txt</span>
                   <span />
-                  {FORMAT_LINES.map(([line, note]) => (
+                  {FORMAT_LINES.map((line, i) => (
                     <Fragment key={line}>
                       <span>{line}</span>
-                      <span className={styles.formatNote}>{note}</span>
+                      <span className={styles.formatNote}>
+                        {i === 0 ? t.format.vertices : i === 1 ? t.format.edge : ''}
+                      </span>
                     </Fragment>
                   ))}
                 </div>
@@ -1320,7 +1644,7 @@ export default function Observatory() {
                     onClick={() => fileInputRef.current?.click()}
                     disabled={status.kind !== 'ready'}
                   >
-                    Browse files
+                    {t.browse}
                   </button>
                   <button
                     type="button"
@@ -1328,7 +1652,7 @@ export default function Observatory() {
                     onClick={loadExample}
                     disabled={status.kind !== 'ready'}
                   >
-                    Try the sample
+                    {t.trySample}
                   </button>
                 </div>
               </div>
@@ -1337,7 +1661,7 @@ export default function Observatory() {
         )}
 
         {meta && status.kind === 'parsing' && (
-          <div className={styles.overlay}>Parsing {status.name}…</div>
+          <div className={styles.overlay}>{t.parsing(status.name)}</div>
         )}
 
         {meta && (
@@ -1346,7 +1670,7 @@ export default function Observatory() {
             <div ref={helpRef} className={`${styles.floating} ${styles.floatingTopLeft}`}>
               <div className={styles.cluster}>
                 <IconButton
-                  label={helpOpen ? 'Hide the controls' : 'Show the controls'}
+                  label={helpOpen ? t.hideControls : t.showControls}
                   pressed={helpOpen}
                   onClick={() => setHelpOpen((o) => !o)}
                 >
@@ -1354,10 +1678,10 @@ export default function Observatory() {
                 </IconButton>
               </div>
               {helpOpen && (
-                <div className={styles.help} role="dialog" aria-label="Controls">
-                  <span className={`label ${styles.helpTitle}`}>Controls</span>
+                <div className={styles.help} role="dialog" aria-label={t.controlsTitle}>
+                  <span className={`label ${styles.helpTitle}`}>{t.controlsTitle}</span>
                   <ul className={styles.keys}>
-                    {CONTROLS.map(([key, does]) => (
+                    {t.controls.map(([key, does]) => (
                       <li key={key + does}>
                         <kbd className="mono">{key}</kbd>
                         <span>{does}</span>
@@ -1368,42 +1692,72 @@ export default function Observatory() {
               )}
             </div>
 
+            {/* The path of a distance query, top centre */}
+            {search?.target !== 0 && search && (
+              <div className={`${styles.floating} ${styles.floatingTopCenter}`}>
+                {search.path && (
+                  <div className={styles.cluster}>
+                    <IconButton
+                      label={pathOnly ? t.colourSearch : t.pathOnly}
+                      pressed={pathOnly}
+                      onClick={() => {
+                        setPathOnly(!pathOnly);
+                        rendererRef.current?.setPathOnly(!pathOnly);
+                      }}
+                    >
+                      <Highlighter size={15} />
+                    </IconButton>
+                    <IconButton
+                      label={t.fitPath}
+                      onClick={() => {
+                        const onPath = new Set(search.path);
+                        autoFit.current = false;
+                        fitVertices((v) => onPath.has(v), PATH_FILL);
+                      }}
+                    >
+                      <Scan size={15} />
+                    </IconButton>
+                  </div>
+                )}
+                <p className={`mono ${styles.path}`} aria-label={t.path}>
+                  {search.path ? (
+                    pathSteps(search.path).map((step, i, all) => (
+                      <Fragment key={i}>
+                        {i > 0 && <span className={styles.pathArrow}>→</span>}
+                        {step === '…' ? (
+                          <span className={styles.pathGap}>{step}</span>
+                        ) : (
+                          <span
+                            className={styles.pathBall}
+                            style={{
+                              // The canvas gradient: the origin's blue to the destination's green.
+                              background: `color-mix(in srgb, var(--accent) ${Math.round(100 - (100 * i) / Math.max(all.length - 1, 1))}%, var(--target))`,
+                            }}
+                          >
+                            {step}
+                          </span>
+                        )}
+                      </Fragment>
+                    ))
+                  ) : (
+                    <span className={styles.pathGap}>{t.noPath}</span>
+                  )}
+                </p>
+              </div>
+            )}
+
             {/* Layout tools, top right */}
-            <div className={`${styles.floating} ${styles.floatingTopRight}`}>
+            <div ref={layoutMenuRef} className={`${styles.floating} ${styles.floatingTopRight}`}>
               <div className={styles.cluster}>
                 <IconButton
-                  label={simulate ? 'Pause the force simulation' : 'Resume the force simulation'}
-                  pressed={simulate}
-                  onClick={() => {
-                    const next = !simulate;
-                    setSimulate(next);
-                    rendererRef.current?.setSimulate(next);
-                  }}
-                >
-                  <Magnet size={15} />
-                </IconButton>
-                <IconButton
-                  label="Reheat the simulation"
-                  onClick={() => {
-                    rendererRef.current?.reheat(1);
-                  }}
-                  disabled={!simulate}
-                >
-                  <RefreshCw size={15} />
-                </IconButton>
-                <IconButton
-                  label={showLabels ? 'Hide vertex numbers' : 'Show vertex numbers'}
+                  label={showLabels ? t.hideNumbers : t.showNumbers}
                   pressed={showLabels}
                   onClick={() => setShowLabels((on) => !on)}
                 >
                   <Hash size={15} />
                 </IconButton>
                 <IconButton
-                  label={
-                    follow
-                      ? 'Stop following the search'
-                      : 'Follow the search (keep discovered vertices in view)'
-                  }
+                  label={follow ? t.stopFollowing : t.follow}
                   pressed={follow}
                   onClick={() => {
                     const next = !follow;
@@ -1413,23 +1767,86 @@ export default function Observatory() {
                 >
                   <Focus size={15} />
                 </IconButton>
+                <span className={styles.clusterRule} aria-hidden="true" />
+                <IconButton
+                  label={layoutOpen ? t.hideLayouts : t.chooseLayout}
+                  pressed={layoutOpen}
+                  onClick={() => setLayoutOpen((o) => !o)}
+                >
+                  <Shapes size={15} />
+                </IconButton>
               </div>
+              {layoutOpen && (
+                <div
+                  className={`${styles.help} ${styles.menu}`}
+                  role="menu"
+                  aria-label={t.layoutsMenu}
+                >
+                  <span className={`label ${styles.helpTitle}`}>{t.layout}</span>
+                  {LAYOUTS.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={layout === item.id}
+                      className={styles.menuItem}
+                      onClick={() => {
+                        setLayoutOpen(false);
+                        applyLayout(item.id, search?.root ?? (selected || 1));
+                      }}
+                    >
+                      <span className={styles.menuIcon}>{item.icon}</span>
+                      <span className={styles.menuText}>
+                        <span>{t.layouts[item.id].label}</span>
+                        <span className={styles.menuHint}>{t.layouts[item.id].hint}</span>
+                      </span>
+                    </button>
+                  ))}
+                  {layout === 'force' && (
+                    <div className={styles.menuFooter}>
+                      <span className={`label ${styles.helpTitle}`}>{t.simulation}</span>
+                      <span className={styles.menuButtons}>
+                        <IconButton
+                          label={simulate ? t.pauseSimulation : t.resumeSimulation}
+                          pressed={simulate}
+                          onClick={() => {
+                            const next = !simulate;
+                            setSimulate(next);
+                            rendererRef.current?.setSimulate(next);
+                          }}
+                        >
+                          <Magnet size={15} />
+                        </IconButton>
+                        <IconButton
+                          label={t.reheat}
+                          onClick={() => {
+                            rendererRef.current?.reheat(1);
+                          }}
+                          disabled={!simulate}
+                        >
+                          <RefreshCw size={15} />
+                        </IconButton>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* View tools, bottom right */}
             <div className={`${styles.floating} ${styles.floatingBottomRight}`}>
               <div className={`${styles.cluster} ${styles.clusterVertical}`}>
-                <IconButton label="Zoom in" onClick={() => zoomBy(1.4)}>
+                <IconButton label={t.zoomIn} onClick={() => zoomBy(1.4)}>
                   <Plus size={15} />
                 </IconButton>
-                <IconButton label="Zoom out" onClick={() => zoomBy(1 / 1.4)}>
+                <IconButton label={t.zoomOut} onClick={() => zoomBy(1 / 1.4)}>
                   <Minus size={15} />
                 </IconButton>
-                <IconButton label="Fit the graph to the view (F)" onClick={fit}>
+                <IconButton label={t.fit} onClick={fit}>
                   <Maximize2 size={15} />
                 </IconButton>
                 <IconButton
-                  label={fullscreen ? 'Exit full screen' : 'Full screen'}
+                  label={fullscreen ? t.exitFullscreen : t.fullscreen}
                   onClick={toggleFullscreen}
                 >
                   {fullscreen ? <Minimize2 size={15} /> : <Expand size={15} />}
@@ -1438,18 +1855,32 @@ export default function Observatory() {
             </div>
 
             <div className={styles.legend}>
-              {search ? (
+              {search?.target ? (
                 <>
-                  <span className={styles.swatchA} /> level 0
-                  <span className={styles.swatchBar} />
-                  <span className={styles.swatchB} /> level {search.depth}
+                  <span className={styles.swatchOrigin} /> {t.origin.toLowerCase()}
                   <span className={styles.legendSep} />
-                  <span className={styles.swatchDim} /> not reached
+                  <span className={styles.swatchTarget} /> {t.target.toLowerCase()}
+                  <span className={styles.legendSep} />
+                  <span className={styles.swatchDim} /> {t.notReached}
+                </>
+              ) : search ? (
+                <>
+                  <span className={styles.swatchA} /> {t.level(0)}
+                  <span className={styles.swatchBar} />
+                  <span className={styles.swatchB} /> {t.level(search.depth)}
+                  <span className={styles.legendSep} />
+                  <span className={styles.swatchDim} /> {t.notReached}
+                </>
+              ) : component ? (
+                <>
+                  <span className={styles.swatchLit} /> {t.component(component)}
+                  <span className={styles.legendSep} />
+                  <span className={styles.swatchDim} /> {t.theRest}
                 </>
               ) : selected ? (
-                `Origin: vertex ${selected}`
+                t.originVertex(selected)
               ) : (
-                'Click a vertex to choose the origin'
+                t.chooseOrigin
               )}
             </div>
           </>
@@ -1461,15 +1892,15 @@ export default function Observatory() {
             style={{ left: pointer.x + 14, top: pointer.y + 14 }}
             role="status"
           >
-            <span className="mono">vertex {hovered}</span>
-            <span>degree {hoverInfo.degree}</span>
+            <span className="mono">{t.vertex(hovered)}</span>
+            <span>{t.degree(hoverInfo.degree)}</span>
             {search &&
               (hoverInfo.level === null ? (
-                <span>not reached</span>
+                <span>{t.notReached}</span>
               ) : (
                 <span>
-                  level {hoverInfo.level}
-                  {hoverInfo.parent !== null && ` · parent ${hoverInfo.parent}`}
+                  {t.level(hoverInfo.level)}
+                  {hoverInfo.parent !== null && t.parent(hoverInfo.parent)}
                 </span>
               ))}
           </div>
@@ -1479,13 +1910,20 @@ export default function Observatory() {
       {notice && (
         <div className={styles.notice} role="alert">
           <span>{notice}</span>
-          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss">
+          <button type="button" onClick={() => setNotice(null)} aria-label={t.dismiss}>
             ×
           </button>
         </div>
       )}
     </div>
   );
+}
+
+/** The path as labels, the middle elided past ten vertices. */
+function pathSteps(path: Uint32Array): string[] {
+  const all = Array.from(path, String);
+  if (all.length <= 10) return all;
+  return [...all.slice(0, 4), '…', ...all.slice(-4)];
 }
 
 function Panel({
@@ -1550,18 +1988,30 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Tile({
+  label,
+  value,
+  hint,
+  action,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  /** A small control in the tile's corner. */
+  action?: ReactNode;
+}) {
   return (
     <div className={styles.tile}>
       <span className={`label ${styles.tileLabel}`}>{label}</span>
       <span className={`mono ${styles.tileValue}`}>{value}</span>
       {hint && <span className={styles.tileHint}>{hint}</span>}
+      {action}
     </div>
   );
 }
 
 /** How many vertices have each degree, as a tiny bar chart. */
-function DegreeHistogram({ degrees, max }: { degrees: Uint32Array; max: number }) {
+function DegreeHistogram({ t, degrees, max }: { t: Strings; degrees: Uint32Array; max: number }) {
   const bars = useMemo(() => {
     const counts = new Uint32Array(max + 1);
     for (let v = 1; v < degrees.length; v++) counts[degrees[v]] += 1;
@@ -1580,17 +2030,20 @@ function DegreeHistogram({ degrees, max }: { degrees: Uint32Array; max: number }
   }, [degrees, max]);
   const peak = bars.reduce((m, b) => Math.max(m, b.count), 1);
   return (
-    <div className={`${styles.chart} ${styles.shedThird}`} aria-label="Degree distribution">
+    <div className={`${styles.chart} ${styles.shedThird}`} aria-label={t.degreeDistribution}>
       <div className={styles.chartHeader}>
-        <span className={`label ${styles.tileLabel}`}>Degree distribution</span>
-        <span className={styles.tileHint}>vertices per degree</span>
+        <span className={`label ${styles.tileLabel}`}>{t.degreeDistribution}</span>
+        <span className={styles.tileHint}>{t.verticesPerDegree}</span>
       </div>
       <div className={styles.bars}>
         {bars.map((b) => (
           <span
             key={b.from}
             style={{ height: `${Math.max(b.count > 0 ? 3 : 0, (b.count / peak) * 100)}%` }}
-            title={`degree ${b.from === b.to ? b.from : `${b.from}–${b.to}`}: ${formatInt(b.count)}`}
+            title={t.degreeBucket(
+              b.from === b.to ? String(b.from) : `${b.from}–${b.to}`,
+              formatInt(b.count),
+            )}
           />
         ))}
       </div>
@@ -1603,40 +2056,130 @@ function DegreeHistogram({ degrees, max }: { degrees: Uint32Array; max: number }
 }
 
 /** The components as proportional segments, largest first. */
-function ComponentBar({ sizes, total }: { sizes: Uint32Array; total: number }) {
+/** The components browser, in place of the graph summary: a stacked bar of
+    sizes (largest first, the tail past eight bucketed) whose pieces are
+    buttons, a previous / next navigator and the selected component's
+    numbers as tiles. */
+function ComponentsView({
+  t,
+  meta,
+  current,
+  onSelect,
+  onClose,
+}: {
+  t: Strings;
+  meta: GraphMeta;
+  current: number;
+  onSelect: (c: number) => void;
+  onClose: () => void;
+}) {
+  const sizes = meta.componentSizes;
+  const total = meta.vertices;
   const shown = Math.min(sizes.length, 8);
   let rest = 0;
   for (let i = shown; i < sizes.length; i++) rest += sizes[i];
+  const size = current ? sizes[current - 1] : 0;
+  const edges = current ? meta.componentEdges[current] : 0;
+  const possible = (size * (size - 1)) / 2;
   return (
-    <div className={`${styles.chart} ${styles.shedSecond}`} aria-label="Component sizes">
+    <div className={styles.chart} aria-label={t.components}>
       <div className={styles.chartHeader}>
-        <span className={`label ${styles.tileLabel}`}>Components</span>
+        <span className={`label ${styles.tileLabel}`}>
+          {t.componentsCount(formatInt(sizes.length))}
+        </span>
         <span className={styles.tileHint}>
-          {sizes.length === 1 ? 'connected' : `smallest ${formatInt(sizes[sizes.length - 1])}`}
+          {sizes.length === 1 ? t.connected : t.smallest(formatInt(sizes[sizes.length - 1]))}
         </span>
       </div>
-      <div className={styles.segments}>
+      <div className={styles.segments} role="group" aria-label={t.pickComponent}>
         {Array.from({ length: shown }, (_, i) => (
-          <span
+          <button
             key={i}
+            type="button"
+            className={styles.piece}
             style={{ flexGrow: sizes[i], opacity: 1 - (i / Math.max(shown, 2)) * 0.7 }}
-            title={`component ${i + 1}: ${formatInt(sizes[i])} vertices`}
+            data-current={current === i + 1 || undefined}
+            title={t.componentTitle(i + 1, formatInt(sizes[i]))}
+            aria-label={t.componentLabel(i + 1, formatInt(sizes[i]))}
+            aria-pressed={current === i + 1}
+            onClick={() => onSelect(i + 1)}
           />
         ))}
         {rest > 0 && (
-          <span
-            className={styles.segmentRest}
+          <button
+            type="button"
+            className={`${styles.piece} ${styles.pieceRest}`}
             style={{ flexGrow: rest }}
-            title={`${formatInt(sizes.length - shown)} more components: ${formatInt(rest)} vertices`}
+            data-current={current > shown || undefined}
+            title={t.moreComponents(formatInt(sizes.length - shown), formatInt(rest))}
+            aria-label={t.smallerComponents(formatInt(sizes.length - shown))}
+            aria-pressed={current > shown}
+            onClick={() => onSelect(shown + 1)}
           />
         )}
       </div>
-      <div className={styles.axis}>
-        <span>
-          {((sizes[0] / total) * 100).toFixed(sizes[0] === total ? 0 : 1)}% in the largest
+      <div className={styles.componentRow}>
+        <button
+          type="button"
+          className={styles.stepButton}
+          aria-label={t.previousComponent}
+          disabled={current <= 1}
+          onClick={() => onSelect(current - 1)}
+        >
+          <ChevronLeft size={12} />
+        </button>
+        <span className={`mono ${styles.componentInfo}`}>
+          {t.componentWord} <b>{current}</b>
+          <span className={styles.componentSep}>/</span>
+          {formatInt(sizes.length)}
         </span>
-        <span>{formatInt(total)}</span>
+        <button
+          type="button"
+          className={styles.stepButton}
+          aria-label={t.nextComponent}
+          disabled={current >= sizes.length}
+          onClick={() => onSelect(current + 1)}
+        >
+          <ChevronRight size={12} />
+        </button>
+        <button
+          type="button"
+          className={styles.stepButton}
+          aria-label={t.backToSummary}
+          title={t.backToSummaryShort}
+          onClick={onClose}
+        >
+          <X size={12} />
+        </button>
       </div>
+      {current > 0 && (
+        <div className={styles.tiles}>
+          <Tile
+            label={t.vertices}
+            value={formatInt(size)}
+            hint={t.ofGraph(((size / total) * 100).toFixed(size === total ? 0 : 1))}
+          />
+          <Tile
+            label={t.edges}
+            value={formatInt(edges)}
+            hint={t.ofEdges(
+              ((edges / Math.max(meta.edges, 1)) * 100).toFixed(edges === meta.edges ? 0 : 1),
+            )}
+          />
+          <Tile
+            label={t.componentDegree}
+            value={`${meta.componentDegree.min[current]} – ${meta.componentDegree.max[current]}`}
+            hint={t.mean(size ? ((2 * edges) / size).toFixed(2) : '0')}
+          />
+          <Tile
+            label={t.density}
+            value={
+              possible ? `${((edges / possible) * 100).toFixed(edges === possible ? 0 : 2)}%` : '·'
+            }
+            hint={t.ofPossible}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1644,11 +2187,13 @@ function ComponentBar({ sizes, total }: { sizes: Uint32Array; total: number }) {
 /** Vertices per level as horizontal bars, level 0 at the bottom; the index
     on the left is a button that moves the timeline to that level. */
 function LevelProfile({
+  t,
   sizes,
   kind,
   current,
   onSelect,
 }: {
+  t: Strings;
   sizes: Uint32Array;
   kind: SearchKindName;
   current: number;
@@ -1674,7 +2219,7 @@ function LevelProfile({
     return out;
   }, [sizes]);
   const peak = rows.reduce((m, r) => Math.max(m, r.count), 1);
-  const noun = kind === 'bfs' ? 'level' : 'depth';
+  const noun = kind === 'bfs' ? t.levelNoun : t.depthNoun;
 
   // Keep the current level in view while the wave plays.
   useEffect(() => {
@@ -1685,9 +2230,9 @@ function LevelProfile({
   }, [current]);
 
   return (
-    <div className={`${styles.chart} ${styles.shedFourth}`} aria-label={`Vertices per ${noun}`}>
+    <div className={`${styles.chart} ${styles.shedFourth}`} aria-label={t.verticesPer(noun)}>
       <div className={styles.chartHeader}>
-        <span className={`label ${styles.tileLabel}`}>Vertices per {noun}</span>
+        <span className={`label ${styles.tileLabel}`}>{t.verticesPer(noun)}</span>
       </div>
       <div ref={listRef} className={styles.levels}>
         {rows.map((row) => {
@@ -1703,7 +2248,7 @@ function LevelProfile({
                 type="button"
                 className={`mono ${styles.levelIndex}`}
                 onClick={() => onSelect(row.from)}
-                title={`Go to ${noun} ${row.from}`}
+                title={t.goTo(noun, row.from)}
               >
                 {row.from === row.to ? row.from : `${row.from}–${row.to}`}
               </button>
@@ -1725,12 +2270,14 @@ function LevelProfile({
 /** A DFS as the stack depth over discovery time: it plunges and backtracks.
     Click or drag on the trace to move the timeline. */
 function DepthTrace({
+  t,
   order,
   levels,
   depth,
   reveal,
   onScrub,
 }: {
+  t: Strings;
   order: Uint32Array;
   levels: Uint32Array;
   depth: number;
@@ -1765,9 +2312,9 @@ function DepthTrace({
   };
 
   return (
-    <div className={`${styles.chart} ${styles.shedFourth}`} aria-label="Depth over the traversal">
+    <div className={`${styles.chart} ${styles.shedFourth}`} aria-label={t.depthTrace}>
       <div className={styles.chartHeader}>
-        <span className={`label ${styles.tileLabel}`}>Depth over the traversal</span>
+        <span className={`label ${styles.tileLabel}`}>{t.depthTrace}</span>
         <span className={`mono ${styles.tileHint}`}>
           {currentDepth} / {depth}
         </span>
@@ -1784,7 +2331,7 @@ function DepthTrace({
           if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubAt(event);
         }}
         role="slider"
-        aria-label="Discovery progress"
+        aria-label={t.progress}
         aria-valuemin={0}
         aria-valuemax={total - 1}
         aria-valuenow={Math.round(reveal)}

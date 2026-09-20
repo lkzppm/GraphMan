@@ -233,10 +233,11 @@
 }
 
 .tile {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 9px 12px 10px;
+  gap: 2px;
+  padding: 6px 10px 7px;
   background: var(--bg);
   min-width: 0;
   transition: background 0.2s var(--ease);
@@ -246,12 +247,36 @@
   background: var(--bg-3);
 }
 
+/* A small control in a tile's corner (the components tile opens the browser). */
+.tileAction {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-2);
+  cursor: pointer;
+  transition:
+    border-color 0.2s var(--ease),
+    color 0.2s var(--ease);
+}
+
+.tileAction:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .tileLabel {
   font-size: 10px;
 }
 
 .tileValue {
-  font-size: 20px;
+  font-size: 15px;
   line-height: 1;
   color: var(--accent);
   letter-spacing: -0.02em;
@@ -296,7 +321,8 @@
 .levels {
   display: flex;
   flex-direction: column-reverse;
-  justify-content: flex-start;
+  /* Reversed column: flex-end packs the rows at the top. */
+  justify-content: flex-end;
   gap: 2px;
   flex: 1 1 auto;
   min-height: 0;
@@ -481,13 +507,85 @@
   border: 1px solid var(--border);
 }
 
-.segments span {
+.piece {
+  appearance: none;
+  border: 0;
+  padding: 0;
   background: var(--accent);
   min-width: 2px;
+  cursor: pointer;
+  transition:
+    opacity 0.2s var(--ease),
+    outline-color 0.2s var(--ease);
+  outline: 2px solid transparent;
+  outline-offset: -1px;
 }
 
-.segmentRest {
-  background: var(--border-2) !important;
+.piece:hover,
+.piece[data-current] {
+  opacity: 1 !important;
+}
+
+.piece[data-current] {
+  outline-color: var(--fg);
+}
+
+.pieceRest {
+  background: var(--border-2);
+}
+
+/* The selected component: prev / which / next / clear, then its numbers. */
+.componentRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.componentInfo {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--fg-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.componentInfo b {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.componentSep {
+  margin: 0 1px;
+}
+
+.stepButton {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-2);
+  cursor: pointer;
+  transition:
+    border-color 0.2s var(--ease),
+    color 0.2s var(--ease);
+}
+
+.stepButton:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.stepButton:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .axis {
@@ -516,8 +614,8 @@
 .run {
   display: inline-grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius);
   background: var(--accent);
   color: #fff;
@@ -569,8 +667,8 @@
 
 .input,
 .select {
-  height: 34px;
-  padding: 0 10px;
+  height: 28px;
+  padding: 0 8px;
   border: 1px solid var(--border-2);
   border-radius: var(--radius);
   background: var(--bg);
@@ -604,8 +702,8 @@
   position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  height: 34px;
-  padding: 3px;
+  height: 28px;
+  padding: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg-3);
@@ -613,10 +711,10 @@
 
 .thumb {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
-  left: 3px;
-  width: calc(50% - 3px);
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
   border-radius: var(--radius-sm);
   background: var(--bg);
   box-shadow:
@@ -625,15 +723,49 @@
   transition: transform 0.35s var(--ease-spring);
 }
 
-.segmented[data-active='dfs'] .thumb {
+.segmented[data-active='second'] .thumb {
   transform: translateX(100%);
+}
+
+/* The path of a distance query, floating over the canvas: one ball per
+   vertex, coloured from the origin's blue to the destination's green. */
+.path {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px 5px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.pathBall {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: #fff;
+}
+
+.pathArrow,
+.pathGap {
+  color: var(--fg-3);
 }
 
 .segment,
 .segmentActive {
   position: relative;
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: var(--tracking);
   color: var(--fg-2);
@@ -786,6 +918,20 @@
   align-items: flex-start;
 }
 
+/* Centred with auto margins (the rise animation ends on `transform: none`). */
+.floatingTopCenter {
+  top: 14px;
+  left: 70px;
+  right: 130px;
+  justify-content: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.floatingTopCenter > * {
+  pointer-events: auto;
+}
+
 /* The controls popover under the help button. */
 .help {
   display: flex;
@@ -801,6 +947,89 @@
   -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.3);
   animation: rise 0.25s var(--ease) both;
+}
+
+/* The layout menu: the popover, hung under the top-right cluster. */
+.menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 236px;
+  gap: 2px;
+  padding: 10px 6px 6px;
+}
+
+.menu .helpTitle {
+  padding: 0 8px 6px;
+}
+
+.menuItem {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+
+.menuItem:hover {
+  background: var(--bg-3);
+}
+
+.menuItem[aria-checked='true'] {
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.menuIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: inherit;
+}
+
+.menuText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.menuHint {
+  font-size: 10.5px;
+  color: var(--fg-3);
+}
+
+/* The simulation controls, under the layouts while Force is current. */
+.menuFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 8px 8px 2px;
+  border-top: 1px solid var(--border);
+}
+
+.menuFooter .helpTitle {
+  padding: 0;
+}
+
+.menuButtons {
+  display: inline-flex;
+  gap: 4px;
 }
 
 .helpTitle {
@@ -823,6 +1052,14 @@
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 8px 24px -16px rgba(0, 0, 0, 0.25);
+}
+
+/* A hairline between the two halves of a cluster. */
+.clusterRule {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 3px;
+  background: var(--border);
 }
 
 .cluster .iconButton {
@@ -1090,17 +1327,32 @@
   animation: rise 0.4s var(--ease) both;
 }
 
+.swatchLit,
 .swatchA,
 .swatchB,
-.swatchDim {
+.swatchDim,
+.swatchOrigin,
+.swatchTarget {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   display: inline-block;
 }
 
+.swatchLit {
+  background: var(--accent);
+}
+
 .swatchA {
   background: var(--level-0);
+}
+
+.swatchOrigin {
+  background: var(--accent);
+}
+
+.swatchTarget {
+  background: var(--target);
 }
 
 .swatchB {
@@ -1166,7 +1418,8 @@
 
 /* Short viewports: the sidebar never scrolls, so it sheds its least
    important pieces one by one (chips, component bar, histogram, level
-   profile) and only scrolls as a last resort. */
+   profile) and only scrolls as a last resort. The component bar and the
+   histogram only go once a search result needs the room. */
 @media (max-height: 880px) {
   .shedFirst {
     display: none;
@@ -1174,13 +1427,13 @@
 }
 
 @media (max-height: 820px) {
-  .shedSecond {
+  .sidebar[data-search] .shedSecond {
     display: none;
   }
 }
 
 @media (max-height: 740px) {
-  .shedThird {
+  .sidebar[data-search] .shedThird {
     display: none;
   }
 
