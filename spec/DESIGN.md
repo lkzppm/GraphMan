@@ -180,10 +180,12 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   It is a tablist: left and right walk it from anywhere on the page, and
   with the menu focused up, down, Home and End work too and the focus
   follows the chosen tab (the arrows still scroll the page elsewhere).
-  Every view is the same sheet: the name (plus `média dos 6 grafos` in
-  tracked blue on the overview) with the output file's facts on the same
-  line (vertices, edges, degree min/max/mean/median, loops and duplicates
-  dropped); then three rows. Row one: memory, mean BFS and mean DFS as
+  Every view is the same sheet: the name, then in the room to its right
+  the output file's facts (vertices, edges, degree min/max/mean/median,
+  loops and duplicates dropped; the overview opens the row with `média dos
+  6 grafos` in tracked blue and leaves the dropped lines out, an average
+  of them means nothing), a row that wraps inside its own column so it
+  never drops under the name; then three rows. Row one: memory, mean BFS and mean DFS as
   three bar charts side by side (list in the accent, CSR in the navy,
   matrix in the light blue; a dashed outline where the matrix was refused,
   labelled with what it would need). Row two: the parents of 10, 20 and
@@ -191,13 +193,16 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   over its level, a dot for another component. Row three: the three
   distances as a triangle (10 on top, 20 and 30 below), each side labelled
   in a white pill (the drawing fills its column up to 195 px), dashed and
-  grey with `∞` across components; beside it,
-  the components as the graph cut into three segments (the largest in the
+  grey with `∞` across components; beside it, the components as a ring
+  (150 px) cut into three arcs, clockwise from the top (the largest in the
   accent, everything between it and the smallest in a 45 % blue, the
-  smallest in the light blue), each as wide as its share of the vertices
-  with a 3 px floor so a 48-vertex component in five million still shows,
-  under it the count in blue and a swatch per segment with its size and
-  percentage; over the diameter as the
+  smallest in the light blue, a hairline gap between them), the count in
+  blue in the hole with the word under it, and to the right a legend line
+  per part with a swatch, its size and percentage; hovering an arc or its
+  line swells that arc and fades the rest. The three columns stretch to
+  the triangle's height; the ring sits in the middle of its column and
+  the four diameter rows spread over the same height. The third column
+  is the diameter as the
   BFS runs each method spent (brute force navy, Takes-Kosters accent, iFUB
   mid blue, 4-sweep light), the answer in blue when certified and grey
   with `≥` when a bound, a dashed bar and `stopped at` where the budget ran
@@ -209,7 +214,7 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   all six graphs and shared by every sheet, so a bar's length means the
   same wherever it is; bars grow from nothing when their chapter comes
   into view. Switching view never remounts the sheet: the elements stay in
-  place, bars and segments slide to their new length over 1.1 s (a bar with
+  place, bars and arcs slide to their new length over 1.1 s (a bar with
   nothing to show keeps its box at width 0) and every number crossfades in
   400 ms, keyed by the view. Table rows are a fixed 44 px tall so a cell
   that holds only a dot does not resize the table mid-transition. The whole sheet fits a 1440 × 900 viewport under the two

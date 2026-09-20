@@ -1,10 +1,11 @@
 //! Diameter: the longest shortest path in the graph.
 //!
 //! Four strategies share one driver. The driver walks the connected
-//! components from largest to smallest and skips every component that is too
+//! components from largest to smallest, skips every component that is too
 //! small to beat the best value found so far (a component with `s` vertices
-//! has diameter at most `s - 1`), so on real graphs only the giant component
-//! ever costs anything.
+//! has diameter at most `s - 1`) and hands that value to the exact methods
+//! as a floor, so a dense giant component whose sweep already shows it cannot
+//! beat a sparser small one costs five BFS runs instead of thousands.
 //!
 //! * [`DiameterMethod::Exact`] — one BFS per vertex; the textbook `O(n·m)`.
 //! * [`DiameterMethod::IFub`] — the iFUB algorithm of Crescenzi, Grossi,
@@ -179,8 +180,8 @@ pub fn diameter_with_progress<G: Graph + Sync>(
             match method {
                 DiameterMethod::Exact => ctx.brute_force(members),
                 _ if members.len() <= SMALL_COMPONENT => ctx.brute_force(members),
-                DiameterMethod::IFub => ctx.ifub(members),
-                DiameterMethod::Bounds => ctx.bounding(members),
+                DiameterMethod::IFub => ctx.ifub(members, value),
+                DiameterMethod::Bounds => ctx.bounding(members, value),
                 DiameterMethod::Sweep => {
                     let (lb, ends, _) = ctx.sweep(members);
                     (lb, ends)
@@ -364,8 +365,14 @@ impl<G: Graph + Sync> Context<'_, G> {
     }
 
     /// iFUB: exact diameter of one component.
-    fn ifub(&mut self, members: &[Vertex]) -> (u32, (Vertex, Vertex)) {
+    ///
+    /// `floor` is the best value found in other components. The component
+    /// only matters if it can beat it, so pruning starts from the larger of
+    /// the floor and the component's own sweep; when nothing beats the floor
+    /// the returned endpoints are meaningless and the caller ignores them.
+    fn ifub(&mut self, members: &[Vertex], floor: u32) -> (u32, (Vertex, Vertex)) {
         let (mut lb, mut endpoints, u) = self.sweep(members);
+        lb = lb.max(floor);
         let (ecc_u, _) = self.ecc(u);
 
         // Snapshot the BFS from `u`, bucketed by level (the order is already
@@ -406,14 +413,16 @@ impl<G: Graph + Sync> Context<'_, G> {
     /// Sources are chosen alternately as the candidate with the largest upper
     /// bound (a diameter candidate) and the one with the smallest lower bound
     /// (a good centre, which tightens everyone's upper bound); one batch of
-    /// sources per round is searched in parallel.
-    fn bounding(&mut self, members: &[Vertex]) -> (u32, (Vertex, Vertex)) {
+    /// sources per round is searched in parallel. `floor` is the best value
+    /// found in other components, as in [`ifub`](Self::ifub).
+    fn bounding(&mut self, members: &[Vertex], floor: u32) -> (u32, (Vertex, Vertex)) {
         let mut candidates: Vec<Vertex> = members.to_vec();
         let mut lower = vec![0u32; candidates.len()];
         let mut upper = vec![u32::MAX; candidates.len()];
         // Seed with the 4-sweep so that the running lower bound is good from
         // the start; its vertices also make an excellent first batch.
         let (mut best, mut endpoints, midpoint) = self.sweep(members);
+        best = best.max(floor);
         let batch = self.batch_size();
         let mut round = 0usize;
 

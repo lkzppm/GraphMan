@@ -216,8 +216,7 @@ export const pt: Dictionary = {
       distances: { title: 'Distâncias (10, 20), (10, 30), (20, 30)' },
       components: {
         title: 'Componentes conexas',
-        count: (n: string) => `${n} componentes`,
-        one: '1 componente',
+        unit: (n: number) => (n === 1 ? 'componente' : 'componentes'),
         largest: (n: string) => `maior ${n}`,
         smallest: (n: string) => `menor ${n}`,
         others: (n: string) => `${n} outras`,
@@ -233,10 +232,10 @@ export const pt: Dictionary = {
 
   observatory: {
     diameterMethods: {
-      Sweep: '4-sweep (limite inferior)',
-      IFub: 'iFUB (exato)',
-      Bounds: 'Takes–Kosters (exato)',
-      Exact: 'Força bruta (exato)',
+      Sweep: { label: '4-sweep', hint: 'quatro BFS, um limite' },
+      IFub: { label: 'iFUB', hint: 'exato, menos BFS' },
+      Bounds: { label: 'Takes–Kosters', hint: 'exato, por limites' },
+      Exact: { label: 'Força bruta', hint: 'exato, uma BFS cada' },
     },
     controls: [
       ['clique', 'escolhe a origem'],
@@ -310,8 +309,12 @@ export const pt: Dictionary = {
     bfsBudget: 'Orçamento de BFS',
     computing: 'Calculando…',
     compute: 'Calcular',
-    budgetHit: ' (orçamento esgotado)',
+    budgetHit: 'orçamento esgotado',
     bfsCount: (count: string) => `${count} BFS`,
+    diameterExact: 'exato',
+    diameterBound: 'limite inferior',
+    diameterHint: 'Escolha um método e calcule o mais longo dos caminhos mínimos.',
+    showDiameterPath: (from: string, to: string) => `Desenhar o caminho de ${from} até ${to}`,
     sample: 'Exemplo',
     sampleHint: '5 vértices · 5 arestas',
     openFile: 'Abrir um arquivo',

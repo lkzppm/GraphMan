@@ -214,8 +214,7 @@ export const en = {
       distances: { title: 'Distances (10, 20), (10, 30), (20, 30)' },
       components: {
         title: 'Connected components',
-        count: (n: string) => `${n} components`,
-        one: '1 component',
+        unit: (n: number): string => (n === 1 ? 'component' : 'components'),
         largest: (n: string) => `largest ${n}`,
         smallest: (n: string) => `smallest ${n}`,
         others: (n: string) => `${n} others`,
@@ -231,10 +230,10 @@ export const en = {
 
   observatory: {
     diameterMethods: {
-      Sweep: '4-sweep (lower bound)',
-      IFub: 'iFUB (exact)',
-      Bounds: 'Takes–Kosters (exact)',
-      Exact: 'Brute force (exact)',
+      Sweep: { label: '4-sweep', hint: 'four BFS, a bound' },
+      IFub: { label: 'iFUB', hint: 'exact, fewest BFS' },
+      Bounds: { label: 'Takes–Kosters', hint: 'exact, by bounds' },
+      Exact: { label: 'Brute force', hint: 'exact, one BFS each' },
     },
     controls: [
       ['click', 'pick the origin'],
@@ -308,8 +307,12 @@ export const en = {
     bfsBudget: 'BFS budget',
     computing: 'Computing…',
     compute: 'Compute',
-    budgetHit: ' (budget hit)',
+    budgetHit: 'budget hit',
     bfsCount: (count: string) => `${count} BFS`,
+    diameterExact: 'exact',
+    diameterBound: 'lower bound',
+    diameterHint: 'Pick a method and compute the longest of all the shortest paths.',
+    showDiameterPath: (from: string, to: string) => `Draw the path from ${from} to ${to}`,
     sample: 'Sample',
     sampleHint: '5 vertices · 5 edges',
     openFile: 'Open a file',

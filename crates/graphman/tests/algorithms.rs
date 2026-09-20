@@ -222,3 +222,29 @@ fn search_tree_reset_is_incremental_and_correct() {
     algo::bfs_into(&g, 50, &mut tree, &mut ());
     assert_eq!(tree, fresh);
 }
+
+#[test]
+fn exact_methods_prune_components_against_the_global_bound() {
+    // A dense 300-vertex component (diameter about 3) and a path of 40
+    // vertices (diameter 39): the answer lives in the small component, and
+    // the exact methods must certify it without brute-forcing the big one.
+    let mut edges: Vec<(u32, u32)> = {
+        let mut rng = Rng(9);
+        (0..3000)
+            .map(|_| (rng.below(300) + 1, rng.below(300) + 1))
+            .collect()
+    };
+    edges.extend((301..340).map(|v| (v, v + 1)));
+    let g = Csr::build(&EdgeList::from_edges(340, edges).unwrap()).unwrap();
+    let exact = algo::diameter(&g, DiameterMethod::Exact);
+    assert_eq!(exact.value, 39);
+    for method in [DiameterMethod::IFub, DiameterMethod::Bounds] {
+        let d = algo::diameter(&g, method);
+        assert_eq!(d.value, 39, "{method}");
+        assert!(d.is_exact, "{method}");
+        assert_eq!(algo::distance(&g, d.endpoints.0, d.endpoints.1), Some(39));
+        // Five BFS for the dense component (its sweep and centre), the rest
+        // for the path; nowhere near the 340 of brute force.
+        assert!(d.bfs_count < 120, "{method} took {} BFS runs", d.bfs_count);
+    }
+}

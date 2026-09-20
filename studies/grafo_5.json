@@ -1,11 +1,11 @@
 {
   "name": "grafo_5",
-  "file": "graphs/grafo_5.txt",
+  "file": "/Users/lkz/Desktop/Code/GraphMan/graphs/grafo_5.txt",
   "vertices": 4843750,
   "edges": 13168911,
   "self_loops_dropped": 7,
   "duplicates_dropped": 10,
-  "parse_ms": 745.595916,
+  "parse_ms": 549.483833,
   "degree": {
     "min": 1,
     "max": 22,
@@ -20,30 +20,30 @@
         "feasible": true,
         "required_bytes": 221601312,
         "accounted_bytes": 221601312,
-        "baseline_resident_bytes": 2326528,
-        "resident_bytes": 272187392,
-        "footprint_bytes": 271188544,
-        "peak_resident_bytes": 377552896,
-        "build_ms": 231.417542,
+        "baseline_resident_bytes": 2195456,
+        "resident_bytes": 272072704,
+        "footprint_bytes": 271106624,
+        "peak_resident_bytes": 377438208,
+        "build_ms": 210.225917,
         "error": null
       },
       "bfs": {
         "runs": 100,
-        "mean_ms": 113.54747337,
-        "median_ms": 160.842354,
-        "min_ms": 11.005667,
-        "max_ms": 234.282916,
-        "stddev_ms": 67.07626007814035,
-        "total_ms": 11354.747337
+        "mean_ms": 100.71351670999998,
+        "median_ms": 136.68604200000001,
+        "min_ms": 10.52975,
+        "max_ms": 204.747875,
+        "stddev_ms": 58.373660462808665,
+        "total_ms": 10071.351670999999
       },
       "dfs": {
         "runs": 100,
-        "mean_ms": 571.88504085,
-        "median_ms": 533.1195829999999,
-        "min_ms": 54.445292,
-        "max_ms": 1363.229583,
-        "stddev_ms": 331.2402252477643,
-        "total_ms": 57188.504085
+        "mean_ms": 321.68148801000007,
+        "median_ms": 433.29250049999996,
+        "min_ms": 46.781542,
+        "max_ms": 643.6873330000001,
+        "stddev_ms": 161.29946292811402,
+        "total_ms": 32168.148801000007
       }
     },
     {
@@ -53,7 +53,7 @@
         "feasible": false,
         "required_bytes": 2932774980476,
         "accounted_bytes": null,
-        "baseline_resident_bytes": 2326528,
+        "baseline_resident_bytes": 2195456,
         "resident_bytes": null,
         "footprint_bytes": null,
         "peak_resident_bytes": null,
@@ -70,30 +70,30 @@
         "feasible": true,
         "required_bytes": 124726296,
         "accounted_bytes": 124726296,
-        "baseline_resident_bytes": 2310144,
-        "resident_bytes": 165969920,
-        "footprint_bytes": 164905440,
-        "peak_resident_bytes": 312393728,
-        "build_ms": 133.884917,
+        "baseline_resident_bytes": 2211840,
+        "resident_bytes": 165904384,
+        "footprint_bytes": 164872672,
+        "peak_resident_bytes": 312311808,
+        "build_ms": 104.535375,
         "error": null
       },
       "bfs": {
         "runs": 100,
-        "mean_ms": 133.0837908,
-        "median_ms": 156.55281250000002,
-        "min_ms": 14.695042,
-        "max_ms": 250.568166,
-        "stddev_ms": 77.95358320595355,
-        "total_ms": 13308.37908
+        "mean_ms": 93.70457043000002,
+        "median_ms": 129.4460205,
+        "min_ms": 10.549625,
+        "max_ms": 163.176292,
+        "stddev_ms": 52.898291033518866,
+        "total_ms": 9370.457043000002
       },
       "dfs": {
         "runs": 100,
-        "mean_ms": 292.87893154999995,
-        "median_ms": 399.95802100000003,
-        "min_ms": 47.752333,
-        "max_ms": 456.72762500000005,
-        "stddev_ms": 139.98704750253964,
-        "total_ms": 29287.893154999994
+        "mean_ms": 225.59306033000001,
+        "median_ms": 304.367708,
+        "min_ms": 38.760291,
+        "max_ms": 353.184291,
+        "stddev_ms": 104.62611208724992,
+        "total_ms": 22559.306033
       }
     }
   ],
@@ -246,7 +246,7 @@
     "count": 5,
     "largest": 2500000,
     "smallest": 156250,
-    "elapsed_ms": 279.722375
+    "elapsed_ms": 292.507125
   },
   "diameters": [
     {
@@ -259,31 +259,31 @@
         4495114,
         1700852
       ],
-      "elapsed_ms": 1303.872208
+      "elapsed_ms": 1368.53
     },
     {
       "method": "i_fub",
-      "value": 58,
-      "is_exact": false,
-      "cancelled": true,
-      "bfs_count": 379,
+      "value": 59,
+      "is_exact": true,
+      "cancelled": false,
+      "bfs_count": 5200,
       "endpoints": [
-        4495114,
-        1700852
+        2936772,
+        2289520
       ],
-      "elapsed_ms": 45176.688749999994
+      "elapsed_ms": 11665.129167
     },
     {
       "method": "bounds",
-      "value": 58,
-      "is_exact": false,
-      "cancelled": true,
-      "bfs_count": 342,
+      "value": 59,
+      "is_exact": true,
+      "cancelled": false,
+      "bfs_count": 1812,
       "endpoints": [
-        4495114,
-        1700852
+        1700852,
+        3921727
       ],
-      "elapsed_ms": 45165.998917000004
+      "elapsed_ms": 6370.708958
     }
   ],
   "machine": {
@@ -291,7 +291,7 @@
     "arch": "aarch64",
     "cpu": "Apple M5",
     "total_memory_bytes": 17179869184,
-    "threads": 3
+    "threads": 10
   },
-  "generated_at_unix": 1789610990
+  "generated_at_unix": 1789942797
 }
