@@ -214,8 +214,7 @@ export const en = {
       distances: { title: 'Distances (10, 20), (10, 30), (20, 30)' },
       components: {
         title: 'Connected components',
-        count: (n: string) => `${n} components`,
-        one: '1 component',
+        unit: (n: number): string => (n === 1 ? 'component' : 'components'),
         largest: (n: string) => `largest ${n}`,
         smallest: (n: string) => `smallest ${n}`,
         others: (n: string) => `${n} others`,

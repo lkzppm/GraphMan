@@ -105,24 +105,23 @@
 
 /* ---- head ----------------------------------------------------------------- */
 
+/* The title, then the facts in the room to its right; the facts wrap inside
+   their own column, so a long row never drops under the title. */
 .head {
   display: flex;
-  flex-wrap: wrap;
   align-items: baseline;
   gap: 6px 24px;
 }
 
 .title {
+  flex: none;
   font-size: clamp(28px, 3.4vw, 36px);
   font-weight: 600;
   letter-spacing: -0.035em;
   line-height: 1.08;
 }
 
-.subtitle[data-empty] {
-  display: none;
-}
-
+/* The overview's brief, first among its facts. */
 .subtitle {
   font-size: 12px;
   letter-spacing: var(--tracking);
@@ -138,6 +137,8 @@
 }
 
 .facts {
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -171,18 +172,13 @@
   align-items: start;
 }
 
+/* Columns stretch to the tallest (the triangle), so the ring can sit in
+   the middle of its chapter. */
 .rowLast {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1.15fr);
   gap: 36px;
-  align-items: start;
-}
-
-.stack {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  min-width: 0;
+  align-items: stretch;
 }
 
 /* ---- chapters ------------------------------------------------------------- */
@@ -307,6 +303,19 @@ g.swap {
 
 .rowThree .track {
   padding-right: 150px;
+}
+
+/* The diameter column is narrow and its labels long (Takes-Kosters); its
+   bars sit in the middle of the column, level with the ring. */
+.rowLast .track {
+  padding-right: 120px;
+}
+
+/* The four methods spread over the ring's height (150 px in a 186 px box). */
+.rowLast .bars {
+  flex: 1;
+  justify-content: space-between;
+  padding: 18px 0;
 }
 
 /* Grows from nothing when the chapter comes into view. */
@@ -451,62 +460,125 @@ g.swap {
 
 /* ---- components ----------------------------------------------------------- */
 
+/* The graph as a ring cut into its components, the count in the hole, the
+   parts named beside it. */
 .components {
+  flex: 1;
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  justify-content: center;
+  align-items: center;
+  gap: 22px;
+  min-height: 150px;
 }
 
-/* The graph as one bar cut into its components. */
-.segments {
-  display: flex;
-  gap: 2px;
-  height: 14px;
+.donut {
+  flex: none;
+  width: 150px;
+  height: 150px;
 }
 
-.segment {
-  /* Shrinkable, so the gaps between segments never push the bar wider
-     than the graph it stands for. */
-  flex: 0 1 auto;
-  width: 0;
-  min-width: 3px;
-  border-radius: 2px;
-  background: var(--colour);
-  transition: width 1.1s var(--ease);
+/* Each arc is a share of a 100-unit ring; it slides to its new length when
+   the view changes and grows from nothing when the chapter comes into view. */
+.arc {
+  fill: none;
+  stroke: var(--colour);
+  stroke-width: 15;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  pointer-events: visibleStroke;
+  transition:
+    stroke-dasharray 1.1s var(--ease),
+    stroke-dashoffset 1.1s var(--ease),
+    stroke-width 0.25s var(--ease),
+    opacity 0.25s var(--ease);
 }
 
-.chapter:global(.is-visible) .segment {
-  width: var(--w);
+/* Hovering an arc or its legend line: that part swells, the rest fades. */
+.arc[data-hot] {
+  stroke-width: 19;
 }
 
-.segment[data-empty] {
-  min-width: 0;
+.components[data-hover] .arc:not([data-hot]) {
+  opacity: 0.35;
+}
+
+.legendItem {
+  cursor: default;
+}
+
+.legendItem[data-hot] .legendText {
+  color: var(--fg);
+}
+
+.legendItem[data-hot] .swatch {
+  transform: scale(1.25);
+}
+
+.components[data-hover] .legendItem:not([data-hot]) {
+  opacity: 0.55;
+}
+
+.chapter:not(:global(.is-visible)) .arc {
+  stroke-dasharray: 0 100 !important;
+}
+
+.donutValue {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 500;
+  fill: var(--accent);
+  text-anchor: middle;
+}
+
+.donutUnit {
+  font-size: 8.5px;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  fill: var(--fg-3);
+  text-anchor: middle;
 }
 
 .legend {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 18px;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
 }
 
 .legendItem {
-  display: inline-flex;
+  display: flex;
   align-items: baseline;
-  gap: 7px;
+  gap: 9px;
 }
 
 .swatch {
   align-self: center;
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   flex: none;
-  border-radius: 2px;
+  border-radius: 3px;
+  transition: transform 0.25s var(--ease-spring);
+}
+
+.legendItem,
+.legendText {
+  transition:
+    opacity 0.25s var(--ease),
+    color 0.25s var(--ease);
 }
 
 .legendText {
   font-size: 12px;
   color: var(--fg-2);
+}
+
+/* The share may drop under its label when the column is narrow. */
+.legendText .swap {
+  flex-wrap: wrap;
+  white-space: normal;
 }
 
 .legendText .swap {
@@ -590,12 +662,22 @@ g[data-apart] .sideLabel {
   }
 
   .track,
-  .rowThree .track {
+  .rowThree .track,
+  .rowLast .track {
     padding-right: 160px;
   }
 }
 
 @media (max-width: 600px) {
+  /* The facts go under the title on a phone. */
+  .head {
+    flex-wrap: wrap;
+  }
+
+  .facts {
+    flex-basis: 100%;
+  }
+
   /* The value drops under the bar when it does not fit beside it. */
   .track .swap {
     flex-wrap: wrap;
@@ -603,7 +685,8 @@ g[data-apart] .sideLabel {
   }
 
   .track,
-  .rowThree .track {
+  .rowThree .track,
+  .rowLast .track {
     flex-wrap: wrap;
     height: auto;
     min-height: 14px;
