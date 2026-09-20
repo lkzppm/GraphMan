@@ -17,34 +17,34 @@ Machine: macos aarch64 (Apple M5), 10 threads, 17.18 GB RAM. Times exclude readi
 
 | Graph | adjacency list | adjacency matrix | compressed sparse row |
 |---|---|---|---|
-| grafo_1 | 3.8 MB (structure 1.1 MB) | 15.0 MB (structure 12.6 MB) | 3.4 MB (structure 0.9 MB) |
-| grafo_2 | 15.5 MB (structure 11.6 MB) | 314.7 MB (structure 312.3 MB) | 13.5 MB (structure 10.6 MB) |
-| grafo_3 | 21.2 MB (structure 15.1 MB) | needs 17.58 GB — does not fit | 13.1 MB (structure 7.6 MB) |
+| grafo_1 | 3.7 MB (structure 1.1 MB) | 15.0 MB (structure 12.6 MB) | 3.4 MB (structure 0.9 MB) |
+| grafo_2 | 15.4 MB (structure 11.6 MB) | 314.6 MB (structure 312.3 MB) | 13.4 MB (structure 10.6 MB) |
+| grafo_3 | 21.1 MB (structure 15.1 MB) | needs 17.58 GB — does not fit | 13.0 MB (structure 7.6 MB) |
 | grafo_4 | 83.8 MB (structure 74.5 MB) | needs 17.58 GB — does not fit | 72.4 MB (structure 67.0 MB) |
-| grafo_5 | 272.2 MB (structure 221.6 MB) | needs 2.93 TB — does not fit | 166.0 MB (structure 124.7 MB) |
-| grafo_6 | 545.6 MB (structure 488.0 MB) | needs 2.93 TB — does not fit | 432.3 MB (structure 391.1 MB) |
+| grafo_5 | 272.1 MB (structure 221.6 MB) | needs 2.93 TB — does not fit | 165.9 MB (structure 124.7 MB) |
+| grafo_6 | 544.2 MB (structure 488.0 MB) | needs 2.93 TB — does not fit | 432.3 MB (structure 391.1 MB) |
 
 ## 2. Mean BFS time (100 searches from distinct vertices)
 
 | Graph | adjacency list | adjacency matrix | compressed sparse row |
 |---|---:|---:|---:|
-| grafo_1 | 0.324 ms | 1.832 ms | 0.203 ms |
-| grafo_2 | 0.906 ms | 12.001 ms | 0.931 ms |
-| grafo_3 | 4.387 ms | — | 3.592 ms |
+| grafo_1 | 0.439 ms | 2.176 ms | 0.233 ms |
+| grafo_2 | 1.177 ms | 12.095 ms | 0.786 ms |
+| grafo_3 | 4.672 ms | — | 3.450 ms |
 | grafo_4 | 31.631 ms | — | 28.316 ms |
-| grafo_5 | 113.547 ms | — | 133.084 ms |
-| grafo_6 | 216.734 ms | — | 185.023 ms |
+| grafo_5 | 100.714 ms | — | 93.705 ms |
+| grafo_6 | 194.467 ms | — | 167.902 ms |
 
 ## 3. Mean DFS time (100 searches from distinct vertices)
 
 | Graph | adjacency list | adjacency matrix | compressed sparse row |
 |---|---:|---:|---:|
-| grafo_1 | 0.588 ms | 2.586 ms | 0.543 ms |
-| grafo_2 | 2.428 ms | 16.736 ms | 2.397 ms |
-| grafo_3 | 9.673 ms | — | 7.519 ms |
+| grafo_1 | 0.848 ms | 2.584 ms | 0.562 ms |
+| grafo_2 | 2.749 ms | 16.769 ms | 2.299 ms |
+| grafo_3 | 9.468 ms | — | 6.949 ms |
 | grafo_4 | 33.849 ms | — | 32.970 ms |
-| grafo_5 | 571.885 ms | — | 292.879 ms |
-| grafo_6 | 515.389 ms | — | 336.573 ms |
+| grafo_5 | 321.681 ms | — | 225.593 ms |
+| grafo_6 | 344.449 ms | — | 266.370 ms |
 
 ## 4. Parents in the BFS and DFS trees
 
@@ -105,19 +105,19 @@ Cells read `parent (level)`; `—` means the vertex was not reached.
 | Graph | Components | Largest | Smallest | Time |
 |---|---:|---:|---:|---:|
 | grafo_1 | 1 | 10000 | 10000 | 0.2 ms |
-| grafo_2 | 10 | 25000 | 48 | 2.2 ms |
-| grafo_3 | 2 | 250000 | 125000 | 7.7 ms |
+| grafo_2 | 10 | 25000 | 48 | 2.0 ms |
+| grafo_3 | 2 | 250000 | 125000 | 7.5 ms |
 | grafo_4 | 2 | 250000 | 125000 | 38.7 ms |
-| grafo_5 | 5 | 2500000 | 156250 | 279.7 ms |
-| grafo_6 | 5 | 2500000 | 156250 | 640.0 ms |
+| grafo_5 | 5 | 2500000 | 156250 | 292.5 ms |
+| grafo_6 | 5 | 2500000 | 156250 | 489.0 ms |
 
 ## 7. Diameter
 
 | Graph | 4-sweep bound | iFUB (exact) | iFUB BFS runs | iFUB time | Bounding (exact) | Bounding BFS runs | Bounding time | Brute force | Brute-force BFS runs | Brute-force time |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| grafo_1 | ≥ 4 | 5 | 9492 | 384.05 ms | 5 | 1446 | 104.68 ms | 5 | 10004 | 408.52 ms |
-| grafo_2 | ≥ 20 | 20 | 39949 | 6.77 s | 20 | 16147 | 2.18 s | 20 | 49988 | 8.41 s |
-| grafo_3 | ≥ 21 | 22 | 237789 | 4.6 min | 22 | 19589 | 29.04 s | 22 | 375008 | 9.4 min |
+| grafo_1 | ≥ 4 | 5 | 9492 | 420.55 ms | 5 | 1446 | 114.25 ms | 5 | 10004 | 528.34 ms |
+| grafo_2 | ≥ 20 | 20 | 96 | 18.93 ms | 20 | 182 | 24.25 ms | 20 | 49988 | 10.23 s |
+| grafo_3 | ≥ 21 | 22 | 25750 | 21.32 s | 22 | 3365 | 2.58 s | 22 | 375008 | 9.2 min |
 | grafo_4 | ≥ 5 | 5 | 370868 | 36.4 min | 5 | 144111 | 8.5 min | 5 | 375008 | 40.4 min |
-| grafo_5 | ≥ 58 | ≥ 58 (budget) | 379 | 45.18 s | ≥ 58 (budget) | 342 | 45.17 s | skipped | — | — |
-| grafo_6 | ≥ 19 | ≥ 19 (budget) | 181 | 45.45 s | ≥ 19 (budget) | 165 | 45.54 s | skipped | — | — |
+| grafo_5 | ≥ 58 | 59 | 5200 | 11.67 s | 59 | 1812 | 6.37 s | skipped | — | — |
+| grafo_6 | ≥ 19 | 19 | 111023 | 4.6 min | 19 | 7109 | 23.71 s | skipped | — | — |
