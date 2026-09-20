@@ -310,7 +310,6 @@ export const en = {
     compute: 'Compute',
     budgetHit: 'budget hit',
     bfsCount: (count: string) => `${count} BFS`,
-    bfsRuns: 'BFS runs',
     diameterExact: 'exact',
     diameterBound: 'lower bound',
     diameterHint: 'Pick a method and compute the longest of all the shortest paths.',

@@ -312,7 +312,6 @@ export const pt: Dictionary = {
     compute: 'Calcular',
     budgetHit: 'orçamento esgotado',
     bfsCount: (count: string) => `${count} BFS`,
-    bfsRuns: 'BFS rodadas',
     diameterExact: 'exato',
     diameterBound: 'limite inferior',
     diameterHint: 'Escolha um método e calcule o mais longo dos caminhos mínimos.',

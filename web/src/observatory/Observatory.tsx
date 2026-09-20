@@ -124,13 +124,10 @@ interface Search {
 }
 
 interface DiameterInfo {
-  method: DiameterMethod;
   value: number;
   from: number;
   to: number;
   bfsCount: number;
-  /** The BFS budget the run was given, for the meter under the count. */
-  budget: number;
   isExact: boolean;
   cancelled: boolean;
   elapsedMs: number;
@@ -194,7 +191,11 @@ export default function Observatory() {
   const [dragOver, setDragOver] = useState(false);
   const [diameterMethod, setDiameterMethod] = useState<DiameterMethod>('IFub');
   const [diameterBudget, setDiameterBudget] = useState('2000');
-  const [diameter, setDiameter] = useState<DiameterInfo | null>(null);
+  /** What each method found on this graph. Switching methods brings back
+      that one's result, or nothing when it has not been run yet. */
+  const [diameterResults, setDiameterResults] = useState<
+    Partial<Record<DiameterMethod, DiameterInfo>>
+  >({});
   const [diameterBusy, setDiameterBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -582,7 +583,7 @@ export default function Observatory() {
         setComponentsOpen(false);
         setLayout(willSimulate ? 'force' : 'radial');
         setSearch(null);
-        setDiameter(null);
+        setDiameterResults({});
         setSelected(0);
         setHovered(0);
         setRootInput('1');
@@ -635,7 +636,7 @@ export default function Observatory() {
     graphRef.current = null;
     rendererRef.current?.unload();
     setMeta(null);
-    setDiameter(null);
+    setDiameterResults({});
     setComponent(0);
     setComponentsOpen(false);
     setLayout('force');
@@ -817,22 +818,23 @@ export default function Observatory() {
     const wasm = wasmRef.current;
     const graph = graphRef.current;
     if (!wasm || !graph) return;
+    // The method is read once: the picker may move while the run is under way.
+    const method = diameterMethod;
     setDiameterBusy(true);
     await new Promise((resolve) => setTimeout(resolve, 30));
     try {
       const budget = Math.max(1, Number.parseInt(diameterBudget, 10) || 1);
-      const result = graph.diameter(wasm.DiameterKind[diameterMethod], budget);
-      setDiameter({
-        method: diameterMethod,
+      const result = graph.diameter(wasm.DiameterKind[method], budget);
+      const info: DiameterInfo = {
         value: result.value,
         from: result.from,
         to: result.to,
         bfsCount: result.bfsCount,
-        budget,
         isExact: result.isExact,
         cancelled: result.cancelled,
         elapsedMs: result.elapsedMs,
-      });
+      };
+      setDiameterResults((all) => ({ ...all, [method]: info }));
       result.free();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
@@ -840,6 +842,9 @@ export default function Observatory() {
       setDiameterBusy(false);
     }
   };
+
+  /** The result on show: the one the picked method found, if it has run. */
+  const diameter = diameterResults[diameterMethod] ?? null;
 
   /** True while the value is only a lower bound: a 4-sweep, or a method the
       budget stopped. Everywhere it shows, it wears the blue ≥ flag. */
@@ -1487,11 +1492,16 @@ export default function Observatory() {
                 <span className={styles.panelTitle}>{t.diameter}</span>
                 {diameter && !diameterOpen && (
                   <span className={styles.panelSummary}>
+                    <span className={styles.summaryTag}>
+                      {t.diameterMethods[diameterMethod].label}
+                    </span>
                     <span className={`mono ${styles.panelSummaryValue}`}>
                       {diameterIsBound && <span className={styles.flag}>≥</span>}
                       {diameter.value}
                     </span>
-                    <span className="mono">{t.bfsCount(formatCompact(diameter.bfsCount))}</span>
+                    <span className={`mono ${styles.summaryCount}`}>
+                      {t.bfsCount(formatCompact(diameter.bfsCount))}
+                    </span>
                   </span>
                 )}
                 <ChevronDown
@@ -1548,21 +1558,6 @@ export default function Observatory() {
                     </div>
                     {diameter ? (
                       <div className={styles.measure}>
-                        <div className={styles.measureHead}>
-                          <span className={styles.measureMethod}>
-                            {t.diameterMethods[diameter.method].label}
-                          </span>
-                          <span
-                            className={styles.badge}
-                            data-exact={diameter.isExact && !diameter.cancelled}
-                          >
-                            {diameter.cancelled
-                              ? t.budgetHit
-                              : diameter.isExact
-                                ? t.diameterExact
-                                : t.diameterBound}
-                          </span>
-                        </div>
                         {/* The ruler: the two far vertices with the distance
                             measured between them; pressing it draws the path. */}
                         <button
@@ -1585,14 +1580,17 @@ export default function Observatory() {
                             {diameter.to}
                           </span>
                         </button>
-                        <div className={`${styles.stats} ${styles.statsTwo}`}>
-                          <Stat
-                            label={t.bfsRuns}
-                            value={formatInt(diameter.bfsCount)}
-                            meter={diameter.bfsCount / Math.max(diameter.budget, 1)}
-                          />
-                          <Stat label={t.time} value={formatMs(diameter.elapsedMs)} />
-                        </div>
+                        <p className={styles.measureMeta}>
+                          <span>
+                            {diameter.cancelled
+                              ? t.budgetHit
+                              : diameter.isExact
+                                ? t.diameterExact
+                                : t.diameterBound}
+                          </span>
+                          <span className="mono">{t.bfsCount(formatInt(diameter.bfsCount))}</span>
+                          <span className="mono">{formatMs(diameter.elapsedMs)}</span>
+                        </p>
                       </div>
                     ) : (
                       <p className={styles.hint}>{t.diameterHint}</p>
@@ -2046,20 +2044,12 @@ function IconButton({
   );
 }
 
-/** A compact stat: small label over a small blue mono value. `meter` (0 to 1)
-    fills the cell's bottom edge, for a count read against its budget. */
-function Stat({ label, value, meter }: { label: string; value: string; meter?: number }) {
+/** A compact stat: small label over a small blue mono value. */
+function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className={styles.stat}>
       <span className={`label ${styles.tileLabel}`}>{label}</span>
       <span className={`mono ${styles.statValue}`}>{value}</span>
-      {meter !== undefined && (
-        <span
-          className={styles.statMeter}
-          style={{ transform: `scaleX(${Math.min(Math.max(meter, 0), 1)})` }}
-          aria-hidden="true"
-        />
-      )}
     </div>
   );
 }
