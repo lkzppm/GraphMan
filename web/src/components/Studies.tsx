@@ -91,8 +91,9 @@ interface Sheet {
     vertices: number;
     edges: number;
     degree: { min: number; max: number; mean: number; median: number };
-    loops: number;
-    duplicates: number;
+    /** What parsing normalised away; absent on the mean sheet, where an
+        average of dropped lines says nothing and only lengthens the row. */
+    dropped?: { loops: number; duplicates: number };
   };
   memory: Bar[];
   bfs: Bar[];
@@ -157,8 +158,7 @@ function graphSheet(s: GraphStudy, t: T, scales: Scales): Sheet {
       vertices: s.vertices,
       edges: s.edges,
       degree: s.degree,
-      loops: s.self_loops_dropped,
-      duplicates: s.duplicates_dropped,
+      dropped: { loops: s.self_loops_dropped, duplicates: s.duplicates_dropped },
     },
     memory: REPRESENTATIONS.map((r) => {
       const m = memoryBytes(s, r);
@@ -264,8 +264,6 @@ function meanSheet(studies: GraphStudy[], t: T, scales: Scales): Sheet {
         mean: avg((s) => s.degree.mean),
         median: avg((s) => s.degree.median),
       },
-      loops: avg((s) => s.self_loops_dropped),
-      duplicates: avg((s) => s.duplicates_dropped),
     },
     memory: REPRESENTATIONS.map((r) => {
       const built = some((s) => {
@@ -514,11 +512,9 @@ function SheetView({ sheet }: { sheet: Sheet }) {
         <h1 className={styles.title}>
           <Swap view={view}>{sheet.title}</Swap>
         </h1>
-        <span className={styles.subtitle} data-empty={!sheet.subtitle || undefined}>
-          <Swap view={view}>{sheet.subtitle ?? ''}</Swap>
-        </span>
         <div className={styles.facts}>
           <Swap view={view} className={styles.facts}>
+            {sheet.subtitle && <span className={styles.subtitle}>{sheet.subtitle}</span>}
             <span className={`mono ${styles.fact}`}>
               {formatInt(f.vertices)} <em>{t.studies.facts.vertices}</em>
             </span>
@@ -533,9 +529,14 @@ function SheetView({ sheet }: { sheet: Sheet }) {
                 formatInt(f.degree.median),
               )}
             </span>
-            <span className={styles.note}>
-              {t.studies.facts.dropped(formatInt(f.loops), formatInt(f.duplicates))}
-            </span>
+            {f.dropped && (
+              <span className={styles.note}>
+                {t.studies.facts.dropped(
+                  formatInt(f.dropped.loops),
+                  formatInt(f.dropped.duplicates),
+                )}
+              </span>
+            )}
           </Swap>
         </div>
       </Reveal>
@@ -585,14 +586,12 @@ function SheetView({ sheet }: { sheet: Sheet }) {
         <Chapter index={5} title={q.distances.title} delay={0.25}>
           <Triangle distances={sheet.distances} view={view} />
         </Chapter>
-        <div className={styles.stack}>
-          <Chapter index={6} title={q.components.title} delay={0.3}>
-            <Components split={sheet.components} view={view} />
-          </Chapter>
-          <Chapter index={7} title={q.diameter.title} delay={0.35}>
-            <Bars bars={sheet.diameter} view={view} />
-          </Chapter>
-        </div>
+        <Chapter index={6} title={q.components.title} delay={0.3}>
+          <Components split={sheet.components} view={view} />
+        </Chapter>
+        <Chapter index={7} title={q.diameter.title} delay={0.35}>
+          <Bars bars={sheet.diameter} view={view} />
+        </Chapter>
       </div>
     </div>
   );
@@ -681,6 +680,8 @@ function Bars({ bars, view }: { bars: Bar[]; view: string }) {
     what each segment is worth. */
 function Components({ split, view }: { split: Sheet['components']; view: string }) {
   const t = useT();
+  /** The part under the pointer, on the ring or in the legend. */
+  const [hot, setHot] = useState<string | null>(null);
   const c = t.studies.questions.components;
   const { total, count, largest, smallest } = split;
   const others = count <= 1 ? 0 : Math.max(0, total - largest - smallest);
@@ -705,41 +706,71 @@ function Components({ split, view }: { split: Sheet['components']; view: string 
       label: c.smallest(formatInt(smallest)),
     },
   ];
+  // The ring is 100 units long (`pathLength`); each arc is its share of the
+  // graph, drawn clockwise from the top, with a hairline gap between arcs
+  // when there is more than one.
+  const shown = segments.filter((seg) => seg.value > 0);
+  const gap = shown.length > 1 ? 1.2 : 0;
+  let start = 0;
+  const arcs = segments.map((seg) => {
+    const share = (seg.value / total) * 100;
+    const arc = { ...seg, length: Math.max(0, share - gap), offset: start + gap / 2 };
+    start += share;
+    return arc;
+  });
   return (
-    <div className={styles.components}>
-      <div className={styles.segments}>
-        {segments.map((seg) => (
-          <span
-            key={seg.key}
-            className={styles.segment}
-            data-empty={seg.value <= 0 || undefined}
+    <div className={styles.components} data-hover={hot ?? undefined}>
+      <svg className={styles.donut} viewBox="0 0 120 120" role="img" aria-label={c.title}>
+        {arcs.map((arc) => (
+          <circle
+            key={arc.key}
+            className={styles.arc}
+            cx="60"
+            cy="60"
+            r="50"
+            pathLength={100}
+            data-empty={arc.value <= 0 || undefined}
+            data-hot={hot === arc.key || undefined}
+            onMouseEnter={() => setHot(arc.key)}
+            onMouseLeave={() => setHot(null)}
             style={
               {
-                '--w': `${(seg.value / total) * 100}%`,
-                '--colour': seg.colour,
+                '--colour': arc.colour,
+                strokeDasharray: `${arc.length} ${100 - arc.length}`,
+                strokeDashoffset: -arc.offset,
               } as CSSProperties
             }
-            title={`${seg.label} · ${pct(seg.value)}`}
-          />
+          >
+            <title>{`${arc.label} · ${pct(arc.value)}`}</title>
+          </circle>
         ))}
-      </div>
-      <div className={styles.legend}>
-        <span className={`mono ${styles.answer}`}>
-          <Swap view={view}>{count === 1 ? c.one : c.count(formatCount(count))}</Swap>
-        </span>
-        {segments
-          .filter((seg) => seg.value > 0)
-          .map((seg) => (
-            <span key={seg.key} className={styles.legendItem}>
-              <span className={styles.swatch} style={{ background: seg.colour }} />
-              <span className={`mono ${styles.legendText}`}>
-                <Swap view={view}>
-                  {seg.label} <span className={styles.detail}>{pct(seg.value)}</span>
-                </Swap>
-              </span>
+        <g key={view} className={styles.swap}>
+          <text className={styles.donutValue} x="60" y="58">
+            {formatCount(count)}
+          </text>
+          <text className={styles.donutUnit} x="60" y="74">
+            {c.unit(count)}
+          </text>
+        </g>
+      </svg>
+      <ul className={styles.legend}>
+        {shown.map((seg) => (
+          <li
+            key={seg.key}
+            className={styles.legendItem}
+            data-hot={hot === seg.key || undefined}
+            onMouseEnter={() => setHot(seg.key)}
+            onMouseLeave={() => setHot(null)}
+          >
+            <span className={styles.swatch} style={{ background: seg.colour }} />
+            <span className={`mono ${styles.legendText}`}>
+              <Swap view={view}>
+                {seg.label} <span className={styles.detail}>{pct(seg.value)}</span>
+              </Swap>
             </span>
-          ))}
-      </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

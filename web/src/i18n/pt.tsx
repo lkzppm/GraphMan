@@ -216,8 +216,7 @@ export const pt: Dictionary = {
       distances: { title: 'Distâncias (10, 20), (10, 30), (20, 30)' },
       components: {
         title: 'Componentes conexas',
-        count: (n: string) => `${n} componentes`,
-        one: '1 componente',
+        unit: (n: number) => (n === 1 ? 'componente' : 'componentes'),
         largest: (n: string) => `maior ${n}`,
         smallest: (n: string) => `menor ${n}`,
         others: (n: string) => `${n} outras`,
