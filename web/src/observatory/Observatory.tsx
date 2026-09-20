@@ -12,6 +12,7 @@ import {
   Focus,
   Hash,
   Highlighter,
+  LoaderCircle,
   Magnet,
   Orbit,
   Rows3,
@@ -123,11 +124,13 @@ interface Search {
 }
 
 interface DiameterInfo {
-  method: string;
+  method: DiameterMethod;
   value: number;
   from: number;
   to: number;
   bfsCount: number;
+  /** The BFS budget the run was given, for the meter under the count. */
+  budget: number;
   isExact: boolean;
   cancelled: boolean;
   elapsedMs: number;
@@ -135,6 +138,8 @@ interface DiameterInfo {
 
 /** The wasm `DiameterKind` names; their labels live in the dictionary. */
 const DIAMETER_METHODS = ['Sweep', 'IFub', 'Bounds', 'Exact'] as const;
+
+type DiameterMethod = (typeof DIAMETER_METHODS)[number];
 
 const MAX_FILE_BYTES = 512 * 1024 * 1024;
 
@@ -187,7 +192,7 @@ export default function Observatory() {
   const [playing, setPlaying] = useState(false);
   const [simulate, setSimulate] = useState(true);
   const [dragOver, setDragOver] = useState(false);
-  const [diameterMethod, setDiameterMethod] = useState<(typeof DIAMETER_METHODS)[number]>('IFub');
+  const [diameterMethod, setDiameterMethod] = useState<DiameterMethod>('IFub');
   const [diameterBudget, setDiameterBudget] = useState('2000');
   const [diameter, setDiameter] = useState<DiameterInfo | null>(null);
   const [diameterBusy, setDiameterBusy] = useState(false);
@@ -823,6 +828,7 @@ export default function Observatory() {
         from: result.from,
         to: result.to,
         bfsCount: result.bfsCount,
+        budget,
         isExact: result.isExact,
         cancelled: result.cancelled,
         elapsedMs: result.elapsedMs,
@@ -833,6 +839,24 @@ export default function Observatory() {
     } finally {
       setDiameterBusy(false);
     }
+  };
+
+  /** True while the value is only a lower bound: a 4-sweep, or a method the
+      budget stopped. Everywhere it shows, it wears the blue ≥ flag. */
+  const diameterIsBound = diameter ? !diameter.isExact || diameter.cancelled : false;
+
+  /** Put the diameter on the canvas: the distance query between its two far
+      vertices, with everything but that path greyed out. */
+  const showDiameterPath = () => {
+    if (!diameter || diameter.value === 0) return;
+    setKind('bfs');
+    setMode('distance');
+    setRootInput(String(diameter.from));
+    setTargetInput(String(diameter.to));
+    setDiameterOpen(false);
+    runSearch('bfs', diameter.from, diameter.to);
+    setPathOnly(true);
+    rendererRef.current?.setPathOnly(true);
   };
 
   // ---- pointer interaction ---------------------------------------------------
@@ -1462,9 +1486,12 @@ export default function Observatory() {
               >
                 <span className={styles.panelTitle}>{t.diameter}</span>
                 {diameter && !diameterOpen && (
-                  <span className={`mono ${styles.panelSummary}`}>
-                    {diameter.isExact && !diameter.cancelled ? '' : '≥ '}
-                    {diameter.value} · {t.bfsCount(formatCompact(diameter.bfsCount))}
+                  <span className={styles.panelSummary}>
+                    <span className={`mono ${styles.panelSummaryValue}`}>
+                      {diameterIsBound && <span className={styles.flag}>≥</span>}
+                      {diameter.value}
+                    </span>
+                    <span className="mono">{t.bfsCount(formatCompact(diameter.bfsCount))}</span>
                   </span>
                 )}
                 <ChevronDown
@@ -1476,25 +1503,26 @@ export default function Observatory() {
               <div className={styles.collapse} data-open={diameterOpen} inert={!diameterOpen}>
                 <div className={styles.collapseInner}>
                   <div className={styles.panelBody}>
-                    <div className={styles.searchRow}>
-                      <div className={styles.field}>
-                        <label htmlFor="method">{t.method}</label>
-                        <select
-                          id="method"
-                          className={styles.select}
-                          value={diameterMethod}
-                          onChange={(event) =>
-                            setDiameterMethod(event.target.value as typeof diameterMethod)
-                          }
-                        >
-                          {DIAMETER_METHODS.map((m) => (
-                            <option key={m} value={m}>
-                              {t.diameterMethods[m]}
-                            </option>
-                          ))}
-                        </select>
+                    <div className={styles.field}>
+                      <span className={styles.fieldLabel}>{t.method}</span>
+                      <div className={styles.methods} role="radiogroup" aria-label={t.method}>
+                        {DIAMETER_METHODS.map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            role="radio"
+                            aria-checked={diameterMethod === m}
+                            className={styles.method}
+                            onClick={() => setDiameterMethod(m)}
+                          >
+                            <span className={styles.methodName}>{t.diameterMethods[m].label}</span>
+                            <span className={styles.methodHint}>{t.diameterMethods[m].hint}</span>
+                          </button>
+                        ))}
                       </div>
-                      <div className={`${styles.field} ${styles.fieldNarrow}`}>
+                    </div>
+                    <div className={styles.diameterRun}>
+                      <div className={styles.field}>
                         <label htmlFor="budget">{t.bfsBudget}</label>
                         <input
                           id="budget"
@@ -1504,31 +1532,71 @@ export default function Observatory() {
                           onChange={(event) => setDiameterBudget(event.target.value)}
                         />
                       </div>
-                    </div>
-                    <div className={styles.row}>
                       <button
                         type="button"
-                        className="button button--secondary button--small"
+                        className="button button--primary button--small"
                         onClick={() => void runDiameter()}
                         disabled={diameterBusy}
                       >
-                        <Ruler size={14} aria-hidden="true" />
+                        {diameterBusy ? (
+                          <LoaderCircle size={14} className={styles.spin} aria-hidden="true" />
+                        ) : (
+                          <Ruler size={14} aria-hidden="true" />
+                        )}
                         {diameterBusy ? t.computing : t.compute}
                       </button>
-                      {diameter && (
-                        <span className={styles.diameterResult}>
-                          <span className={`mono ${styles.diameterValue}`}>
-                            {diameter.isExact && !diameter.cancelled ? '' : '≥ '}
+                    </div>
+                    {diameter ? (
+                      <div className={styles.measure}>
+                        <div className={styles.measureHead}>
+                          <span className={styles.measureMethod}>
+                            {t.diameterMethods[diameter.method].label}
+                          </span>
+                          <span
+                            className={styles.badge}
+                            data-exact={diameter.isExact && !diameter.cancelled}
+                          >
+                            {diameter.cancelled
+                              ? t.budgetHit
+                              : diameter.isExact
+                                ? t.diameterExact
+                                : t.diameterBound}
+                          </span>
+                        </div>
+                        {/* The ruler: the two far vertices with the distance
+                            measured between them; pressing it draws the path. */}
+                        <button
+                          type="button"
+                          className={styles.ruler}
+                          onClick={showDiameterPath}
+                          disabled={diameter.value === 0}
+                          title={t.showDiameterPath(String(diameter.from), String(diameter.to))}
+                        >
+                          <span className={`mono ${styles.rulerEnd}`} data-end="from">
+                            {diameter.from}
+                          </span>
+                          <span className={styles.rulerSpan} data-end="from" aria-hidden="true" />
+                          <span className={`mono ${styles.rulerValue}`}>
+                            {diameterIsBound && <span className={styles.flag}>≥</span>}
                             {diameter.value}
                           </span>
-                          <span className={styles.hint}>
-                            {diameter.from} ↔ {diameter.to} ·{' '}
-                            {t.bfsCount(formatInt(diameter.bfsCount))}
-                            {diameter.cancelled ? t.budgetHit : ''} · {formatMs(diameter.elapsedMs)}
+                          <span className={styles.rulerSpan} data-end="to" aria-hidden="true" />
+                          <span className={`mono ${styles.rulerEnd}`} data-end="to">
+                            {diameter.to}
                           </span>
-                        </span>
-                      )}
-                    </div>
+                        </button>
+                        <div className={`${styles.stats} ${styles.statsTwo}`}>
+                          <Stat
+                            label={t.bfsRuns}
+                            value={formatInt(diameter.bfsCount)}
+                            meter={diameter.bfsCount / Math.max(diameter.budget, 1)}
+                          />
+                          <Stat label={t.time} value={formatMs(diameter.elapsedMs)} />
+                        </div>
+                      </div>
+                    ) : (
+                      <p className={styles.hint}>{t.diameterHint}</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1978,12 +2046,20 @@ function IconButton({
   );
 }
 
-/** A compact stat: small label over a small blue mono value. */
-function Stat({ label, value }: { label: string; value: string }) {
+/** A compact stat: small label over a small blue mono value. `meter` (0 to 1)
+    fills the cell's bottom edge, for a count read against its budget. */
+function Stat({ label, value, meter }: { label: string; value: string; meter?: number }) {
   return (
     <div className={styles.stat}>
       <span className={`label ${styles.tileLabel}`}>{label}</span>
       <span className={`mono ${styles.statValue}`}>{value}</span>
+      {meter !== undefined && (
+        <span
+          className={styles.statMeter}
+          style={{ transform: `scaleX(${Math.min(Math.max(meter, 0), 1)})` }}
+          aria-hidden="true"
+        />
+      )}
     </div>
   );
 }

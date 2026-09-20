@@ -154,9 +154,23 @@
 }
 
 .panelSummary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   margin-left: auto;
   font-size: 12px;
-  color: var(--fg-2);
+  color: var(--fg-3);
+}
+
+.panelSummaryValue {
+  font-size: 13px;
+  color: var(--accent);
+}
+
+/* The ≥ that marks every bound or budget-stopped value. */
+.flag {
+  margin-right: 2px;
+  color: var(--accent);
 }
 
 .chevron,
@@ -299,13 +313,31 @@
   border: 1px solid var(--border);
 }
 
+.statsTwo {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .stat {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 7px 10px 8px;
   background: var(--bg);
   min-width: 0;
+  overflow: hidden;
+}
+
+/* A count read against its budget: a fill along the cell's bottom edge. */
+.statMeter {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+  transform-origin: left;
+  transition: transform 0.6s var(--ease);
 }
 
 .statValue {
@@ -596,13 +628,6 @@
   font-family: var(--font-mono);
 }
 
-.row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
 .searchRow {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
@@ -654,10 +679,6 @@
   min-width: 0;
 }
 
-.fieldNarrow {
-  flex: 0 0 110px;
-}
-
 .field label,
 .fieldLabel {
   color: var(--fg-2);
@@ -665,8 +686,7 @@
   letter-spacing: 0.04em;
 }
 
-.input,
-.select {
+.input {
   height: 28px;
   padding: 0 8px;
   border: 1px solid var(--border-2);
@@ -680,13 +700,11 @@
     box-shadow 0.2s var(--ease);
 }
 
-.input:hover,
-.select:hover {
+.input:hover {
   border-color: var(--fg-3);
 }
 
-.input:focus,
-.select:focus {
+.input:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-muted);
@@ -804,16 +822,190 @@
   text-align: right;
 }
 
-.diameterResult {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
+/* The four methods, two by two: the name over what it costs. */
+.methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
 }
 
-.diameterValue {
-  font-size: 20px;
+.method {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 6px 8px 7px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border-2);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  transition:
+    background 0.2s var(--ease),
+    border-color 0.2s var(--ease),
+    color 0.2s var(--ease);
+}
+
+.method:hover {
+  background: var(--bg-3);
+}
+
+.method[aria-checked='true'] {
+  border-color: var(--accent-muted);
+  border-left-color: var(--accent);
+  background: var(--accent-muted);
   color: var(--accent);
+}
+
+.methodName {
+  font-size: 12px;
+  line-height: 1.25;
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.methodHint {
+  font-size: 10px;
+  line-height: 1.25;
+  color: var(--fg-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The budget beside the button that spends it. */
+.diameterRun {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+/* The result: an accent-edged card holding a measuring bar. */
+.measure {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px 12px 11px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg);
+  animation: rise 0.35s var(--ease) both;
+}
+
+.measureHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.measureMethod {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  color: var(--fg-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Exact, a lower bound, or stopped by the budget. */
+.badge {
+  flex: none;
+  padding: 2px 6px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.badge[data-exact='true'] {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+/* The ruler: the two far vertices, the distance measured between them.
+   The ends carry the canvas colours, origin blue to destination green. */
+.ruler {
+  display: grid;
+  grid-template-columns: auto minmax(6px, 1fr) auto minmax(6px, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 3px 0 5px;
+}
+
+.ruler:disabled {
+  cursor: default;
+}
+
+.rulerEnd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  transition:
+    transform 0.25s var(--ease),
+    box-shadow 0.25s var(--ease);
+}
+
+.rulerEnd[data-end='to'] {
+  background: var(--target);
+}
+
+.ruler:hover:not(:disabled) .rulerEnd {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-hover);
+}
+
+/* The measured line, one hairline per half, graded between the two ends. */
+.rulerSpan {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    var(--accent),
+    color-mix(in srgb, var(--accent) 50%, var(--target))
+  );
+}
+
+.rulerSpan[data-end='to'] {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 50%, var(--target)),
+    var(--target)
+  );
+}
+
+.rulerValue {
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.rulerValue .flag {
+  font-size: 14px;
 }
 
 /* Icon buttons, used in panel headers and the floating clusters. */
@@ -1449,6 +1641,20 @@
   }
 }
 
+/* The drawer grows upwards over the panels; on a short window it scrolls
+   rather than running off the top of the sidebar. */
+@media (max-height: 720px) {
+  .collapse[data-open='true'] .collapseInner {
+    max-height: 52dvh;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .collapse[data-open='true'] .collapseInner::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @media (max-height: 580px) {
   .sidebar {
     overflow-y: auto;
@@ -1494,5 +1700,11 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
