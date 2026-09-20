@@ -177,6 +177,9 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   views as vertices on one edge: `Geral` first and the default (its
   vertex holds a dot), then the six graphs; the current view's vertex is
   filled blue and the view is kept in the hash (`#geral`, `#grafo-3`).
+  It is a tablist: left and right walk it from anywhere on the page, and
+  with the menu focused up, down, Home and End work too and the focus
+  follows the chosen tab (the arrows still scroll the page elsewhere).
   Every view is the same sheet: the name (plus `média dos 6 grafos` in
   tracked blue on the overview) with the output file's facts on the same
   line (vertices, edges, degree min/max/mean/median, loops and duplicates
@@ -187,7 +190,8 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   30 as two accent-washed tables side by side, BFS and DFS, the parent
   over its level, a dot for another component. Row three: the three
   distances as a triangle (10 on top, 20 and 30 below), each side labelled
-  in a white pill, dashed and grey with `∞` across components; beside it,
+  in a white pill (the drawing fills its column up to 195 px), dashed and
+  grey with `∞` across components; beside it,
   the components as the graph cut into three segments (the largest in the
   accent, everything between it and the smallest in a 45 % blue, the
   smallest in the light blue), each as wide as its share of the vertices

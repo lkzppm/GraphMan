@@ -517,20 +517,21 @@ g.swap {
 
 .triangle {
   display: block;
-  width: 140px;
+  width: 100%;
+  max-width: 195px;
   height: auto;
-  margin: 2px auto 0;
+  margin: 4px auto 0;
 }
 
 .side {
   stroke: var(--accent);
-  stroke-width: 2;
+  stroke-width: 1.6;
 }
 
 g[data-apart] .side {
   stroke: var(--border-2);
-  stroke-width: 1.5;
-  stroke-dasharray: 4 4;
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
 }
 
 .pill {
@@ -539,7 +540,7 @@ g[data-apart] .side {
 
 .sideLabel {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 9.5px;
   font-weight: 500;
   fill: var(--accent);
 }
@@ -552,12 +553,12 @@ g[data-apart] .sideLabel {
 .vertex circle {
   fill: var(--bg);
   stroke: var(--border-2);
-  stroke-width: 1.5;
+  stroke-width: 1.1;
 }
 
 .vertex text {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 9.5px;
   fill: var(--fg-2);
 }
 

@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/lib/format';
 import type { DiameterMethod, GraphStudy, Representation } from '@/lib/studies';
 import { useT } from '@/i18n/LocaleProvider';
@@ -359,14 +366,55 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
     window.addEventListener('hashchange', read);
     return () => window.removeEventListener('hashchange', read);
   }, [studies]);
-  const choose = (i: number | null) => {
-    setView(i);
-    history.replaceState(
-      null,
-      '',
-      i === null ? `#${OVERVIEW}` : `#grafo-${graphNumber(studies[i].name)}`,
-    );
-  };
+  const choose = useCallback(
+    (i: number | null) => {
+      setView(i);
+      history.replaceState(
+        null,
+        '',
+        i === null ? `#${OVERVIEW}` : `#grafo-${graphNumber(studies[i].name)}`,
+      );
+    },
+    [studies],
+  );
+
+  // The menu is a tablist: the overview is stop 0, graph i is stop i + 1.
+  // Left and right walk it from anywhere on the page, Home and End jump,
+  // and when the menu has the focus it follows the chosen tab.
+  const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+  const stop = view === null ? 0 : view + 1;
+  const last = studies.length;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      const active = document.activeElement;
+      const inMenu = active instanceof HTMLElement && tabs.current.includes(active as never);
+      if (
+        active instanceof HTMLElement &&
+        (active.isContentEditable || /^(input|textarea|select)$/i.test(active.tagName))
+      ) {
+        return;
+      }
+      // Up and down only inside the menu: elsewhere they scroll the page.
+      const keys: Record<string, number | undefined> = {
+        ArrowRight: stop + 1,
+        ArrowLeft: stop - 1,
+        ArrowDown: inMenu ? stop + 1 : undefined,
+        ArrowUp: inMenu ? stop - 1 : undefined,
+        Home: inMenu ? 0 : undefined,
+        End: inMenu ? last : undefined,
+      };
+      const wanted = keys[event.key];
+      if (wanted === undefined) return;
+      const next = Math.min(last, Math.max(0, wanted));
+      event.preventDefault();
+      if (next === stop) return;
+      choose(next === 0 ? null : next - 1);
+      if (inMenu) tabs.current[next]?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [choose, last, stop]);
 
   if (studies.length === 0) {
     return (
@@ -402,10 +450,20 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
 
   return (
     <section className={styles.section}>
-      <nav className={styles.menu} aria-label={t.studies.views}>
-        <div className={`container ${styles.menuInner}`}>
+      <nav className={styles.menu}>
+        <div
+          className={`container ${styles.menuInner}`}
+          role="tablist"
+          aria-label={t.studies.views}
+        >
           <button
             type="button"
+            role="tab"
+            aria-selected={view === null}
+            tabIndex={view === null ? 0 : -1}
+            ref={(el) => {
+              tabs.current[0] = el;
+            }}
             className={styles.pick}
             data-active={view === null || undefined}
             onClick={() => choose(null)}
@@ -421,6 +479,12 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
             <button
               key={s.name}
               type="button"
+              role="tab"
+              aria-selected={view === i}
+              tabIndex={view === i ? 0 : -1}
+              ref={(el) => {
+                tabs.current[i + 1] = el;
+              }}
               className={styles.pick}
               data-active={view === i || undefined}
               onClick={() => choose(i)}
