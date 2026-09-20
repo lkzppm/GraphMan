@@ -218,6 +218,7 @@ export const en = {
         one: '1 component',
         largest: (n: string) => `largest ${n}`,
         smallest: (n: string) => `smallest ${n}`,
+        others: (n: string) => `${n} others`,
       },
       diameter: {
         title: 'Diameter',

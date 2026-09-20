@@ -220,6 +220,7 @@ export const pt: Dictionary = {
         one: '1 componente',
         largest: (n: string) => `maior ${n}`,
         smallest: (n: string) => `menor ${n}`,
+        others: (n: string) => `${n} outras`,
       },
       diameter: {
         title: 'Diâmetro',

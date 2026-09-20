@@ -188,8 +188,12 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   over its level, a dot for another component. Row three: the three
   distances as a triangle (10 on top, 20 and 30 below), each side labelled
   in a white pill, dashed and grey with `∞` across components; beside it,
-  the components as one bar (the largest component's share in blue with
-  count, largest and smallest written after it) over the diameter as the
+  the components as the graph cut into three segments (the largest in the
+  accent, everything between it and the smallest in a 45 % blue, the
+  smallest in the light blue), each as wide as its share of the vertices
+  with a 3 px floor so a 48-vertex component in five million still shows,
+  under it the count in blue and a swatch per segment with its size and
+  percentage; over the diameter as the
   BFS runs each method spent (brute force navy, Takes-Kosters accent, iFUB
   mid blue, 4-sweep light), the answer in blue when certified and grey
   with `≥` when a bound, a dashed bar and `stopped at` where the budget ran
@@ -200,7 +204,11 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   only when it was on every graph. The bar scales are computed once over
   all six graphs and shared by every sheet, so a bar's length means the
   same wherever it is; bars grow from nothing when their chapter comes
-  into view. The whole sheet fits a 1440 × 900 viewport under the two
+  into view. Switching view never remounts the sheet: the elements stay in
+  place, bars and segments slide to their new length over 1.1 s (a bar with
+  nothing to show keeps its box at width 0) and every number crossfades in
+  400 ms, keyed by the view. Table rows are a fixed 44 px tall so a cell
+  that holds only a dot does not resize the table mid-transition. The whole sheet fits a 1440 × 900 viewport under the two
   bars. Below 900 px the rows stack and the menu wraps; below 600 px the
   values drop under their bars.
 - **Footer**: a small graph. One 1.5 px edge runs across the top and each
