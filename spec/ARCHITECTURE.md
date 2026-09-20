@@ -44,14 +44,20 @@ Design decisions worth presenting:
    iterators, so it produces the recursive tree with O(depth) memory.
 4. **Nothing is allocated twice.** `SearchTree::reset` only touches the
    vertices the previous search reached, so thousands of BFS runs (the
-   diameter algorithms) cost no allocations and no O(n) clears.
+   diameter algorithms) cost no allocations and no O(n) clears. The tree
+   also keeps one "seen" bit per vertex, checked before the level array:
+   on the 4.8M-vertex graphs the bits stay in cache when the levels do
+   not, which takes about a fifth off every BFS and DFS.
 5. **Memory budget.** Builders compute `required_bytes` up front and refuse
    (with a typed error) anything over the machine's physical memory unless
    forced. A 375 000-vertex bitset matrix is 17.6 GB; this is what turns a
    swap death into a table cell.
-6. **Diameter, four ways.** The driver walks components largest-first and
-   skips any component too small to beat the current best. Exact methods are
-   seeded with a 4-sweep of every relevant component. Bounds (Takes–Kosters)
+6. **Diameter, four ways.** The driver walks components largest-first,
+   skips any component too small to beat the current best and passes that
+   best to the exact methods as a floor, so a dense giant component whose
+   own sweep cannot beat a sparser small one costs five BFS runs, not
+   thousands (graphs 5 and 6 keep their diameter in the smallest component).
+   Exact methods are seeded with a 4-sweep of every relevant component. Bounds (Takes–Kosters)
    runs one batch of BFS per round in parallel with rayon. Every method is
    cancellable through the progress callback and then reports a flagged lower
    bound, which is how the study handles the 4.8M-vertex graphs.
