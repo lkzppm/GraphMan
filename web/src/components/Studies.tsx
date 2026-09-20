@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/lib/format';
 import type { DiameterMethod, GraphStudy, Representation } from '@/lib/studies';
 import { useT } from '@/i18n/LocaleProvider';
@@ -12,7 +19,10 @@ import styles from './Studies.module.css';
    A menu stuck under the site's nav picks the view: the overview first
    (the same sheet, every number the mean over the six graphs) and then
    one graph each. Every bar scale is computed over all the graphs and
-   shared by every sheet, so a bar's length means the same on each. */
+   shared by every sheet, so a bar's length means the same on each.
+   Switching view never remounts the sheet: the same elements stay in
+   place, the bars slide to their new length and every number crossfades
+   (`Swap`, keyed by the view), so only the values move. */
 
 /** The hash the overview is kept under; a graph is `#grafo-<n>`. */
 const OVERVIEW = 'geral';
@@ -72,6 +82,8 @@ interface Bar {
 }
 
 interface Sheet {
+  /** The view this sheet is: what `Swap` keys its crossfade on. */
+  id: string;
   title: string;
   /** A note beside the title, for the mean sheet. */
   subtitle?: string;
@@ -92,7 +104,9 @@ interface Sheet {
   };
   /** A label per pair, null when the ends are in different components. */
   distances: { from: number; to: number; label: string | null }[];
-  components: { share: number; text: ReactNode };
+  /** The graph split in three: the largest component, everything between,
+      the smallest. Counts may be fractional on the mean sheet. */
+  components: { total: number; count: number; largest: number; smallest: number };
   diameter: Bar[];
 }
 
@@ -137,6 +151,7 @@ function emptyBar(t: T, m: DiameterMethod): Bar {
 function graphSheet(s: GraphStudy, t: T, scales: Scales): Sheet {
   const q = t.studies.questions;
   return {
+    id: `grafo-${graphNumber(s.name)}`,
     title: t.studies.graph(graphNumber(s.name)),
     facts: {
       vertices: s.vertices,
@@ -182,20 +197,10 @@ function graphSheet(s: GraphStudy, t: T, scales: Scales): Sheet {
       label: d.distance === null ? null : String(d.distance),
     })),
     components: {
-      share: s.components.largest / s.vertices,
-      text: (
-        <>
-          <span className={styles.answer}>
-            {s.components.count === 1
-              ? q.components.one
-              : q.components.count(formatInt(s.components.count))}
-          </span>
-          <span className={styles.detail}>
-            {q.components.largest(formatInt(s.components.largest))} ·{' '}
-            {q.components.smallest(formatInt(s.components.smallest))}
-          </span>
-        </>
-      ),
+      total: s.vertices,
+      count: s.components.count,
+      largest: s.components.largest,
+      smallest: s.components.smallest,
     },
     diameter: METHODS.map((m) => {
       const d = s.diameters.find((x) => x.method === m);
@@ -247,6 +252,7 @@ function meanSheet(studies: GraphStudy[], t: T, scales: Scales): Sheet {
       };
     });
   return {
+    id: OVERVIEW,
     title: t.studies.overview,
     subtitle: t.studies.average(String(n)),
     facts: {
@@ -310,18 +316,10 @@ function meanSheet(studies: GraphStudy[], t: T, scales: Scales): Sheet {
       return { from: d.from, to: d.to, label: m === null ? null : m.toFixed(1) };
     }),
     components: {
-      share: avg((s) => s.components.largest / s.vertices),
-      text: (
-        <>
-          <span className={styles.answer}>
-            {q.components.count(avg((s) => s.components.count).toFixed(1))}
-          </span>
-          <span className={styles.detail}>
-            {q.components.largest(formatInt(avg((s) => s.components.largest)))} ·{' '}
-            {q.components.smallest(formatInt(avg((s) => s.components.smallest)))}
-          </span>
-        </>
-      ),
+      total: avg((s) => s.vertices),
+      count: avg((s) => s.components.count),
+      largest: avg((s) => s.components.largest),
+      smallest: avg((s) => s.components.smallest),
     },
     diameter: METHODS.map((m) => {
       const runs = studies.flatMap((s) => s.diameters.filter((d) => d.method === m));
@@ -368,14 +366,55 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
     window.addEventListener('hashchange', read);
     return () => window.removeEventListener('hashchange', read);
   }, [studies]);
-  const choose = (i: number | null) => {
-    setView(i);
-    history.replaceState(
-      null,
-      '',
-      i === null ? `#${OVERVIEW}` : `#grafo-${graphNumber(studies[i].name)}`,
-    );
-  };
+  const choose = useCallback(
+    (i: number | null) => {
+      setView(i);
+      history.replaceState(
+        null,
+        '',
+        i === null ? `#${OVERVIEW}` : `#grafo-${graphNumber(studies[i].name)}`,
+      );
+    },
+    [studies],
+  );
+
+  // The menu is a tablist: the overview is stop 0, graph i is stop i + 1.
+  // Left and right walk it from anywhere on the page, Home and End jump,
+  // and when the menu has the focus it follows the chosen tab.
+  const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+  const stop = view === null ? 0 : view + 1;
+  const last = studies.length;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      const active = document.activeElement;
+      const inMenu = active instanceof HTMLElement && tabs.current.includes(active as never);
+      if (
+        active instanceof HTMLElement &&
+        (active.isContentEditable || /^(input|textarea|select)$/i.test(active.tagName))
+      ) {
+        return;
+      }
+      // Up and down only inside the menu: elsewhere they scroll the page.
+      const keys: Record<string, number | undefined> = {
+        ArrowRight: stop + 1,
+        ArrowLeft: stop - 1,
+        ArrowDown: inMenu ? stop + 1 : undefined,
+        ArrowUp: inMenu ? stop - 1 : undefined,
+        Home: inMenu ? 0 : undefined,
+        End: inMenu ? last : undefined,
+      };
+      const wanted = keys[event.key];
+      if (wanted === undefined) return;
+      const next = Math.min(last, Math.max(0, wanted));
+      event.preventDefault();
+      if (next === stop) return;
+      choose(next === 0 ? null : next - 1);
+      if (inMenu) tabs.current[next]?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [choose, last, stop]);
 
   if (studies.length === 0) {
     return (
@@ -411,10 +450,20 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
 
   return (
     <section className={styles.section}>
-      <nav className={styles.menu} aria-label={t.studies.views}>
-        <div className={`container ${styles.menuInner}`}>
+      <nav className={styles.menu}>
+        <div
+          className={`container ${styles.menuInner}`}
+          role="tablist"
+          aria-label={t.studies.views}
+        >
           <button
             type="button"
+            role="tab"
+            aria-selected={view === null}
+            tabIndex={view === null ? 0 : -1}
+            ref={(el) => {
+              tabs.current[0] = el;
+            }}
             className={styles.pick}
             data-active={view === null || undefined}
             onClick={() => choose(null)}
@@ -430,6 +479,12 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
             <button
               key={s.name}
               type="button"
+              role="tab"
+              aria-selected={view === i}
+              tabIndex={view === i ? 0 : -1}
+              ref={(el) => {
+                tabs.current[i + 1] = el;
+              }}
               className={styles.pick}
               data-active={view === i || undefined}
               onClick={() => choose(i)}
@@ -440,7 +495,7 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
           ))}
         </div>
       </nav>
-      <SheetView key={view ?? OVERVIEW} sheet={sheet} />
+      <SheetView sheet={sheet} />
     </section>
   );
 }
@@ -452,41 +507,48 @@ function SheetView({ sheet }: { sheet: Sheet }) {
   const t = useT();
   const q = t.studies.questions;
   const f = sheet.facts;
+  const view = sheet.id;
   return (
     <div className={`container ${styles.content}`}>
       <Reveal className={styles.head}>
-        <h1 className={styles.title}>{sheet.title}</h1>
-        {sheet.subtitle && <span className={styles.subtitle}>{sheet.subtitle}</span>}
+        <h1 className={styles.title}>
+          <Swap view={view}>{sheet.title}</Swap>
+        </h1>
+        <span className={styles.subtitle} data-empty={!sheet.subtitle || undefined}>
+          <Swap view={view}>{sheet.subtitle ?? ''}</Swap>
+        </span>
         <div className={styles.facts}>
-          <span className={`mono ${styles.fact}`}>
-            {formatInt(f.vertices)} <em>{t.studies.facts.vertices}</em>
-          </span>
-          <span className={`mono ${styles.fact}`}>
-            {formatInt(f.edges)} <em>{t.studies.facts.edges}</em>
-          </span>
-          <span className={styles.note}>
-            {t.studies.facts.degree(
-              formatInt(f.degree.min),
-              formatInt(f.degree.max),
-              f.degree.mean.toFixed(1),
-              formatInt(f.degree.median),
-            )}
-          </span>
-          <span className={styles.note}>
-            {t.studies.facts.dropped(formatInt(f.loops), formatInt(f.duplicates))}
-          </span>
+          <Swap view={view} className={styles.facts}>
+            <span className={`mono ${styles.fact}`}>
+              {formatInt(f.vertices)} <em>{t.studies.facts.vertices}</em>
+            </span>
+            <span className={`mono ${styles.fact}`}>
+              {formatInt(f.edges)} <em>{t.studies.facts.edges}</em>
+            </span>
+            <span className={styles.note}>
+              {t.studies.facts.degree(
+                formatInt(f.degree.min),
+                formatInt(f.degree.max),
+                f.degree.mean.toFixed(1),
+                formatInt(f.degree.median),
+              )}
+            </span>
+            <span className={styles.note}>
+              {t.studies.facts.dropped(formatInt(f.loops), formatInt(f.duplicates))}
+            </span>
+          </Swap>
         </div>
       </Reveal>
 
       <div className={styles.rowThree}>
         <Chapter index={1} title={q.memory.title} delay={0.05}>
-          <Bars bars={sheet.memory} />
+          <Bars bars={sheet.memory} view={view} />
         </Chapter>
         <Chapter index={2} title={q.bfs.title} delay={0.1}>
-          <Bars bars={sheet.bfs} />
+          <Bars bars={sheet.bfs} view={view} />
         </Chapter>
         <Chapter index={3} title={q.dfs.title} delay={0.15}>
-          <Bars bars={sheet.dfs} />
+          <Bars bars={sheet.dfs} view={view} />
         </Chapter>
       </div>
 
@@ -508,7 +570,7 @@ function SheetView({ sheet }: { sheet: Sheet }) {
                     <th scope="row">{q.parents.root(String(root))}</th>
                     {sheet.parents.vertices.map((v) => (
                       <td key={v} className="mono">
-                        {sheet.parents.cell(algo, root, v)}
+                        <Swap view={view}>{sheet.parents.cell(algo, root, v)}</Swap>
                       </td>
                     ))}
                   </tr>
@@ -521,28 +583,36 @@ function SheetView({ sheet }: { sheet: Sheet }) {
 
       <div className={styles.rowLast}>
         <Chapter index={5} title={q.distances.title} delay={0.25}>
-          <Triangle distances={sheet.distances} />
+          <Triangle distances={sheet.distances} view={view} />
         </Chapter>
         <div className={styles.stack}>
           <Chapter index={6} title={q.components.title} delay={0.3}>
-            <Bars
-              bars={[
-                {
-                  key: 'largest',
-                  label: '',
-                  colour: 'var(--accent)',
-                  width: sheet.components.share,
-                  value: sheet.components.text,
-                },
-              ]}
-            />
+            <Components split={sheet.components} view={view} />
           </Chapter>
           <Chapter index={7} title={q.diameter.title} delay={0.35}>
-            <Bars bars={sheet.diameter} />
+            <Bars bars={sheet.diameter} view={view} />
           </Chapter>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Numbers that change when the view does: the span is keyed by the view,
+    so React swaps its contents and the new ones fade up into place. */
+function Swap({
+  view,
+  className,
+  children,
+}: {
+  view: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span key={view} className={`${styles.swap} ${className ?? ''}`}>
+      {children}
+    </span>
   );
 }
 
@@ -569,8 +639,10 @@ function Chapter({
   );
 }
 
-/** Horizontal bars, label on the left, value after the bar. */
-function Bars({ bars }: { bars: Bar[] }) {
+/** Horizontal bars, label on the left, value after the bar. The fill is
+    always in the tree (width 0 when there is nothing to draw) so a change
+    of view slides it instead of replacing it. */
+function Bars({ bars, view }: { bars: Bar[]; view: string }) {
   return (
     <div className={styles.bars}>
       {bars.map((bar) => (
@@ -579,21 +651,22 @@ function Bars({ bars }: { bars: Bar[] }) {
           className={styles.bar}
           data-ghost={bar.ghost || undefined}
           data-bare={bar.label === '' || undefined}
+          data-empty={bar.width === null || undefined}
         >
           {bar.label !== '' && <span className={`mono ${styles.barLabel}`}>{bar.label}</span>}
           <span className={styles.track}>
-            {bar.width !== null && (
-              <span
-                className={styles.fill}
-                style={
-                  {
-                    '--w': `${Math.max(0.6, bar.width * 100)}%`,
-                    '--colour': bar.colour,
-                  } as CSSProperties
-                }
-              />
-            )}
-            <span className={`mono ${styles.value}`}>{bar.value}</span>
+            <span
+              className={styles.fill}
+              style={
+                {
+                  '--w': bar.width === null ? '0%' : `${Math.max(0.6, bar.width * 100)}%`,
+                  '--colour': bar.colour,
+                } as CSSProperties
+              }
+            />
+            <span className={`mono ${styles.value}`}>
+              <Swap view={view}>{bar.value}</Swap>
+            </span>
           </span>
         </div>
       ))}
@@ -601,9 +674,84 @@ function Bars({ bars }: { bars: Bar[] }) {
   );
 }
 
+/** The graph as one bar cut into its components: the largest, everything
+    between it and the smallest, and the smallest, each segment as wide as
+    its share of the vertices (a hair wide at least, so a 48-vertex
+    component in five million is still visible). Under it, the count and
+    what each segment is worth. */
+function Components({ split, view }: { split: Sheet['components']; view: string }) {
+  const t = useT();
+  const c = t.studies.questions.components;
+  const { total, count, largest, smallest } = split;
+  const others = count <= 1 ? 0 : Math.max(0, total - largest - smallest);
+  const pct = (n: number) => `${((n / total) * 100).toFixed(n / total < 0.01 ? 2 : 1)} %`;
+  const segments = [
+    {
+      key: 'largest',
+      value: largest,
+      colour: 'var(--accent)',
+      label: c.largest(formatInt(largest)),
+    },
+    {
+      key: 'others',
+      value: others,
+      colour: 'color-mix(in srgb, var(--accent) 45%, white)',
+      label: c.others(formatInt(Math.max(0, count - 2))),
+    },
+    {
+      key: 'smallest',
+      value: count <= 1 ? 0 : smallest,
+      colour: 'var(--accent-2)',
+      label: c.smallest(formatInt(smallest)),
+    },
+  ];
+  return (
+    <div className={styles.components}>
+      <div className={styles.segments}>
+        {segments.map((seg) => (
+          <span
+            key={seg.key}
+            className={styles.segment}
+            data-empty={seg.value <= 0 || undefined}
+            style={
+              {
+                '--w': `${(seg.value / total) * 100}%`,
+                '--colour': seg.colour,
+              } as CSSProperties
+            }
+            title={`${seg.label} · ${pct(seg.value)}`}
+          />
+        ))}
+      </div>
+      <div className={styles.legend}>
+        <span className={`mono ${styles.answer}`}>
+          <Swap view={view}>{count === 1 ? c.one : c.count(formatCount(count))}</Swap>
+        </span>
+        {segments
+          .filter((seg) => seg.value > 0)
+          .map((seg) => (
+            <span key={seg.key} className={styles.legendItem}>
+              <span className={styles.swatch} style={{ background: seg.colour }} />
+              <span className={`mono ${styles.legendText}`}>
+                <Swap view={view}>
+                  {seg.label} <span className={styles.detail}>{pct(seg.value)}</span>
+                </Swap>
+              </span>
+            </span>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+/** A count that may be fractional on the mean sheet. */
+function formatCount(n: number): string {
+  return Number.isInteger(n) ? formatInt(n) : n.toFixed(1);
+}
+
 /** Vertices 10, 20 and 30 as a triangle, each side labelled with the
     distance between its ends, dashed when they are in different components. */
-function Triangle({ distances }: { distances: Sheet['distances'] }) {
+function Triangle({ distances, view }: { distances: Sheet['distances']; view: string }) {
   const pos: Record<number, [number, number]> = { 10: [70, 22], 20: [16, 108], 30: [124, 108] };
   const ids = Object.keys(pos).map(Number);
   return (
@@ -617,17 +765,19 @@ function Triangle({ distances }: { distances: Sheet['distances'] }) {
         return (
           <g key={`${d.from}-${d.to}`} data-apart={d.label === null || undefined}>
             <line x1={x1} y1={y1} x2={x2} y2={y2} className={styles.side} />
-            <rect
-              x={mx - half}
-              y={my - 8}
-              width={half * 2}
-              height={16}
-              rx={8}
-              className={styles.pill}
-            />
-            <text x={mx} y={my} dy="0.35em" textAnchor="middle" className={styles.sideLabel}>
-              {d.label ?? '∞'}
-            </text>
+            <g key={view} className={styles.swap}>
+              <rect
+                x={mx - half}
+                y={my - 8}
+                width={half * 2}
+                height={16}
+                rx={8}
+                className={styles.pill}
+              />
+              <text x={mx} y={my} dy="0.35em" textAnchor="middle" className={styles.sideLabel}>
+                {d.label ?? '∞'}
+              </text>
+            </g>
           </g>
         );
       })}

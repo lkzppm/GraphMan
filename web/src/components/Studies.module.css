@@ -119,6 +119,10 @@
   line-height: 1.08;
 }
 
+.subtitle[data-empty] {
+  display: none;
+}
+
 .subtitle {
   font-size: 12px;
   letter-spacing: var(--tracking);
@@ -210,6 +214,56 @@
   line-height: 1.25;
 }
 
+/* Switching view keeps every element in place: the numbers inside are
+   swapped and fade up, the bars slide to their new length. */
+.swap {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  gap: inherit;
+  animation: swapIn 0.4s var(--ease) both;
+}
+
+/* The facts run on as one line that may wrap; a table cell keeps its own
+   block layout (the level sits under the parent). */
+.facts .swap {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+
+.table .swap {
+  display: block;
+}
+
+/* In the SVG the swap is a group, so it only fades. */
+g.swap {
+  display: inline;
+  animation-name: fadeInOnly;
+}
+
+@keyframes swapIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fadeInOnly {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
 /* ---- bars ----------------------------------------------------------------- */
 
 .bars {
@@ -267,6 +321,10 @@
 
 .chapter:global(.is-visible) .fill {
   width: var(--w);
+}
+
+.bar[data-empty] .fill {
+  width: 0;
 }
 
 .bar[data-ghost] .fill {
@@ -373,6 +431,13 @@
   padding-bottom: 5px;
 }
 
+/* Every row is the same height whether its cells hold a parent and a level
+   or just a dot, so switching graphs does not resize the table. */
+.table tbody th,
+.table tbody td {
+  height: 44px;
+}
+
 /* The level under the parent, so every row is two lines tall. */
 .level {
   display: block;
@@ -384,24 +449,89 @@
   color: var(--fg-3);
 }
 
+/* ---- components ----------------------------------------------------------- */
+
+.components {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* The graph as one bar cut into its components. */
+.segments {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+}
+
+.segment {
+  /* Shrinkable, so the gaps between segments never push the bar wider
+     than the graph it stands for. */
+  flex: 0 1 auto;
+  width: 0;
+  min-width: 3px;
+  border-radius: 2px;
+  background: var(--colour);
+  transition: width 1.1s var(--ease);
+}
+
+.chapter:global(.is-visible) .segment {
+  width: var(--w);
+}
+
+.segment[data-empty] {
+  min-width: 0;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 18px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.swatch {
+  align-self: center;
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 2px;
+}
+
+.legendText {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.legendText .swap {
+  gap: 6px;
+}
+
 /* ---- the triangle --------------------------------------------------------- */
 
 .triangle {
   display: block;
-  width: 140px;
+  width: 100%;
+  max-width: 195px;
   height: auto;
-  margin: 2px auto 0;
+  margin: 4px auto 0;
 }
 
 .side {
   stroke: var(--accent);
-  stroke-width: 2;
+  stroke-width: 1.6;
 }
 
 g[data-apart] .side {
   stroke: var(--border-2);
-  stroke-width: 1.5;
-  stroke-dasharray: 4 4;
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
 }
 
 .pill {
@@ -410,7 +540,7 @@ g[data-apart] .side {
 
 .sideLabel {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 9.5px;
   font-weight: 500;
   fill: var(--accent);
 }
@@ -423,12 +553,12 @@ g[data-apart] .sideLabel {
 .vertex circle {
   fill: var(--bg);
   stroke: var(--border-2);
-  stroke-width: 1.5;
+  stroke-width: 1.1;
 }
 
 .vertex text {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 9.5px;
   fill: var(--fg-2);
 }
 
@@ -467,6 +597,11 @@ g[data-apart] .sideLabel {
 
 @media (max-width: 600px) {
   /* The value drops under the bar when it does not fit beside it. */
+  .track .swap {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
   .track,
   .rowThree .track {
     flex-wrap: wrap;
