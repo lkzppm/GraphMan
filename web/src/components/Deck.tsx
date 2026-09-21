@@ -17,6 +17,7 @@ import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/
 import { logScale } from '@/lib/scale';
 import type { DiameterMethod, GraphStudy, Representation } from '@/lib/studies';
 import BrandIcon from './BrandIcon';
+import RepresentationPicto, { REPR_KINDS } from './RepresentationPicto';
 import Constellation from './Constellation';
 import { levelColour } from './GraphFigure';
 import HeroMark from './HeroMark';
@@ -268,126 +269,6 @@ function Fork({ delay }: { delay: number }) {
   );
 }
 
-/** An adjacency list: a column of vertices, each with its row of neighbours. */
-function PictoList({ delay }: { delay: number }) {
-  const rows = [4, 2, 3, 1];
-  return (
-    <svg viewBox="0 0 96 64" className={styles.picto} aria-hidden="true">
-      {rows.map((count, r) => {
-        const y = 10 + r * 15;
-        return (
-          <g key={r}>
-            <rect
-              className={styles.pictoHead}
-              style={at(delay + r * 0.06)}
-              x="6"
-              y={y - 5}
-              width="10"
-              height="10"
-              rx="2"
-            />
-            <line
-              className={styles.pictoLine}
-              style={at(delay + 0.1 + r * 0.06)}
-              x1="16"
-              y1={y}
-              x2={22 + count * 14}
-              y2={y}
-              pathLength={1}
-            />
-            {Array.from({ length: count }, (_, i) => (
-              <circle
-                key={i}
-                className={styles.pictoDot}
-                style={at(delay + 0.2 + r * 0.06 + i * 0.05)}
-                cx={28 + i * 14}
-                cy={y}
-                r="3.6"
-              />
-            ))}
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-/** A bit matrix: a symmetric grid with a few bits set. */
-function PictoMatrix({ delay }: { delay: number }) {
-  const n = 6;
-  const set = new Set(['0-1', '0-3', '1-2', '2-4', '3-4', '4-5', '1-5']);
-  const on = (i: number, j: number) => set.has(`${i}-${j}`) || set.has(`${j}-${i}`);
-  return (
-    <svg viewBox="0 0 96 64" className={styles.picto} aria-hidden="true">
-      {Array.from({ length: n * n }, (_, k) => {
-        const i = Math.floor(k / n);
-        const j = k % n;
-        return (
-          <rect
-            key={k}
-            className={on(i, j) ? styles.pictoBitOn : styles.pictoBit}
-            style={at(delay + (i + j) * 0.04)}
-            x={20 + j * 9.5}
-            y={4 + i * 9.5}
-            width="8"
-            height="8"
-            rx="1.5"
-          />
-        );
-      })}
-    </svg>
-  );
-}
-
-/** Compressed sparse row: a short array of offsets over a long array of
-    neighbours, each offset pointing at where its row starts. */
-function PictoCsr({ delay }: { delay: number }) {
-  const offsets = [0, 3, 5, 8];
-  const width = 9;
-  return (
-    <svg viewBox="0 0 96 64" className={styles.picto} aria-hidden="true">
-      {offsets.map((_, i) => (
-        <rect
-          key={`o${i}`}
-          className={styles.pictoHead}
-          style={at(delay + i * 0.05)}
-          x={14 + i * 14}
-          y="8"
-          width="10"
-          height="10"
-          rx="2"
-        />
-      ))}
-      {Array.from({ length: 9 }, (_, i) => (
-        <rect
-          key={`n${i}`}
-          className={styles.pictoCell}
-          style={at(delay + 0.3 + i * 0.04)}
-          x={6 + i * width}
-          y="42"
-          width={width - 1.5}
-          height="10"
-          rx="1.5"
-        />
-      ))}
-      {offsets.slice(0, 3).map((o, i) => (
-        <line
-          key={`l${i}`}
-          className={styles.pictoLine}
-          style={at(delay + 0.5 + i * 0.08)}
-          x1={19 + i * 14}
-          y1="18"
-          x2={6 + o * width + (width - 1.5) / 2}
-          y2="42"
-          pathLength={1}
-        />
-      ))}
-    </svg>
-  );
-}
-
-const PICTOS = [PictoList, PictoMatrix, PictoCsr];
-
 function Architecture({ t }: { t: T }) {
   const s = t.presentation.slides.architecture;
   return (
@@ -429,20 +310,17 @@ function Architecture({ t }: { t: T }) {
             <span className={`comment ${styles.coreHint}`}>{s.core.hint}</span>
           </div>
           <ul className={styles.reps}>
-            {s.reps.map((r, i) => {
-              const Picto = PICTOS[i];
-              return (
-                <li
-                  key={r.name}
-                  className={`${styles.rep} ${styles.pop}`}
-                  style={at(1.1 + i * 0.15)}
-                >
-                  <Picto delay={1.2 + i * 0.15} />
-                  <span className={`mono ${styles.repName}`}>{r.name}</span>
-                  <span className={`mono ${styles.repHint}`}>{r.hint}</span>
-                </li>
-              );
-            })}
+            {s.reps.map((r, i) => (
+              <li key={r.name} className={`${styles.rep} ${styles.pop}`} style={at(1.1 + i * 0.15)}>
+                <RepresentationPicto
+                  kind={REPR_KINDS[i]}
+                  delay={1.2 + i * 0.15}
+                  className={styles.picto}
+                />
+                <span className={`mono ${styles.repName}`}>{r.name}</span>
+                <span className={`mono ${styles.repHint}`}>{r.hint}</span>
+              </li>
+            ))}
           </ul>
           <div className={`${styles.algos} ${styles.rise}`} style={at(1.9)}>
             <p className={`label ${styles.algoRow}`}>

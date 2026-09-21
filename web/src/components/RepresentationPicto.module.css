@@ -1,0 +1,32 @@
+/* The shapes only: whether they animate in is each page's business, which is
+   why the marks carry `data-mark` instead of hashed class names. */
+.picto {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 96 / 64;
+  overflow: visible;
+}
+
+.picto [data-mark='head'],
+.picto [data-mark='dot'],
+.picto [data-mark='bit-on'] {
+  fill: var(--accent);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.picto [data-mark='bit'],
+.picto [data-mark='cell'] {
+  fill: var(--bg);
+  stroke: var(--border-2);
+  stroke-width: 1;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.picto [data-mark='link'] {
+  fill: none;
+  stroke: var(--border-2);
+  stroke-width: 1.5;
+}

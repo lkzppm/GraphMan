@@ -485,13 +485,8 @@
 }
 
 .picto {
-  display: block;
-  width: 100%;
   max-width: 190px;
-  height: auto;
-  aspect-ratio: 96 / 64;
   margin-bottom: 8px;
-  overflow: visible;
 }
 
 .repName {
@@ -504,43 +499,22 @@
   color: var(--fg-3);
 }
 
-/* Pictogram parts: vertices and set bits are blue, cells are paper. */
-.pictoHead,
-.pictoDot,
-.pictoBitOn {
-  fill: var(--accent);
-  transform-box: fill-box;
-  transform-origin: center;
+/* The pictogram shapes come from RepresentationPicto; on a slide they start
+   hidden and pop in one by one, in the order the component staggered them. */
+.rep [data-mark] {
   opacity: 0;
 }
 
-.pictoBit,
-.pictoCell {
-  fill: var(--bg);
-  stroke: var(--border-2);
-  stroke-width: 1;
-  transform-box: fill-box;
-  transform-origin: center;
-  opacity: 0;
-}
-
-.pictoLine {
-  fill: none;
-  stroke: var(--border-2);
-  stroke-width: 1.5;
+.rep [data-mark='link'] {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
 }
 
-.slideCurrent .pictoHead,
-.slideCurrent .pictoDot,
-.slideCurrent .pictoBitOn,
-.slideCurrent .pictoBit,
-.slideCurrent .pictoCell {
+.slideCurrent .rep [data-mark] {
   animation: pop 0.35s var(--ease-spring) var(--d, 0s) both;
 }
 
-.slideCurrent .pictoLine {
+.slideCurrent .rep [data-mark='link'] {
   animation: draw 0.4s var(--ease) var(--d, 0s) both;
 }
 
