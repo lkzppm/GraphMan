@@ -408,23 +408,26 @@ export const en = {
       architecture: {
         eyebrow: '01 · architecture',
         title: 'Storage is a strategy.',
-        lead: 'One five-method trait; every algorithm written once and monomorphised per representation. Swapping the storage cannot change a result, only its cost.',
-        crates: [
-          {
-            name: 'graphman',
-            role: 'the library',
-            body: 'Graph trait · adjacency list, bitset matrix, CSR · BFS, DFS, distances, components, four diameters · memory metrics. No CLI, no I/O concerns: it compiles to wasm.',
-          },
-          {
-            name: 'graphman-cli',
-            role: 'the program',
-            body: 'One command per feature, and study: the whole case study to JSON and Markdown, memory in a fresh subprocess per representation.',
-          },
-          {
-            name: 'graphman-wasm',
-            role: 'the bindings',
-            body: 'wasm-bindgen glue only. The same code the studies ran is the engine of the observatory in the browser.',
-          },
+        lead: 'One five-method trait, every algorithm written once and monomorphised per representation. Swapping the storage cannot change a result, only its cost.',
+        input: { label: 'input', name: 'grafo.txt', hint: 'an edge list' },
+        core: { label: 'the library', name: 'graphman' },
+        trait: {
+          name: 'trait Graph',
+          hint: 'five methods',
+          methods: ['vertex_count', 'edge_count', 'degree', 'neighbors', 'has_edge'],
+        },
+        implement: 'implemented by',
+        reps: [
+          { name: 'AdjacencyList', hint: 'O(n + m) words' },
+          { name: 'AdjacencyMatrix', hint: 'O(n²) bits' },
+          { name: 'Csr', hint: 'two arrays' },
+        ],
+        generic: 'written once, generic over Graph',
+        algos: ['BFS', 'DFS', 'distances', 'components', 'diameter'],
+        outputsLabel: 'two front ends',
+        outputs: [
+          { name: 'graphman-cli', hint: 'the case studies, as JSON and Markdown' },
+          { name: 'graphman-wasm', hint: 'the observatory, in the browser' },
         ],
       },
       decisions: {
@@ -433,23 +436,28 @@ export const en = {
         items: [
           {
             title: 'Normalise once',
-            body: 'Self-loops dropped, edges oriented [min, max], sorted and deduped, so every representation gets ascending neighbour rows and identical search trees. Tests enforce it.',
+            body: 'Self-loops dropped, edges oriented [min, max], sorted and deduped: every representation sees the same graph and returns the same search tree.',
+            caption: 'the parser drops the grey, once',
           },
           {
             title: 'Traversals are observable',
-            body: 'BFS and DFS report to a Visitor and can stop early; distance is a BFS with a stop. DFS is iterative with O(depth) memory.',
+            body: 'BFS and DFS report to a Visitor and can stop early; distance is a BFS that halts on the target. DFS is iterative, O(depth) memory.',
+            caption: 'a visitor breaks the search mid level',
           },
           {
             title: 'Nothing is allocated twice',
-            body: 'A SearchTree resets only what the last search touched: thousands of BFS runs cost no allocations and no O(n) clears.',
+            body: 'A SearchTree resets only what the last search touched, so thousands of BFS runs cost no allocations and no O(n) clears.',
+            caption: 'only the touched cells are reset',
           },
           {
-            title: 'A memory budget, not a crash',
-            body: 'Builders compute their bytes up front; a 375 000-vertex bitset matrix (17.6 GB) becomes a typed error and a table cell.',
+            title: 'A budget, not a crash',
+            body: 'Builders compute their bytes up front: a 375 000-vertex bitset matrix (17.6 GB) becomes a typed error and a table cell.',
+            caption: 'the matrix runs off the budget',
           },
           {
             title: 'Diameter, four ways',
-            body: 'Brute force, iFUB, Takes–Kosters bounds and a 4-sweep, all cancellable with a budget; components walked largest-first.',
+            body: 'Brute force, iFUB, Takes–Kosters bounds and a 4-sweep, all cancellable, components walked largest-first.',
+            caption: 'BFS runs each method spends',
           },
         ],
       },
@@ -458,22 +466,26 @@ export const en = {
         title: 'Measured, not estimated.',
         columns: {
           graph: 'Graph',
-          vertices: 'Vertices',
-          edges: 'Edges',
-          list: 'List (memory)',
-          matrix: 'Matrix (memory)',
-          bfs: 'BFS (list)',
-          dfs: 'DFS (list)',
-          components: 'Components',
+          size: 'Size',
+          memory: 'Memory',
+          time: 'Mean search',
+          components: 'Comp.',
           diameter: 'Diameter',
         },
+        legend: [
+          { key: 'list', label: 'adjacency list' },
+          { key: 'matrix', label: 'bitset matrix' },
+          { key: 'bfs', label: 'BFS' },
+          { key: 'dfs', label: 'DFS' },
+        ],
         needed: (bytes: string) => `${bytes} needed`,
-        note: 'Memory: process footprint after loading. Times: mean of 100 searches from distinct roots, excluding parsing and output. ≥ marks a lower bound (4-sweep or a method stopped by its budget).',
+        note: 'Bars are on a shared log scale. Memory: process footprint after loading. Times: mean of 100 searches from distinct roots on the adjacency list, excluding parsing and output. ≥ marks a lower bound (4-sweep or a method stopped by its budget).',
       },
       observatory: {
         eyebrow: '04 · the observatory',
         title: 'The library, in your tab.',
         lead: 'No server, no exported data: the file you drop is parsed by the Rust crate compiled to WebAssembly and drawn with WebGPU.',
+        url: 'graphman.vercel.app/observatory',
         facts: [
           {
             value: '1.3M',

@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/lib/format';
+import { logScale } from '@/lib/scale';
 import type { DiameterMethod, GraphStudy, Representation } from '@/lib/studies';
 import { useT } from '@/i18n/LocaleProvider';
 import Reveal from './Reveal';
@@ -41,13 +42,6 @@ const METHOD_COLOUR: Record<DiameterMethod, string> = {
   i_fub: 'color-mix(in srgb, var(--accent) 55%, white)',
   sweep: 'var(--accent-2)',
 };
-
-/** Where a value lands on a log scale from `floor` to `top`, 0..1. */
-function logScale(floor: number, top: number) {
-  const lo = Math.log10(floor);
-  const hi = Math.log10(top);
-  return (value: number) => Math.min(1, Math.max(0, (Math.log10(value) - lo) / (hi - lo)));
-}
 
 const mean = (values: number[]) =>
   values.length === 0 ? null : values.reduce((a, b) => a + b, 0) / values.length;
