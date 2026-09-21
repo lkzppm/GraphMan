@@ -991,8 +991,20 @@
   max-width: 820px;
 }
 
+/* The pointer to the case-studies page: a tracked label, not a button. */
 .more {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s var(--ease);
+}
+
+.more:hover {
+  border-color: var(--accent);
 }
 
 /* ---- 04 try it: the site in a browser, the QR code ---------------------- */

@@ -959,9 +959,9 @@ function Benchmark({ t, studies }: { t: T; studies: GraphStudy[] }) {
         <p className={styles.note}>
           {machine && s.machine(machine.cpu, formatBytes(machine.total_memory_bytes))}
         </p>
-        <Link href="/studies" className={`button button--primary ${styles.more}`}>
+        <Link href="/studies" className={`label ${styles.more}`}>
           {s.cta}
-          <ArrowRight size={14} aria-hidden="true" />
+          <ArrowRight size={13} aria-hidden="true" />
         </Link>
       </div>
     </div>
