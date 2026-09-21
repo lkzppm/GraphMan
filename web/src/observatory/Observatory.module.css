@@ -1682,7 +1682,7 @@
 
   .sidebar {
     order: 2;
-    height: 50dvh;
+    height: 40dvh;
     overflow-y: auto;
     border-right: 0;
     border-top: 1px solid var(--border);
