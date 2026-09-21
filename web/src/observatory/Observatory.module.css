@@ -1682,7 +1682,7 @@
 
   .sidebar {
     order: 2;
-    max-height: 50dvh;
+    height: 50dvh;
     overflow-y: auto;
     border-right: 0;
     border-top: 1px solid var(--border);
@@ -1749,19 +1749,23 @@
     display: flex;
   }
 
-  /* A phone cannot drop a file: the card keeps the format and the buttons. */
-  .dropTitle[data-drop] {
+  /* A phone cannot drop a file, and the sheet below already offers the
+     example and the file picker: the card keeps only the format sample. */
+  .dropTitle[data-drop],
+  .dropIcon,
+  .dropActions {
     display: none;
   }
 
-  .dropCard {
-    padding: 18px 18px 16px;
-    gap: 10px;
+  .empty {
+    padding: 16px;
   }
 
-  .dropIcon {
-    width: 36px;
-    height: 36px;
+  .dropCard {
+    max-height: 100%;
+    overflow-y: auto;
+    padding: 14px;
+    gap: 10px;
   }
 }
 
