@@ -2,8 +2,9 @@
 // import them at build time (Turbopack only bundles files under web/).
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const web = new URL('..', import.meta.url).pathname;
+const web = fileURLToPath(new URL('..', import.meta.url));
 const dataDir = join(web, 'src', 'data');
 const results = join(web, '..', 'studies', 'results.json');
 mkdirSync(dataDir, { recursive: true });
