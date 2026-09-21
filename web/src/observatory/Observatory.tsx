@@ -18,6 +18,7 @@ import {
   Rows3,
   Shapes,
   Maximize2,
+  MemoryStick,
   Minimize2,
   Minus,
   Pause,
@@ -52,6 +53,8 @@ import {
   UNREACHED,
   type Graph,
   type GraphmanModule,
+  type MemoryReport,
+  type Parsed,
   type SearchResult,
 } from '@/lib/graphman';
 import {
@@ -63,6 +66,7 @@ import {
   type Renderer,
 } from './renderer';
 import Constellation from '@/components/Constellation';
+import RepresentationPicto from '@/components/RepresentationPicto';
 import { useT } from '@/i18n/LocaleProvider';
 import type { Dictionary } from '@/i18n';
 import styles from './Observatory.module.css';
@@ -76,6 +80,46 @@ type Status =
   | { kind: 'unsupported'; message: string }
   | { kind: 'failed'; message: string };
 
+/**
+ * The library's storage strategies, in the order the wasm `RepresentationKind`
+ * declares them, so the enum's value is the index into this list.
+ */
+const REPRESENTATIONS = ['list', 'matrix', 'csr'] as const;
+
+type Repr = (typeof REPRESENTATIONS)[number];
+
+/** The wasm enum member backing `repr`. */
+function reprKind(wasm: GraphmanModule, repr: Repr) {
+  if (repr === 'list') return wasm.RepresentationKind.List;
+  if (repr === 'matrix') return wasm.RepresentationKind.Matrix;
+  return wasm.RepresentationKind.Csr;
+}
+
+/** The wasm memory report as a plain object, so it survives in React state. */
+function readMemory(report: MemoryReport): Memory {
+  return { list: report.list, matrix: report.matrix, csr: report.csr, budget: report.budget };
+}
+
+/** A file that is parsed and normalised, waiting for a storage strategy. */
+interface Pending {
+  name: string;
+  bytes: number;
+  vertices: number;
+  edges: number;
+  parseMs: number;
+  memory: Memory;
+  /** The wasm edge list; `build` consumes it, so it is used exactly once. */
+  parsed: Parsed;
+}
+
+/** What each representation of a graph costs, and the cap on all of them. */
+interface Memory {
+  list: number;
+  matrix: number;
+  csr: number;
+  budget: number;
+}
+
 interface GraphMeta {
   name: string;
   bytes: number;
@@ -83,6 +127,11 @@ interface GraphMeta {
   edges: number;
   selfLoops: number;
   duplicates: number;
+  /** The storage strategy backing the graph; switched from the memory panel. */
+  representation: Repr;
+  /** What each representation of this graph would cost, and the cap. */
+  memory: Memory;
+  /** Bytes the loaded representation owns on the heap. */
   heapBytes: number;
   degree: { min: number; max: number; mean: number; median: number };
   components: number;
@@ -212,6 +261,13 @@ export default function Observatory() {
   const [component, setComponent] = useState(0);
   /** The components browser, in place of the graph summary. */
   const [componentsOpen, setComponentsOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  /** The file that is parsed and waiting for a representation. */
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
+  /** The pending file, mirrored so it can be freed outside a state updater. */
+  const pendingRef = useRef<Pending | null>(null);
+  pendingRef.current = pending;
   /** The current layout and its menu. */
   const [layout, setLayout] = useState<LayoutId>('force');
   const [layoutOpen, setLayoutOpen] = useState(false);
@@ -541,21 +597,51 @@ export default function Observatory() {
 
   // ---- loading graphs --------------------------------------------------------
 
-  const loadBytes = useCallback(
-    async (name: string, bytes: Uint8Array) => {
+  /** Drops the loaded graph and everything measured from it. */
+  const clearGraph = useCallback(() => {
+    // Freed outside the state updater: StrictMode runs updaters twice, and
+    // a wasm object freed twice is a null pointer.
+    searchRef.current?.result.free();
+    setSearch(null);
+    graphRef.current?.free();
+    graphRef.current = null;
+    rendererRef.current?.unload();
+    setMeta(null);
+    setDiameterResults({});
+    setComponent(0);
+    setComponentsOpen(false);
+    setMemoryOpen(false);
+    setLayout('force');
+    setLayoutOpen(false);
+    setSelected(0);
+    setHovered(0);
+    setReveal(0);
+    setPlaying(false);
+    setHelpOpen(false);
+  }, []);
+
+  /**
+   * Builds the chosen representation of a parsed file and shows it. The edges
+   * move into the graph, so this is where the visitor's choice is the only
+   * thing that gets allocated.
+   */
+  const openPending = useCallback(
+    async (waiting: Pending, choice: Repr) => {
       const wasm = wasmRef.current;
       const renderer = rendererRef.current;
       if (!wasm || !renderer) return;
+      const name = waiting.name;
       setStatus({ kind: 'parsing', name });
       setNotice(null);
-      // Let the status paint before the (synchronous) parse.
+      // Let the status paint before the (synchronous) build.
       await new Promise((resolve) => setTimeout(resolve, 30));
       try {
         graphRef.current?.free();
         graphRef.current = null;
-        const t0 = performance.now();
-        const graph = new wasm.Graph(bytes);
-        const parseMs = performance.now() - t0;
+        // `build` consumes the parsed edges: they move into the graph, which
+        // keeps them so the strategy can change later without parsing again.
+        const graph = waiting.parsed.build(reprKind(wasm, choice));
+        setPending(null);
         graphRef.current = graph;
         const stats = graph.degreeStats();
         const sizes = graph.componentSizes();
@@ -583,8 +669,8 @@ export default function Observatory() {
           {
             vertexCount: graph.vertexCount,
             edges,
-            csrOffsets: graph.csrOffsets(),
-            csrTargets: graph.csrTargets(),
+            csrOffsets: graph.adjacencyOffsets(),
+            csrTargets: graph.adjacencyTargets(),
             positions,
             componentLabels: labels,
           },
@@ -592,11 +678,13 @@ export default function Observatory() {
         );
         setMeta({
           name,
-          bytes: bytes.byteLength,
+          bytes: waiting.bytes,
           vertices: graph.vertexCount,
           edges: graph.edgeCount,
           selfLoops: graph.selfLoopsDropped,
           duplicates: graph.duplicatesDropped,
+          representation: REPRESENTATIONS[graph.representation],
+          memory: waiting.memory,
           heapBytes: graph.heapBytes,
           degree: { min: stats.min, max: stats.max, mean: stats.mean, median: stats.median },
           components: sizes.length,
@@ -607,10 +695,11 @@ export default function Observatory() {
           componentLabels: labels,
           componentEdges,
           componentDegree: { min: degreeMin, max: degreeMax },
-          parseMs,
+          parseMs: waiting.parseMs,
         });
         setComponent(0);
         setComponentsOpen(false);
+        setMemoryOpen(false);
         setLayout(willSimulate ? 'force' : 'radial');
         setSearch(null);
         setDiameterResults({});
@@ -631,11 +720,54 @@ export default function Observatory() {
         requestAnimationFrame(fit);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        setPending(null);
         setNotice(tRef.current.couldNotLoad(name, message));
         setStatus({ kind: 'ready' });
       }
     },
     [fit],
+  );
+
+  /**
+   * Parses a file and stops there. Nothing is built yet: the picker needs the
+   * vertex and edge counts to say what each representation would cost, and
+   * those only exist once the file has been read.
+   */
+  const parseBytes = useCallback(
+    async (name: string, bytes: Uint8Array) => {
+      const wasm = wasmRef.current;
+      if (!wasm) return;
+      setStatus({ kind: 'parsing', name });
+      setNotice(null);
+      // Freed outside the state updater: StrictMode runs updaters twice, and
+      // a wasm object freed twice is a null pointer.
+      pendingRef.current?.parsed.free();
+      setPending(null);
+      clearGraph();
+      // Let the status paint before the (synchronous) parse.
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      try {
+        const t0 = performance.now();
+        const parsed = new wasm.Parsed(bytes);
+        const parseMs = performance.now() - t0;
+        const memory = readMemory(parsed.memoryReport());
+        setPending({
+          name,
+          bytes: bytes.byteLength,
+          vertices: parsed.vertexCount,
+          edges: parsed.edgeCount,
+          parseMs,
+          memory,
+          parsed,
+        });
+        setStatus({ kind: 'ready' });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setNotice(tRef.current.couldNotLoad(name, message));
+        setStatus({ kind: 'ready' });
+      }
+    },
+    [clearGraph],
   );
 
   const loadFile = useCallback(
@@ -647,37 +779,50 @@ export default function Observatory() {
         return;
       }
       const bytes = new Uint8Array(await file.arrayBuffer());
-      await loadBytes(file.name, bytes);
+      await parseBytes(file.name, bytes);
     },
-    [loadBytes],
+    [parseBytes],
   );
 
   const loadExample = useCallback(() => {
-    void loadBytes('sample.txt', new TextEncoder().encode(FIGURE_ONE));
-  }, [loadBytes]);
+    void parseBytes('sample.txt', new TextEncoder().encode(FIGURE_ONE));
+  }, [parseBytes]);
 
-  /** Unloads the graph: back to the empty stage, memory returned to wasm. */
-  const closeGraph = useCallback(() => {
-    // Freed outside the state updater: StrictMode runs updaters twice, and
-    // a wasm object freed twice is a null pointer.
-    searchRef.current?.result.free();
-    setSearch(null);
-    graphRef.current?.free();
-    graphRef.current = null;
-    rendererRef.current?.unload();
-    setMeta(null);
-    setDiameterResults({});
-    setComponent(0);
-    setComponentsOpen(false);
-    setLayout('force');
-    setLayoutOpen(false);
-    setSelected(0);
-    setHovered(0);
-    setReveal(0);
-    setPlaying(false);
-    setHelpOpen(false);
-    setNotice(null);
+  /**
+   * Rebuilds the loaded graph with another storage strategy. The graph itself
+   * does not change, only what it costs and how fast it answers, so nothing
+   * on the GPU is reloaded: the neighbour rows, the components and the layout
+   * are the same whichever representation produced them.
+   */
+  const switchRepresentation = useCallback((next: Repr) => {
+    const graph = graphRef.current;
+    const wasm = wasmRef.current;
+    if (!graph || !wasm) return;
+    setRebuilding(true);
+    // Let the pending state paint before the (synchronous) build.
+    setTimeout(() => {
+      try {
+        graph.rebuild(reprKind(wasm, next));
+        setMeta((current) =>
+          current ? { ...current, representation: next, heapBytes: graph.heapBytes } : current,
+        );
+        setNotice(null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setNotice(tRef.current.couldNotBuild(tRef.current.memory.names[next], message));
+      } finally {
+        setRebuilding(false);
+      }
+    }, 30);
   }, []);
+
+  /** Back to the empty stage, with the parsed file thrown away too. */
+  const closeGraph = useCallback(() => {
+    pendingRef.current?.parsed.free();
+    setPending(null);
+    clearGraph();
+    setNotice(null);
+  }, [clearGraph]);
 
   const onFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -1351,14 +1496,29 @@ export default function Observatory() {
               }
             >
               <div className={styles.fileRow}>
-                <span className={`mono ${styles.fileName}`} title={meta.name}>
-                  {meta.name}
-                </span>
-                <span className={styles.fileMeta}>
-                  {formatBytes(meta.bytes)} · {t.parsedIn(formatMs(meta.parseMs))}
-                </span>
+                <div className={styles.fileText}>
+                  <span className={`mono ${styles.fileName}`} title={meta.name}>
+                    {meta.name}
+                  </span>
+                  <span className={styles.fileMeta}>
+                    {formatBytes(meta.bytes)} · {t.parsedIn(formatMs(meta.parseMs))}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={styles.fileAction}
+                  aria-label={t.memory.open}
+                  title={t.memory.open}
+                  aria-pressed={memoryOpen}
+                  data-active={memoryOpen || undefined}
+                  onClick={() => setMemoryOpen((open) => !open)}
+                >
+                  <MemoryStick size={14} />
+                </button>
               </div>
-              {componentsOpen ? (
+              {memoryOpen ? (
+                <MemoryView t={t} meta={meta} busy={rebuilding} onSelect={switchRepresentation} />
+              ) : componentsOpen ? (
                 <ComponentsView
                   t={t}
                   meta={meta}
@@ -1398,7 +1558,9 @@ export default function Observatory() {
                   <div className={`${styles.chips} ${styles.shedFirst}`}>
                     <span className={styles.chip}>{t.loopsDropped(meta.selfLoops)}</span>
                     <span className={styles.chip}>{t.duplicatesDropped(meta.duplicates)}</span>
-                    <span className={styles.chip}>CSR {formatBytes(meta.heapBytes)}</span>
+                    <span className={styles.chip}>
+                      {t.memory.short[meta.representation]} {formatBytes(meta.heapBytes)}
+                    </span>
                   </div>
                 </>
               )}
@@ -1794,6 +1956,12 @@ export default function Observatory() {
                 <h2>{t.failed}</h2>
                 <p>{status.message}</p>
               </div>
+            ) : pending ? (
+              <RepresentationPicker
+                t={t}
+                pending={pending}
+                onChoose={(which) => void openPending(pending, which)}
+              />
             ) : (
               <div className={styles.dropCard}>
                 <span className={styles.dropIcon} aria-hidden="true">
@@ -2269,6 +2437,146 @@ function DegreeHistogram({ t, degrees, max }: { t: Strings; degrees: Uint32Array
     sizes (largest first, the tail past eight bucketed) whose pieces are
     buttons, a previous / next navigator and the selected component's
     numbers as tiles. */
+/**
+ * The three storage strategies, drawn as they are stored, with what each one
+ * would cost for this graph. The figures come from the library's
+ * `required_bytes`, so a matrix nobody could allocate is still a number on
+ * screen rather than a dead tab.
+ */
+function RepresentationOption({
+  t,
+  which,
+  memory,
+  state,
+  onChoose,
+  compact,
+}: {
+  t: Strings;
+  which: Repr;
+  memory: Memory;
+  state: 'current' | 'available' | 'blocked';
+  onChoose: (which: Repr) => void;
+  compact?: boolean;
+}) {
+  const bytes = memory[which];
+  const widest = Math.max(memory.list, memory.matrix, memory.csr);
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={state === 'current'}
+      className={compact ? styles.reprRow : styles.reprCard}
+      data-state={state}
+      disabled={state === 'blocked'}
+      title={state === 'blocked' ? t.memory.overBudget : t.memory.pick(t.memory.names[which])}
+      onClick={() => onChoose(which)}
+    >
+      <RepresentationPicto
+        kind={which}
+        className={compact ? styles.reprRowPicto : styles.reprCardPicto}
+      />
+      <span className={styles.reprText}>
+        <span className={styles.reprName}>{t.memory.names[which]}</span>
+        <span className={styles.reprHint}>
+          {state === 'blocked' ? t.memory.overBudget : t.memory.hints[which]}
+        </span>
+      </span>
+      <span className={`mono ${styles.reprBytes}`}>{formatBytes(bytes)}</span>
+      <span className={styles.reprTrack} aria-hidden="true">
+        <span
+          className={styles.reprFill}
+          style={{ width: `${Math.max((bytes / widest) * 100, 2)}%` }}
+        />
+      </span>
+    </button>
+  );
+}
+
+/**
+ * The choice the visitor meets once a file is parsed and before it is built.
+ * There is nothing to confirm: the card that is clicked is the graph that
+ * opens, and a strategy the tab cannot hold is priced but not offered.
+ */
+function RepresentationPicker({
+  t,
+  pending,
+  onChoose,
+}: {
+  t: Strings;
+  pending: Pending;
+  onChoose: (which: Repr) => void;
+}) {
+  const { memory } = pending;
+  return (
+    <div className={styles.pickCard}>
+      <div className={styles.pickHead}>
+        <span className={`mono ${styles.pickName}`} title={pending.name}>
+          {pending.name}
+        </span>
+        <span className={styles.pickMeta}>
+          {t.memory.parsed(formatCompact(pending.vertices), formatCompact(pending.edges))} ·{' '}
+          {t.parsedIn(formatMs(pending.parseMs))}
+        </span>
+      </div>
+      <p className={styles.pickTitle}>{t.memory.choose}</p>
+      <div className={styles.reprCards} role="radiogroup" aria-label={t.memory.choose}>
+        {REPRESENTATIONS.map((which) => (
+          <RepresentationOption
+            key={which}
+            t={t}
+            which={which}
+            memory={memory}
+            state={memory[which] > memory.budget ? 'blocked' : 'available'}
+            onChoose={onChoose}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The same choice, offered again for a graph that is already loaded. */
+function MemoryView({
+  t,
+  meta,
+  busy,
+  onSelect,
+}: {
+  t: Strings;
+  meta: GraphMeta;
+  busy: boolean;
+  onSelect: (repr: Repr) => void;
+}) {
+  const { memory } = meta;
+  return (
+    <div className={styles.chart} aria-label={t.memory.title}>
+      <div className={styles.chartHeader}>
+        <span className={`label ${styles.tileLabel}`}>{t.memory.title}</span>
+        <span className={styles.tileHint}>{t.memory.onTheHeap(formatBytes(meta.heapBytes))}</span>
+      </div>
+      <div className={styles.reprRows} role="radiogroup" aria-label={t.memory.title}>
+        {REPRESENTATIONS.map((which) => (
+          <RepresentationOption
+            key={which}
+            compact
+            t={t}
+            which={which}
+            memory={memory}
+            state={
+              memory[which] > memory.budget
+                ? 'blocked'
+                : meta.representation === which
+                  ? 'current'
+                  : 'available'
+            }
+            onChoose={busy ? () => {} : onSelect}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ComponentsView({
   t,
   meta,

@@ -3,7 +3,14 @@
 import type * as Graphman from '@/wasm/graphman';
 import { WASM_URL } from '@/wasm/manifest';
 
-export type { DegreeSummary, DiameterResult, Graph, SearchResult } from '@/wasm/graphman';
+export type {
+  DegreeSummary,
+  DiameterResult,
+  Graph,
+  MemoryReport,
+  Parsed,
+  SearchResult,
+} from '@/wasm/graphman';
 export type GraphmanModule = typeof Graphman;
 
 let ready: Promise<GraphmanModule> | null = null;
