@@ -1067,11 +1067,25 @@
 /* The site's front in the frame: the mark and the wordmark on the left,
    the search on the right. */
 .site {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   align-items: center;
   height: clamp(320px, 52vh, 600px);
   padding: 0 36px;
+}
+
+/* The same drifting constellation the hero and the empty stage draw,
+   fading out towards the search on the right. */
+.siteStars {
+  z-index: 0;
+  mask-image: linear-gradient(to right, #000 45%, transparent 85%);
+  -webkit-mask-image: linear-gradient(to right, #000 45%, transparent 85%);
+}
+
+.site > :not(.siteStars) {
+  position: relative;
+  z-index: 1;
 }
 
 /* The site's front: the mark and the wordmark in one row at the top left,

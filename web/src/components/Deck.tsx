@@ -1034,6 +1034,7 @@ function TryIt({ t }: { t: T }) {
             <span className={`mono ${styles.url}`}>{s.url}</span>
           </div>
           <div className={styles.site}>
+            <Constellation count={60} className={styles.siteStars} />
             <div className={`${styles.siteBrand} ${styles.rise}`} style={at(0.5)}>
               <span className={styles.siteRow}>
                 <Logo size={56} shake={false} />
