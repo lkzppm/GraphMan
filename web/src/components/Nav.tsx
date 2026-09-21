@@ -146,36 +146,39 @@ export default function Nav() {
           <span className={styles.menuIcon} aria-hidden="true" />
         </button>
       </div>
-      {open && (
-        <>
-          <button
-            type="button"
-            className={styles.backdrop}
-            aria-label={t.nav.close}
-            tabIndex={-1}
-            onClick={() => setOpen(false)}
-          />
-          <nav id="site-drawer" className={styles.drawer} aria-label={t.nav.pages}>
-            {TABS.map((tab, i) => {
-              const active = i === activeIndex;
-              return (
-                <Link
-                  key={tab.href}
-                  href={tab.href}
-                  className={styles.drawerLink}
-                  data-active={active || undefined}
-                  aria-current={active ? 'page' : undefined}
-                >
-                  <span className={`mono ${styles.drawerIndex}`}>
-                    {String(i + 1).padStart(2, '0')}
-                  </span>
-                  {t.nav[tab.label]}
-                </Link>
-              );
-            })}
-          </nav>
-        </>
-      )}
+      {/* Always mounted so it can grow and shrink; inert while closed. */}
+      <button
+        type="button"
+        className={styles.backdrop}
+        aria-label={t.nav.close}
+        tabIndex={-1}
+        inert={!open}
+        onClick={() => setOpen(false)}
+      />
+      <nav
+        id="site-drawer"
+        className={styles.drawer}
+        aria-label={t.nav.pages}
+        data-open={open || undefined}
+        inert={!open}
+      >
+        <div className={styles.drawerInner}>
+          {TABS.map((tab, i) => {
+            const active = i === activeIndex;
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                className={styles.drawerLink}
+                data-active={active || undefined}
+                aria-current={active ? 'page' : undefined}
+              >
+                {t.nav[tab.label]}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </header>
   );
 }
