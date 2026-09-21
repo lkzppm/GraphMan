@@ -346,15 +346,40 @@ the WebGPU one, drawn only when discs are at least 5 px.
   and a blue underline on hover; the bar slides in on load.
 - **Notice**: floating bar bottom-centre, rises in.
 - **Presentation** (`/presentation`, `Deck`): five slides, each filling the
-  viewport under the nav — cover (the mark, the wordmark, the tagline, the
-  stack), architecture (the `Graph` trait beside the three crates),
-  decisions (five numbered cards), case studies (one dense table fed by
-  `results.json`: memory of the list and the matrix, BFS/DFS on the list,
-  components, the best diameter answer with `≥` for bounds), the
-  observatory (four fact tiles and the call to action). ← → / space /
-  PageUp-Down move, Home/End jump, F is full screen (the bar fades unless
-  hovered); a thin bar holds prev/next, dots, the counter and the hint.
-  Slides rise in; the hidden ones are `inert`.
+  viewport under the nav, every one a drawing that runs when the slide
+  arrives (motion is gated on the current slide, so going back replays it,
+  the way the mark redraws itself on load). **Cover**: the live mark, the
+  wordmark, the tagline, both authors, the stack. **Architecture**: a map
+  read left to right, the course's file, the `EdgeList` step riding on the
+  first edge, the library as one panel (the `Graph` trait with its methods
+  as chips, the five algorithms fanned above it, the three representations
+  below), the two front ends; edges draw in order and boxes pop at their
+  ends; it stacks under 900 px with the edges turned. **Decisions**: five
+  cards, a 168 × 96 figure on a `--bg-2` well, an index, a title and a mono
+  caption, no body; the figures run one after another: the parser's grey
+  self-loop and duplicate struck out and dimmed, a BFS lit level by level
+  on the canvas ramp and stopped by a break, a row of cells where only the
+  touched ones light and are swept back, two bars against a budget line
+  with the bitset matrix running off the figure, and the BFS runs each
+  diameter method spent on the largest graph where all four finished, from
+  `results.json`, with the counts after the bars. **Case studies**: one
+  brief sheet fed by `results.json`, a row per graph: the name, the size in
+  mono, the memory of the list and the matrix and the mean BFS and DFS on
+  the list as bars growing on two log scales shared by every row
+  (`lib/scale.ts`), a dashed bar labelled with what a refused
+  representation would have needed, the component count and the best
+  diameter answer with `≥` for a bound; a legend names the four colours,
+  the machine and the timing rule take one line under the sheet, and a
+  button opens the case-studies page, which holds the rest. **Try it**: a
+  browser frame holding a BFS drawn on the level ramp, its wave looping
+  level by level while the slide is up, three facts in its foot, and beside
+  it the QR code to the observatory (`public/brand/qr-observatory.svg`,
+  the deep level blue on white, 280 px so the back row can scan it), the
+  address under it, the supported browsers as a comment, the call to
+  action and the source. ← → / space / PageUp-Down and a touch swipe move,
+  Home/End jump, F is full screen (the bar fades unless hovered); a thin
+  bar holds prev/next, dots, the counter and the hint. The hidden slides
+  are `inert`.
 
 ## The canvas
 
