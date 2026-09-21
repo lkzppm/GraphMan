@@ -12,9 +12,9 @@ Setas do teclado trocam de slide; voltar um slide reinicia a animação.
 ## Slide 1, capa (20 s)
 
 - Deixar a marca terminar de se desenhar antes de falar (uns 2 s).
-- Uma frase: "GraphMan é uma biblioteca de grafos em Rust que mede a si
-  mesma: o mesmo código roda os estudos de caso na linha de comando e o
-  observatório no navegador."
+- Uma frase, já que o slide não a traz: "GraphMan é uma biblioteca de
+  grafos em Rust; o mesmo código roda os estudos de caso na linha de
+  comando e o observatório no navegador."
 - Nomes da dupla, e só. A pilha embaixo não precisa ser lida.
 
 ## Slide 2, arquitetura (1 min 30 s)
@@ -26,17 +26,19 @@ Deixar o mapa se desenhar da esquerda para a direita e acompanhar com a fala.
 - **EdgeList**: a leitura normaliza uma vez só: descarta laços, orienta
   cada aresta como [menor, maior], ordena e remove duplicatas. Toda
   representação nasce dessa lista ordenada.
-- **trait Graph**: cinco métodos. É a única coisa que um algoritmo conhece.
-- **Três representações** implementam o trait: lista de adjacência,
-  matriz de bits, CSR (dois arrays). O usuário escolhe uma na borda, com
-  um `match` só, e nada mais no código sabe qual foi escolhida.
-- **Algoritmos escritos uma vez**, genéricos sobre o trait, e
+- **A biblioteca** (o crate Rust, ícone azul): três jeitos de guardar o
+  mesmo grafo, desenhados como são. Lista de adjacência: um vetor por
+  vértice. Matriz de bits: n² bits, simétrica. CSR: dois arrays, offsets
+  sobre vizinhos. O usuário escolhe uma na borda, com um `match` só, e
+  nada mais no código sabe qual foi escolhida.
+- **Os algoritmos** (a linha embaixo): BFS, DFS, distância, componentes e
+  diâmetro escritos uma vez sobre o trait `Graph`, cinco métodos, e
   monomorfizados pelo compilador: sem chamada virtual no laço interno.
   Trocar a representação não muda o resultado, só o custo. Os testes
   exigem árvores de busca idênticas nas três.
-- **Duas pontas**: o binário com os estudos de caso e o crate wasm que
-  vira o observatório. Mesma biblioteca, sem cópia.
-- Fechar com a legenda: "armazenamento é uma estratégia".
+- **Duas pontas** (a seta bifurca): o binário com os estudos de caso e o
+  crate wasm que vira o observatório. Mesma biblioteca, sem cópia.
+- Fechar: "armazenamento é uma estratégia, não uma decisão da biblioteca".
 
 ## Slide 3, decisões (1 min 30 s)
 
@@ -64,17 +66,21 @@ que elas animam.
    grafos da disciplina são aleatórios, o pior caso para esses métodos,
    e os números estão aí como saíram.
 
-## Slide 4, estudos de caso (1 min 30 s)
+## Slide 4, benchmark (1 min 30 s)
 
-A tabela que o enunciado pede, em barras. Não ler linha por linha: apontar
-três coisas e mandar para a aba de estudos de caso.
+A tabela que o enunciado pede, em barras: três por medida, uma cor por
+representação (lista azul, matriz azul-claro, CSR azul-escuro). Não ler
+linha por linha: apontar três coisas e mandar para a aba de estudos de caso.
 
 - **Memória**: a lista cresce com n + m; a matriz de bits estoura o
   orçamento a partir do grafo 3 (barra tracejada com o que ela precisaria:
-  17,6 GB nos grafos 3 e 4, quase 3 TB nos grafos 5 e 6).
-- **Tempo**: média de 100 buscas de raízes distintas na lista, sem leitura
-  nem escrita. De 0,4 ms no grafo 1 a 0,2 s no grafo 6. DFS é mais lenta
-  que BFS na mesma representação, sobretudo nos grafos esparsos.
+  17,6 GB nos grafos 3 e 4, quase 3 TB nos grafos 5 e 6). CSR é a menor
+  das três em todos os grafos.
+- **Tempo**: média de 100 buscas de raízes distintas, sem leitura nem
+  escrita. De 0,2 ms no grafo 1 a 0,3 s no grafo 6. A matriz é de 3 a 10
+  vezes mais lenta onde cabe; CSR é a mais rápida, por localidade de
+  cache. DFS é mais lenta que BFS na mesma representação, sobretudo nos
+  grafos esparsos.
 - **Componentes e diâmetro**: grafo 2 tem 10 componentes, os grafos 5 e 6
   têm 5 e guardam o diâmetro (59 e 19) na menor componente, o que o
   driver aproveita para podar as maiores.
@@ -83,17 +89,19 @@ três coisas e mandar para a aba de estudos de caso.
   aba de estudos de caso e no relatório." Clicar no botão só se sobrar
   tempo.
 
-## Slide 5, experimente (1 min plus demo)
+## Slide 5, teste no seu navegador (1 min plus demo)
 
 - "Tudo isso roda na sua aba: o mesmo crate Rust compilado para
   WebAssembly lê o arquivo e o WebGPU desenha."
-- Apontar o QR e pausar 10 s para a sala apontar a câmera. Avisar:
-  Chrome, Edge, Safari 26 ou Firefox recente; muitos Android não expõem
-  WebGPU e vão ver um aviso, o site está lá mesmo assim.
+- O QR leva à página inicial do site; de lá, a aba Observatório. Apontar
+  o QR e pausar 10 s para a sala apontar a câmera. Avisar: o observatório
+  precisa de Chrome, Edge, Safari 26 ou Firefox recente; muitos Android
+  não expõem WebGPU e vão ver um aviso, o resto do site funciona.
 - Com o tempo que sobrar, trocar de aba e soltar o `grafo_1.txt` no
   observatório: clicar num vértice roda uma BFS, arrastar move, o menu de
   layouts troca radial e camadas. Trinta segundos bastam.
-- Última frase: "código e relatório no GitHub, o link está no slide."
+- Última frase: "código e relatório estão no GitHub, o link está no rodapé
+  do site."
 
 ## Plano B
 

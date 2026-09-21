@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, ChevronLeft, ChevronRight, Expand, Minimize2 } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight, Expand, Minimize2, Terminal } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -15,11 +15,12 @@ import { siNextdotjs, siRust, siVercel, siWebassembly, siWebgpu } from 'simple-i
 import { useT } from '@/i18n/LocaleProvider';
 import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/lib/format';
 import { logScale } from '@/lib/scale';
-import type { DiameterMethod, GraphStudy } from '@/lib/studies';
+import type { DiameterMethod, GraphStudy, Representation } from '@/lib/studies';
 import BrandIcon from './BrandIcon';
 import Constellation from './Constellation';
 import { levelColour } from './GraphFigure';
 import HeroMark from './HeroMark';
+import Logo from './Logo';
 import styles from './Deck.module.css';
 
 const STACK_ICONS = [siRust, siWebassembly, siWebgpu, siNextdotjs, siVercel];
@@ -34,7 +35,7 @@ const SWIPE = 60;
  * is gated on the current slide, so moving away and back replays the
  * drawing like the mark on the landing page replays on load: the
  * architecture map draws its edges in order, the decision figures run, the
- * bars of the case-study sheet grow, the observatory mock keeps a BFS wave
+ * bars of the benchmark sheet grow, the browser mock keeps a BFS wave
  * looping next to the QR code. The words come from the dictionary, the
  * numbers from the same results.json as the case-studies page.
  */
@@ -102,8 +103,8 @@ export default function Deck({ studies }: { studies: GraphStudy[] }) {
     <Cover key="cover" t={t} />,
     <Architecture key="architecture" t={t} />,
     <Decisions key="decisions" t={t} studies={studies} />,
-    <Studies key="studies" t={t} studies={studies} />,
-    <Observatory key="observatory" t={t} />,
+    <Benchmark key="benchmark" t={t} studies={studies} />,
+    <TryIt key="try" t={t} />,
   ];
 
   return (
@@ -174,21 +175,16 @@ type T = ReturnType<typeof useT>;
 /** Seconds into the slide's arrival at which an element starts moving. */
 const at = (seconds: number) => ({ '--d': `${seconds}s` }) as CSSProperties;
 
-/** The head every slide but the cover wears. */
-function Head({ eyebrow, title, lead }: { eyebrow: string; title: string; lead?: string }) {
+/** The head every slide but the cover wears: the slide's number and one word. */
+function Head({ eyebrow, title }: { eyebrow: string; title: string }) {
   return (
     <header className={styles.head}>
-      <p className={`eyebrow ${styles.rise}`} style={at(0)}>
+      <p className={`mono ${styles.index} ${styles.rise}`} style={at(0)}>
         {eyebrow}
       </p>
       <h2 className={`${styles.title} ${styles.rise}`} style={at(0.08)}>
         {title}
       </h2>
-      {lead && (
-        <p className={`${styles.lead} ${styles.rise}`} style={at(0.16)}>
-          {lead}
-        </p>
-      )}
     </header>
   );
 }
@@ -202,14 +198,13 @@ function Cover({ t }: { t: T }) {
       <Constellation count={70} className={styles.stars} />
       <div className={styles.coverInner}>
         <div className={styles.coverMark}>
-          <HeroMark size={320} />
+          <HeroMark size={380} />
         </div>
         <div className={styles.coverText}>
           <p className="eyebrow">{s.eyebrow}</p>
           <h1 className={`mono ${styles.wordmark}`}>
             graphman<span className="accent">.</span>
           </h1>
-          <p className={styles.tagline}>{s.tagline}</p>
           <p className={`label ${styles.authors}`}>
             {s.authors.map((name, i) => (
               <span key={name}>
@@ -233,13 +228,13 @@ function Cover({ t }: { t: T }) {
 }
 
 /* ---- 01 architecture: the map ----------------------------------------------
-   Read left to right: the course's file, the normalising step, the library
-   (the trait in the middle, the algorithms written once above it, the three
-   representations below it) and the two front ends. Edges draw in like the
-   mark's, boxes pop in at the end of their edge. */
+   Read left to right: the course's file, the normalising step riding on the
+   first edge, the library (one Rust crate: three ways to store a graph,
+   drawn as what they are, and the algorithms written once over them), then
+   an edge that forks to the two front ends. Edges draw in like the mark's,
+   boxes pop in at the end of their edge. */
 
-/** A horizontal edge with a vertex at its tail and an arrowhead at its
-    head; it turns with the map when the slide gets narrow. */
+/** A horizontal edge with a vertex at its tail and an arrowhead at its head. */
 function Edge({ delay }: { delay: number }) {
   return (
     <svg className={styles.edge} viewBox="0 0 48 12" aria-hidden="true" style={at(delay)}>
@@ -250,30 +245,148 @@ function Edge({ delay }: { delay: number }) {
   );
 }
 
-/** The fan joining a tier of the library to the boxes under (or over) it:
-    one edge from the tier's vertex to the centre of each box. */
-function Fan({ count, up, delay }: { count: number; up?: boolean; delay: number }) {
-  const x = (i: number) => `${((i + 0.5) / count) * 100}%`;
-  const from = up ? 25 : 3;
-  const to = up ? 3 : 25;
+/** An edge that forks: one vertex at the tail, two arrowheads. */
+function Fork({ delay }: { delay: number }) {
   return (
-    <svg className={styles.fan} aria-hidden="true" style={at(delay)}>
-      {Array.from({ length: count }, (_, i) => (
-        <line
-          key={i}
-          className={styles.fanLine}
-          x1="50%"
-          y1={from}
-          x2={x(i)}
-          y2={to}
-          pathLength={1}
-          style={at(delay + i * 0.05)}
-        />
-      ))}
-      <circle className={styles.fanRoot} cx="50%" cy={from} r="3" />
+    <svg className={styles.fork} viewBox="0 0 64 120" aria-hidden="true" style={at(delay)}>
+      <circle className={styles.edgeTail} cx="5" cy="60" r="3" />
+      <path
+        className={styles.edgeLine}
+        d="M 5 60 L 22 60 C 36 60, 38 30, 54 30"
+        pathLength={1}
+        style={at(delay)}
+      />
+      <path
+        className={styles.edgeLine}
+        d="M 5 60 L 22 60 C 36 60, 38 90, 54 90"
+        pathLength={1}
+        style={at(delay + 0.1)}
+      />
+      <path className={styles.edgeHead} d="M 53 25.5 L 62 30 L 53 34.5 z" style={at(delay)} />
+      <path className={styles.edgeHead} d="M 53 85.5 L 62 90 L 53 94.5 z" style={at(delay + 0.1)} />
     </svg>
   );
 }
+
+/** An adjacency list: a column of vertices, each with its row of neighbours. */
+function PictoList({ delay }: { delay: number }) {
+  const rows = [4, 2, 3, 1];
+  return (
+    <svg viewBox="0 0 96 64" className={styles.picto} aria-hidden="true">
+      {rows.map((count, r) => {
+        const y = 10 + r * 15;
+        return (
+          <g key={r}>
+            <rect
+              className={styles.pictoHead}
+              style={at(delay + r * 0.06)}
+              x="6"
+              y={y - 5}
+              width="10"
+              height="10"
+              rx="2"
+            />
+            <line
+              className={styles.pictoLine}
+              style={at(delay + 0.1 + r * 0.06)}
+              x1="16"
+              y1={y}
+              x2={22 + count * 14}
+              y2={y}
+              pathLength={1}
+            />
+            {Array.from({ length: count }, (_, i) => (
+              <circle
+                key={i}
+                className={styles.pictoDot}
+                style={at(delay + 0.2 + r * 0.06 + i * 0.05)}
+                cx={28 + i * 14}
+                cy={y}
+                r="3.6"
+              />
+            ))}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/** A bit matrix: a symmetric grid with a few bits set. */
+function PictoMatrix({ delay }: { delay: number }) {
+  const n = 6;
+  const set = new Set(['0-1', '0-3', '1-2', '2-4', '3-4', '4-5', '1-5']);
+  const on = (i: number, j: number) => set.has(`${i}-${j}`) || set.has(`${j}-${i}`);
+  return (
+    <svg viewBox="0 0 96 64" className={styles.picto} aria-hidden="true">
+      {Array.from({ length: n * n }, (_, k) => {
+        const i = Math.floor(k / n);
+        const j = k % n;
+        return (
+          <rect
+            key={k}
+            className={on(i, j) ? styles.pictoBitOn : styles.pictoBit}
+            style={at(delay + (i + j) * 0.04)}
+            x={20 + j * 9.5}
+            y={4 + i * 9.5}
+            width="8"
+            height="8"
+            rx="1.5"
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+/** Compressed sparse row: a short array of offsets over a long array of
+    neighbours, each offset pointing at where its row starts. */
+function PictoCsr({ delay }: { delay: number }) {
+  const offsets = [0, 3, 5, 8];
+  const width = 9;
+  return (
+    <svg viewBox="0 0 96 64" className={styles.picto} aria-hidden="true">
+      {offsets.map((_, i) => (
+        <rect
+          key={`o${i}`}
+          className={styles.pictoHead}
+          style={at(delay + i * 0.05)}
+          x={14 + i * 14}
+          y="8"
+          width="10"
+          height="10"
+          rx="2"
+        />
+      ))}
+      {Array.from({ length: 9 }, (_, i) => (
+        <rect
+          key={`n${i}`}
+          className={styles.pictoCell}
+          style={at(delay + 0.3 + i * 0.04)}
+          x={6 + i * width}
+          y="42"
+          width={width - 1.5}
+          height="10"
+          rx="1.5"
+        />
+      ))}
+      {offsets.slice(0, 3).map((o, i) => (
+        <line
+          key={`l${i}`}
+          className={styles.pictoLine}
+          style={at(delay + 0.5 + i * 0.08)}
+          x1={19 + i * 14}
+          y1="18"
+          x2={6 + o * width + (width - 1.5) / 2}
+          y2="42"
+          pathLength={1}
+        />
+      ))}
+    </svg>
+  );
+}
+
+const PICTOS = [PictoList, PictoMatrix, PictoCsr];
 
 function Architecture({ t }: { t: T }) {
   const s = t.presentation.slides.architecture;
@@ -287,6 +400,7 @@ function Architecture({ t }: { t: T }) {
           <div className={styles.file}>
             <span className={`mono ${styles.fileName}`}>{s.input.name}</span>
             <span className={styles.fileLines} aria-hidden="true">
+              <i />
               <i />
               <i />
               <i />
@@ -308,80 +422,73 @@ function Architecture({ t }: { t: T }) {
         </div>
 
         {/* the library */}
-        <div className={`${styles.core} ${styles.pop}`} style={at(0.85)}>
-          <p className={`mono ${styles.coreName}`}>{s.core}</p>
-
-          <ul className={styles.algos}>
-            {s.algos.map((a, i) => (
-              <li key={a} className={`${styles.algo} ${styles.pop}`} style={at(1.85 + i * 0.06)}>
-                {a}
-              </li>
-            ))}
-          </ul>
-          <p className={`label ${styles.tier} ${styles.pop}`} style={at(1.75)}>
-            {s.generic}
-          </p>
-          <Fan count={s.algos.length} up delay={1.55} />
-
-          <div className={`${styles.trait} ${styles.pop}`} style={at(1.0)}>
-            <span className={`mono ${styles.traitName}`}>{s.trait.name}</span>
-            <ul className={styles.methods}>
-              {s.trait.methods.map((m, i) => (
-                <li
-                  key={m}
-                  className={`mono ${styles.method} ${styles.pop}`}
-                  style={at(1.1 + i * 0.05)}
-                >
-                  {m}
-                </li>
-              ))}
-            </ul>
+        <div className={`${styles.core} ${styles.pop}`} style={at(0.9)}>
+          <div className={styles.coreHead}>
+            <BrandIcon icon={siRust} size={30} className={styles.coreIcon} />
+            <span className={`mono ${styles.coreName}`}>{s.core.name}</span>
+            <span className={`comment ${styles.coreHint}`}>{s.core.hint}</span>
           </div>
-
-          <Fan count={s.reps.length} delay={1.3} />
-          <p className={`label ${styles.tier} ${styles.pop}`} style={at(1.4)}>
-            {s.implement}
-          </p>
           <ul className={styles.reps}>
-            {s.reps.map((r, i) => (
-              <li key={r.name} className={`${styles.rep} ${styles.pop}`} style={at(1.5 + i * 0.08)}>
-                <span className={`mono ${styles.repName}`}>{r.name}</span>
-                <span className={`mono ${styles.repHint}`}>{r.hint}</span>
-              </li>
-            ))}
+            {s.reps.map((r, i) => {
+              const Picto = PICTOS[i];
+              return (
+                <li
+                  key={r.name}
+                  className={`${styles.rep} ${styles.pop}`}
+                  style={at(1.1 + i * 0.15)}
+                >
+                  <Picto delay={1.2 + i * 0.15} />
+                  <span className={`mono ${styles.repName}`}>{r.name}</span>
+                  <span className={`mono ${styles.repHint}`}>{r.hint}</span>
+                </li>
+              );
+            })}
           </ul>
+          <div className={`${styles.algos} ${styles.rise}`} style={at(1.9)}>
+            <p className={`label ${styles.algoRow}`}>
+              {s.algos.map((a, i) => (
+                <span key={a}>
+                  {i > 0 && <span className={styles.algoDot}>·</span>}
+                  {a}
+                </span>
+              ))}
+            </p>
+            <p className="comment">{s.generic}</p>
+          </div>
         </div>
 
         <div className={styles.step}>
-          <Edge delay={2.15} />
+          <Fork delay={2.2} />
         </div>
 
         {/* the two front ends */}
-        <div className={`${styles.side} ${styles.pop}`} style={at(2.4)}>
-          <p className="label">{s.outputsLabel}</p>
-          {s.outputs.map((o, i) => (
-            <div
-              key={o.name}
-              className={`${styles.output} ${styles.pop}`}
-              style={at(2.5 + i * 0.12)}
-            >
-              <span className={`mono ${styles.outputName}`}>{o.name}</span>
-              <span className={styles.outputHint}>{o.hint}</span>
-            </div>
-          ))}
+        <div className={styles.side}>
+          <div className={`${styles.output} ${styles.pop}`} style={at(2.5)}>
+            <Terminal
+              size={26}
+              strokeWidth={1.6}
+              className={styles.outputIcon}
+              aria-hidden="true"
+            />
+            <span className={`mono ${styles.outputName}`}>{s.outputs[0].name}</span>
+            <span className={styles.outputHint}>{s.outputs[0].hint}</span>
+          </div>
+          <div className={`${styles.output} ${styles.pop}`} style={at(2.6)}>
+            <BrandIcon icon={siWebassembly} size={26} className={styles.outputIcon} />
+            <span className={`mono ${styles.outputName}`}>{s.outputs[1].name}</span>
+            <span className={styles.outputHint}>{s.outputs[1].hint}</span>
+          </div>
         </div>
       </div>
-      <p className={`comment ${styles.mapCaption} ${styles.rise}`} style={at(2.9)}>
-        {s.caption}
-      </p>
     </div>
   );
 }
 
 /* ---- 02 decisions: five figures --------------------------------------------
-   Each figure is drawn in a 168 × 96 box and runs once when the slide
-   arrives; it holds no words except numbers, so it reads the same in both
-   languages. The title and the mono caption are the dictionary's. */
+   Five columns under one rule, each a figure drawn in a 168 × 96 box that
+   runs once when the slide arrives; it holds no words except numbers, so it
+   reads the same in both languages. The title and the mono caption are the
+   dictionary's. */
 
 /** Normalising once: a self-loop and a second copy of an edge appear grey,
     get struck out and fade; what the parser keeps draws in blue. */
@@ -636,34 +743,34 @@ function Decisions({ t, studies }: { t: T; studies: GraphStudy[] }) {
   return (
     <div className={styles.body}>
       <Head eyebrow={s.eyebrow} title={s.title} />
-      <ul className={styles.cards}>
+      <ol className={styles.steps}>
         {s.items.map((item, i) => (
           <li
             key={item.title}
-            className={`${styles.card} ${styles.rise}`}
-            style={at(0.15 + i * 0.08)}
+            className={`${styles.stepItem} ${styles.rise}`}
+            style={at(0.15 + i * 0.1)}
           >
-            <span className={styles.figWrap} style={at(0.5 + i * 0.25)}>
+            <span className={styles.figWrap} style={at(0.5 + i * 0.3)}>
               {figures[i]}
             </span>
-            <span className={`mono ${styles.cardIndex}`}>{String(i + 1).padStart(2, '0')}</span>
-            <h3 className={styles.cardTitle}>{item.title}</h3>
+            <span className={`mono ${styles.stepIndex}`}>{String(i + 1).padStart(2, '0')}</span>
+            <h3 className={styles.stepTitle}>{item.title}</h3>
             <span className={`comment ${styles.caption}`}>
               {item.caption}
               {i === 4 && shown && ` ${s.on(t.studies.graph(graphNumber(shown.name)))}`}
             </span>
           </li>
         ))}
-      </ul>
+      </ol>
     </div>
   );
 }
 
-/* ---- 03 case studies: one brief sheet ---------------------------------------
-   One row per graph, bars on two shared log scales (memory of the list and
-   the matrix, mean BFS and DFS on the list), the component count and the
-   best diameter answer. Everything else lives on the case-studies page,
-   which the button under the sheet opens. */
+/* ---- 03 benchmark: one sheet ----------------------------------------------
+   One row per graph, three bars per measure (one per representation) on
+   shared log scales: memory after loading, mean BFS, mean DFS. Then the
+   component count and the best diameter answer. Everything else lives on
+   the case-studies page, which the button under the sheet opens. */
 
 /** One bar: a track, a fill that grows to its share of the shared scale,
     the measurement after it. A refused representation gets a dashed bar
@@ -702,40 +809,41 @@ function Bar({
   );
 }
 
-const MEMORY_COLOURS = { adjacency_list: 'var(--accent)', adjacency_matrix: 'var(--accent-2)' };
-const TIME_COLOURS = { bfs: 'var(--accent)', dfs: 'var(--level-0)' };
+const REPRESENTATIONS: Representation[] = ['adjacency_list', 'adjacency_matrix', 'csr'];
+const REP_COLOURS: Record<Representation, string> = {
+  adjacency_list: 'var(--accent)',
+  adjacency_matrix: 'var(--accent-2)',
+  csr: 'var(--level-0)',
+};
 
-function Studies({ t, studies }: { t: T; studies: GraphStudy[] }) {
+function Benchmark({ t, studies }: { t: T; studies: GraphStudy[] }) {
   const s = t.presentation.slides.studies;
   const c = s.columns;
 
-  const memory = (study: GraphStudy, repr: keyof typeof MEMORY_COLOURS) =>
-    study.representations.find((r) => r.representation === repr)?.memory ?? null;
-  const footprint = (study: GraphStudy, repr: keyof typeof MEMORY_COLOURS) => {
-    const m = memory(study, repr);
+  const rep = (study: GraphStudy, r: Representation) =>
+    study.representations.find((x) => x.representation === r);
+  const footprint = (study: GraphStudy, r: Representation) => {
+    const m = rep(study, r)?.memory;
     if (!m || !m.feasible) return null;
     return m.footprint_bytes ?? m.resident_bytes;
   };
-  const timing = (study: GraphStudy, algo: keyof typeof TIME_COLOURS) =>
-    study.representations.find((r) => r.representation === 'adjacency_list')?.[algo]?.mean_ms ??
-    null;
+  const timing = (study: GraphStudy, r: Representation, algo: 'bfs' | 'dfs') =>
+    rep(study, r)?.[algo]?.mean_ms ?? null;
 
-  // Both scales run over every graph, so a bar's length means the same on
-  // every row: memory tops out at the largest representation that fitted.
+  // Both scales run over every graph and representation, so a bar's length
+  // means the same on every row.
   const bytes = studies.flatMap((study) =>
-    (['adjacency_list', 'adjacency_matrix'] as const)
-      .map((r) => footprint(study, r))
-      .filter((b): b is number => b !== null),
+    REPRESENTATIONS.map((r) => footprint(study, r)).filter((b): b is number => b !== null),
   );
   const times = studies.flatMap((study) =>
-    (['bfs', 'dfs'] as const).map((a) => timing(study, a) ?? 0),
+    REPRESENTATIONS.flatMap((r) => (['bfs', 'dfs'] as const).map((a) => timing(study, r, a) ?? 0)),
   );
   const memoryScale = logScale(1 << 20, Math.max(1 << 21, ...bytes));
   const timeScale = logScale(0.1, Math.max(1, ...times));
 
-  const memoryBar = (study: GraphStudy, repr: keyof typeof MEMORY_COLOURS, delay: number) => {
-    const m = memory(study, repr);
-    const colour = MEMORY_COLOURS[repr];
+  const memoryBar = (study: GraphStudy, r: Representation, delay: number) => {
+    const m = rep(study, r)?.memory;
+    const colour = REP_COLOURS[r];
     if (!m) return <Bar width={0} colour={colour} value="·" delay={delay} />;
     if (!m.feasible)
       return (
@@ -753,9 +861,9 @@ function Studies({ t, studies }: { t: T; studies: GraphStudy[] }) {
       <Bar width={memoryScale(value)} colour={colour} value={formatBytes(value)} delay={delay} />
     );
   };
-  const timeBar = (study: GraphStudy, algo: keyof typeof TIME_COLOURS, delay: number) => {
-    const ms = timing(study, algo);
-    const colour = TIME_COLOURS[algo];
+  const timeBar = (study: GraphStudy, r: Representation, algo: 'bfs' | 'dfs', delay: number) => {
+    const ms = timing(study, r, algo);
+    const colour = REP_COLOURS[r];
     if (ms === null) return <Bar width={0} colour={colour} value="·" delay={delay} />;
     return <Bar width={timeScale(ms)} colour={colour} value={formatMs(ms)} delay={delay} />;
   };
@@ -771,7 +879,7 @@ function Studies({ t, studies }: { t: T; studies: GraphStudy[] }) {
 
   return (
     <div className={styles.body}>
-      <div className={styles.studiesHead}>
+      <div className={styles.benchHead}>
         <Head eyebrow={s.eyebrow} title={s.title} />
         <ul className={`${styles.legend} ${styles.rise}`} style={at(0.2)}>
           {s.legend.map((l) => (
@@ -788,7 +896,8 @@ function Studies({ t, studies }: { t: T; studies: GraphStudy[] }) {
           <span>{c.graph}</span>
           <span>{c.size}</span>
           <span>{c.memory}</span>
-          <span>{c.search}</span>
+          <span>{c.bfs}</span>
+          <span>{c.dfs}</span>
           <span className={styles.centre}>{c.components}</span>
           <span className={styles.centre}>{c.diameter}</span>
         </div>
@@ -806,20 +915,27 @@ function Studies({ t, studies }: { t: T; studies: GraphStudy[] }) {
                 </span>
               </span>
               <span className={styles.group} data-wide="true">
-                {memoryBar(study, 'adjacency_list', d + 0.2)}
-                {memoryBar(study, 'adjacency_matrix', d + 0.3)}
+                {REPRESENTATIONS.map((r, k) => (
+                  <span key={r}>{memoryBar(study, r, d + 0.2 + k * 0.08)}</span>
+                ))}
               </span>
               <span className={styles.group}>
-                {timeBar(study, 'bfs', d + 0.4)}
-                {timeBar(study, 'dfs', d + 0.5)}
+                {REPRESENTATIONS.map((r, k) => (
+                  <span key={r}>{timeBar(study, r, 'bfs', d + 0.4 + k * 0.08)}</span>
+                ))}
+              </span>
+              <span className={styles.group}>
+                {REPRESENTATIONS.map((r, k) => (
+                  <span key={r}>{timeBar(study, r, 'dfs', d + 0.5 + k * 0.08)}</span>
+                ))}
               </span>
               <span
                 className={`mono ${styles.answer} ${styles.centre} ${styles.figFade}`}
-                style={at(d + 0.7)}
+                style={at(d + 0.8)}
               >
                 {formatInt(study.components.count)}
               </span>
-              <span className={`${styles.centre} ${styles.figFade}`} style={at(d + 0.8)}>
+              <span className={`${styles.centre} ${styles.figFade}`} style={at(d + 0.9)}>
                 {diameter(study)}
               </span>
             </div>
@@ -827,10 +943,9 @@ function Studies({ t, studies }: { t: T; studies: GraphStudy[] }) {
         })}
       </div>
 
-      <div className={`${styles.studiesFoot} ${styles.rise}`} style={at(1.2)}>
+      <div className={`${styles.benchFoot} ${styles.rise}`} style={at(1.3)}>
         <p className={styles.note}>
-          {machine && `${s.machine(machine.cpu, formatBytes(machine.total_memory_bytes))} `}
-          {s.more}
+          {machine && s.machine(machine.cpu, formatBytes(machine.total_memory_bytes))}
         </p>
         <Link href="/studies" className={`button button--primary ${styles.more}`}>
           {s.cta}
@@ -841,12 +956,12 @@ function Studies({ t, studies }: { t: T; studies: GraphStudy[] }) {
   );
 }
 
-/* ---- 04 try it: the observatory and the QR code ----------------------------
-   A browser frame with a BFS drawn on the canvas's level ramp, its wave
-   looping level by level while the slide is up, and beside it the QR code
-   that takes the room to the observatory. The graph is built once from a
-   fixed seed, so it is the same on the server, in the browser and in the
-   room. */
+/* ---- 04 try it: the site in a browser, and the QR code ---------------------
+   A browser frame showing the site's front: the mark and the wordmark on
+   the left, a BFS drawn on the canvas's level ramp on the right, its wave
+   looping level by level while the slide is up. Beside it the QR code that
+   takes the room to the home page. The graph is built once from a fixed
+   seed, so it is the same on the server, in the browser and in the room. */
 
 const MOCK = buildMock();
 
@@ -897,13 +1012,13 @@ function buildMock() {
 /** Seconds between two levels of the looping wave. */
 const WAVE_STEP = 0.45;
 
-function Observatory({ t }: { t: T }) {
+function TryIt({ t }: { t: T }) {
   const s = t.presentation.slides.observatory;
   const wave = (level: number) =>
     ({ '--d': `${level * WAVE_STEP}s`, '--c': levelColour(level, MOCK.maxLevel) }) as CSSProperties;
   return (
     <div className={styles.body}>
-      <Head eyebrow={s.eyebrow} title={s.title} lead={s.lead} />
+      <Head eyebrow={s.eyebrow} title={s.title} />
       <div className={styles.tryIt}>
         <div className={`${styles.browser} ${styles.rise}`} style={at(0.2)}>
           <div className={styles.browserBar}>
@@ -914,76 +1029,66 @@ function Observatory({ t }: { t: T }) {
             </span>
             <span className={`mono ${styles.url}`}>{s.url}</span>
           </div>
-          <svg viewBox="-132 -118 264 236" className={styles.mock} aria-hidden="true">
-            {MOCK.edges.map((e, i) =>
-              e.tree ? (
-                <line
+          <div className={styles.site}>
+            <div className={`${styles.siteBrand} ${styles.rise}`} style={at(0.5)}>
+              <Logo size={72} shake={false} />
+              <span className={`mono ${styles.siteWordmark}`}>
+                graphman<span className="accent">.</span>
+              </span>
+              <span className="eyebrow">{t.presentation.slides.cover.eyebrow}</span>
+            </div>
+            <svg viewBox="-132 -118 264 236" className={styles.mock} aria-hidden="true">
+              {MOCK.edges.map((e, i) =>
+                e.tree ? (
+                  <line
+                    key={i}
+                    className={styles.mockEdge}
+                    style={wave(MOCK.nodes[e.b].level)}
+                    x1={MOCK.nodes[e.a].x}
+                    y1={MOCK.nodes[e.a].y}
+                    x2={MOCK.nodes[e.b].x}
+                    y2={MOCK.nodes[e.b].y}
+                  />
+                ) : (
+                  <line
+                    key={i}
+                    className={styles.mockChord}
+                    x1={MOCK.nodes[e.a].x}
+                    y1={MOCK.nodes[e.a].y}
+                    x2={MOCK.nodes[e.b].x}
+                    y2={MOCK.nodes[e.b].y}
+                  />
+                ),
+              )}
+              {MOCK.nodes.map((n, i) => (
+                <circle
                   key={i}
-                  className={styles.mockEdge}
-                  style={wave(MOCK.nodes[e.b].level)}
-                  x1={MOCK.nodes[e.a].x}
-                  y1={MOCK.nodes[e.a].y}
-                  x2={MOCK.nodes[e.b].x}
-                  y2={MOCK.nodes[e.b].y}
+                  className={styles.mockNode}
+                  style={wave(n.level)}
+                  cx={n.x}
+                  cy={n.y}
+                  r={n.level === 0 ? 5 : 3.4}
                 />
-              ) : (
-                <line
-                  key={i}
-                  className={styles.mockChord}
-                  x1={MOCK.nodes[e.a].x}
-                  y1={MOCK.nodes[e.a].y}
-                  x2={MOCK.nodes[e.b].x}
-                  y2={MOCK.nodes[e.b].y}
-                />
-              ),
-            )}
-            {MOCK.nodes.map((n, i) => (
-              <circle
-                key={i}
-                className={styles.mockNode}
-                style={wave(n.level)}
-                cx={n.x}
-                cy={n.y}
-                r={n.level === 0 ? 5 : 3.4}
-              />
-            ))}
-          </svg>
-          <dl className={styles.facts}>
-            {s.facts.map((fact, i) => (
-              <div
-                key={fact.label}
-                className={`${styles.fact} ${styles.rise}`}
-                style={at(0.6 + i * 0.1)}
-              >
-                <dt className="label">{fact.label}</dt>
-                <dd className={`mono ${styles.factValue}`}>{fact.value}</dd>
-              </div>
-            ))}
-          </dl>
+              ))}
+            </svg>
+          </div>
         </div>
 
         <div className={`${styles.qr} ${styles.rise}`} style={at(0.4)}>
           <p className={`label ${styles.scan}`}>{s.scan}</p>
           <a href={`https://${s.url}`} className={styles.qrCard} target="_blank" rel="noreferrer">
             {/* eslint-disable-next-line @next/next/no-img-element -- a static SVG, drawn at build */}
-            <img src="/brand/qr-observatory.svg" alt={s.url} width={280} height={280} />
+            <img src="/brand/qr-home.svg" alt={s.url} width={300} height={300} />
           </a>
-          <p className={`mono ${styles.qrUrl}`}>{s.url}</p>
-          <p className="comment">{s.browsers}</p>
-          <div className={styles.actions}>
-            <Link href="/observatory" className="button button--primary">
-              {s.cta}
-              <ArrowRight size={14} aria-hidden="true" />
-            </Link>
-            <a
-              className={`mono ${styles.source}`}
-              href="https://github.com/lkzppm/GraphMan"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {s.source}
-            </a>
-          </div>
+          <a
+            href={`https://${s.url}`}
+            className={`mono ${styles.qrUrl}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {s.url}
+          </a>
+          <p className={`comment ${styles.browsers}`}>{s.browsers}</p>
         </div>
       </div>
     </div>

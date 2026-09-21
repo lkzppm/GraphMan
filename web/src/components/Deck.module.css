@@ -6,7 +6,8 @@
    on `.slideCurrent`, so an element's animation restarts each time its
    slide comes back, like the mark on the landing page redraws itself on
    load. Each animated element carries `--d`, the second at which it
-   starts, set inline from the component. */
+   starts, set inline from the component. Slides are sized for a projector:
+   the body runs to 1600 px and the drawings scale with their columns. */
 
 .deck {
   position: relative;
@@ -178,30 +179,28 @@
 
 .body {
   width: 100%;
-  max-width: 1180px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 20px var(--gutter);
+  padding: 24px 48px;
 }
 
 .head {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 22px;
+  align-items: baseline;
+  gap: 18px;
+  margin-bottom: 28px;
+}
+
+.index {
+  font-size: 16px;
+  color: var(--accent);
 }
 
 .title {
-  font-size: clamp(26px, 3vw, 38px);
+  font-size: clamp(30px, 3.2vw, 46px);
   font-weight: 600;
   letter-spacing: -0.03em;
-  line-height: 1.12;
-}
-
-.lead {
-  color: var(--fg-2);
-  font-size: 15px;
-  max-width: 720px;
-  line-height: 1.55;
+  line-height: 1.1;
 }
 
 /* ---- cover ---------------------------------------------------------------- */
@@ -225,22 +224,22 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 64px;
+  gap: 72px;
   width: 100%;
-  max-width: var(--container);
-  padding: 0 var(--gutter);
+  max-width: 1200px;
+  padding: 0 48px;
 }
 
 .coverMark {
-  width: 320px;
+  width: 380px;
 }
 
 .coverText {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 14px;
-  max-width: 560px;
+  gap: 18px;
+  max-width: 600px;
 }
 
 .coverText > * {
@@ -259,29 +258,20 @@
   animation-delay: 0.26s;
 }
 
-.coverText > :nth-child(5) {
-  animation-delay: 0.34s;
-}
-
 .wordmark {
-  font-size: clamp(48px, 7vw, 88px);
+  font-size: clamp(56px, 7.5vw, 104px);
   font-weight: 500;
   letter-spacing: -0.05em;
   line-height: 1;
 }
 
-.tagline {
-  font-size: 20px;
-  line-height: 1.5;
-  color: var(--fg-2);
-}
-
 .authors {
+  font-size: 14px;
   color: var(--fg);
 }
 
 .authorDot {
-  margin: 0 10px;
+  margin: 0 12px;
   color: var(--accent);
 }
 
@@ -289,9 +279,9 @@
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 20px;
-  margin-top: 6px;
-  padding-top: 16px;
+  gap: 6px 22px;
+  margin-top: 8px;
+  padding-top: 18px;
   border-top: 1px solid var(--border);
   width: 100%;
 }
@@ -309,7 +299,7 @@
 
 .map {
   display: grid;
-  grid-template-columns: 180px 130px minmax(0, 1fr) 80px 210px;
+  grid-template-columns: minmax(200px, 0.9fr) 140px minmax(0, 2.6fr) 100px minmax(230px, 1fr);
   align-items: center;
   gap: 0 8px;
 }
@@ -317,15 +307,15 @@
 .side {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .file,
 .output {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
+  gap: 8px;
+  padding: 16px 18px;
   border: 1px solid var(--border);
   border-left: 2px solid var(--accent);
   border-radius: var(--radius);
@@ -334,14 +324,15 @@
 
 .fileName,
 .outputName {
-  font-size: 13px;
+  font-size: 15px;
   color: var(--fg);
 }
 
 .fileLines {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
+  margin-top: 2px;
 }
 
 .fileLines i {
@@ -352,7 +343,7 @@
 }
 
 .fileLines i:nth-child(1) {
-  width: 18%;
+  width: 14%;
   background: var(--accent);
 }
 
@@ -368,8 +359,16 @@
   width: 36%;
 }
 
+.fileLines i:nth-child(5) {
+  width: 42%;
+}
+
+.outputIcon {
+  color: var(--accent);
+}
+
 .outputHint {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--fg-2);
 }
 
@@ -379,24 +378,29 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
 }
 
 .edge {
   display: block;
   width: 100%;
-  height: 16px;
+  height: 18px;
   overflow: visible;
 }
 
-.edgeTail,
-.fanRoot {
+.fork {
+  display: block;
+  width: 100%;
+  height: 150px;
+  overflow: visible;
+}
+
+.edgeTail {
   fill: var(--accent);
 }
 
-.edgeLine,
-.fanLine {
+.edgeLine {
   fill: none;
   stroke: var(--border-2);
   stroke-width: 1.5;
@@ -404,8 +408,7 @@
   stroke-dashoffset: 1;
 }
 
-.slideCurrent .edgeLine,
-.slideCurrent .fanLine {
+.slideCurrent .edgeLine {
   animation: draw 0.5s var(--ease) var(--d, 0s) both;
 }
 
@@ -419,7 +422,7 @@
 }
 
 .stepName {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--fg);
 }
 
@@ -428,98 +431,46 @@
   line-height: 1.4;
 }
 
-/* The library: one panel with an accent top edge. */
+/* The library: one panel with an accent top edge, the Rust glyph in blue,
+   the three storages drawn as what they are, the algorithms in one line. */
 .core {
-  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  padding: 18px 18px 16px;
+  gap: 22px;
+  padding: 22px 26px 20px;
   border: 1px solid var(--border);
   border-top: 2px solid var(--accent);
   border-radius: var(--radius);
   background: var(--bg-2);
 }
 
+.coreHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.coreIcon {
+  color: var(--accent);
+  flex: none;
+}
+
 .coreName {
-  position: absolute;
-  top: 8px;
-  left: 12px;
-  font-size: 11px;
-  color: var(--fg-3);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--fg);
 }
 
-.tier {
-  text-align: center;
-  font-size: 11px;
+.coreHint {
+  margin-left: auto;
+  text-align: right;
 }
 
-.fan {
-  display: block;
-  width: 100%;
-  height: 28px;
-  overflow: visible;
-}
-
-.algos,
 .reps {
   list-style: none;
   display: grid;
-  gap: 8px;
-}
-
-.algos {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  margin-top: 4px;
-}
-
-.algo {
-  padding: 8px 6px;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 500;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-}
-
-.trait {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  margin: 4px auto;
-  padding: 12px 18px 14px;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius);
-  background: var(--accent-muted);
-}
-
-.traitName {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--accent);
-}
-
-.methods {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
-}
-
-.method {
-  padding: 3px 8px;
-  font-size: 11px;
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--fg-2);
-}
-
-.reps {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .rep {
@@ -527,14 +478,24 @@
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 10px 8px;
+  padding: 14px 12px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
 }
 
+.picto {
+  display: block;
+  width: 100%;
+  max-width: 190px;
+  height: auto;
+  aspect-ratio: 96 / 64;
+  margin-bottom: 8px;
+  overflow: visible;
+}
+
 .repName {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--fg);
 }
 
@@ -543,48 +504,102 @@
   color: var(--fg-3);
 }
 
-.mapCaption {
-  margin-top: 18px;
+/* Pictogram parts: vertices and set bits are blue, cells are paper. */
+.pictoHead,
+.pictoDot,
+.pictoBitOn {
+  fill: var(--accent);
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+}
+
+.pictoBit,
+.pictoCell {
+  fill: var(--bg);
+  stroke: var(--border-2);
+  stroke-width: 1;
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+}
+
+.pictoLine {
+  fill: none;
+  stroke: var(--border-2);
+  stroke-width: 1.5;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.slideCurrent .pictoHead,
+.slideCurrent .pictoDot,
+.slideCurrent .pictoBitOn,
+.slideCurrent .pictoBit,
+.slideCurrent .pictoCell {
+  animation: pop 0.35s var(--ease-spring) var(--d, 0s) both;
+}
+
+.slideCurrent .pictoLine {
+  animation: draw 0.4s var(--ease) var(--d, 0s) both;
+}
+
+.algos {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
   text-align: center;
 }
 
-/* ---- 02 decisions: five figures ----------------------------------------- */
+.algoRow {
+  font-size: 14px;
+  color: var(--fg);
+}
 
-.cards {
+.algoDot {
+  margin: 0 12px;
+  color: var(--accent);
+}
+
+/* ---- 02 decisions: five figures under one rule -------------------------- */
+
+.steps {
   list-style: none;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 14px;
+  gap: 0 36px;
+  margin-top: 8px;
 }
 
-.card {
+/* A column: a hairline on top with a blue segment, the figure large, the
+   index, the title and the caption. No box. */
+.stepItem {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  transition:
-    transform 0.3s var(--ease),
-    box-shadow 0.3s var(--ease),
-    border-color 0.3s var(--ease);
+  gap: 10px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
 }
 
-.card:hover {
-  transform: translateY(-3px);
-  border-color: var(--border-2);
-  box-shadow: var(--shadow-hover);
+.stepItem::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 36px;
+  height: 2px;
+  background: var(--accent);
 }
 
-/* The figure box: a bg-2 plate, the drawing scales with the card. The
-   `--d` on the wrapper offsets every animation inside it, so the five
+/* The `--d` on the wrapper offsets every animation inside it, so the five
    figures run one after another. */
 .figWrap {
   display: block;
-  padding: 10px;
-  border-radius: var(--radius);
-  background: var(--bg-2);
+  padding: 6px 0 10px;
 }
 
 .fig {
@@ -595,26 +610,25 @@
   overflow: visible;
 }
 
-.cardIndex {
-  margin-top: 4px;
-  font-size: 11px;
+.stepIndex {
+  font-size: 13px;
   color: var(--accent);
 }
 
-.cardTitle {
-  font-size: 15px;
+.stepTitle {
+  font-size: clamp(17px, 1.4vw, 22px);
   font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.3;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
 }
 
 .caption {
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
-/* Figure parts. Each animated part reads the card's `--d` through the
-   wrapper (inherited custom property) plus its own offset, so the same
-   `at()` delays work inside the figure. */
+/* Figure parts. Each animated part reads the wrapper's `--d` plus its own
+   offset (inherited custom property), so the same `at()` delays work
+   inside the figure. */
 .figNode {
   fill: var(--accent);
   transform-box: fill-box;
@@ -790,26 +804,26 @@
   animation: draw 0.4s var(--ease) var(--d, 0s) both;
 }
 
-/* ---- 03 case studies: the sheet ----------------------------------------- */
+/* ---- 03 benchmark: the sheet -------------------------------------------- */
 
-.studiesHead {
+.benchHead {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
 }
 
-.studiesHead .head {
-  margin-bottom: 16px;
+.benchHead .head {
+  margin-bottom: 20px;
 }
 
 .legend {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 18px;
-  margin-bottom: 20px;
-  font-size: 12px;
+  gap: 6px 20px;
+  margin-bottom: 26px;
+  font-size: 13px;
   color: var(--fg-2);
 }
 
@@ -820,8 +834,8 @@
 }
 
 .swatch {
-  width: 14px;
-  height: 6px;
+  width: 16px;
+  height: 7px;
   border-radius: 2px;
   background: var(--accent);
 }
@@ -830,7 +844,7 @@
   background: var(--accent-2);
 }
 
-.swatch[data-key='dfs'] {
+.swatch[data-key='csr'] {
   background: var(--level-0);
 }
 
@@ -844,22 +858,22 @@
 .sheetHead,
 .row {
   display: grid;
-  grid-template-columns: 90px 118px minmax(0, 2fr) minmax(0, 1.5fr) 72px 96px;
+  grid-template-columns: 110px 130px minmax(0, 1.7fr) minmax(0, 1.3fr) minmax(0, 1.3fr) 84px 110px;
   align-items: center;
-  gap: 0 20px;
-  padding: 0 16px;
+  gap: 0 24px;
+  padding: 0 20px;
 }
 
 .sheetHead {
-  height: 34px;
+  height: 36px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-2);
   font-size: 11px;
 }
 
 .row {
-  padding-top: 9px;
-  padding-bottom: 9px;
+  padding-top: 11px;
+  padding-bottom: 11px;
   border-bottom: 1px solid var(--border);
   transition: background 0.2s var(--ease);
 }
@@ -873,18 +887,18 @@
 }
 
 .rowName {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 500;
 }
 
 .size {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .sizeValue {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--fg);
 }
 
@@ -896,24 +910,24 @@
 .group {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 .barRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 76px;
+  grid-template-columns: minmax(0, 1fr) 78px;
   align-items: center;
   gap: 10px;
 }
 
 .group[data-wide] .barRow {
-  grid-template-columns: minmax(0, 1fr) 120px;
+  grid-template-columns: minmax(0, 1fr) 126px;
 }
 
 .track {
   position: relative;
   display: block;
-  height: 8px;
+  height: 9px;
   border-radius: 2px;
   background: var(--bg-3);
   overflow: hidden;
@@ -949,7 +963,7 @@
 }
 
 .answer {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 500;
   color: var(--fg);
 }
@@ -962,32 +976,32 @@
   text-align: center;
 }
 
-.studiesFoot {
+.benchFoot {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
 .note {
   font-size: 12px;
   line-height: 1.5;
   color: var(--fg-3);
-  max-width: 760px;
+  max-width: 820px;
 }
 
 .more {
   flex: none;
 }
 
-/* ---- 04 try it: the observatory and the QR code ------------------------- */
+/* ---- 04 try it: the site in a browser, the QR code ---------------------- */
 
 .tryIt {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  align-items: start;
-  gap: 40px;
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.75fr);
+  align-items: center;
+  gap: 56px;
 }
 
 .browser {
@@ -1002,20 +1016,20 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 34px;
-  padding: 0 12px;
+  height: 38px;
+  padding: 0 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-2);
 }
 
 .lights {
   display: inline-flex;
-  gap: 5px;
+  gap: 6px;
 }
 
 .lights i {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   border: 1px solid var(--border-2);
   background: var(--bg);
@@ -1023,18 +1037,42 @@
 
 .url {
   flex: 1;
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: var(--radius);
   background: var(--bg);
   border: 1px solid var(--border);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-2);
+}
+
+/* The site's front in the frame: the mark and the wordmark on the left,
+   the search on the right. */
+.site {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  align-items: center;
+  height: clamp(320px, 52vh, 600px);
+  padding: 0 32px;
+}
+
+.siteBrand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.siteWordmark {
+  font-size: clamp(36px, 3.4vw, 52px);
+  font-weight: 500;
+  letter-spacing: -0.05em;
+  line-height: 1;
 }
 
 .mock {
   display: block;
   width: 100%;
-  height: 300px;
+  height: 100%;
 }
 
 /* The wave: tree edges and vertices sit dim and light in level order,
@@ -1062,40 +1100,11 @@
   animation: waveFill 4.4s ease-in-out var(--d, 0s) infinite;
 }
 
-.facts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-top: 1px solid var(--border);
-}
-
-.fact {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 16px;
-  border-right: 1px solid var(--border);
-}
-
-.fact:last-child {
-  border-right: 0;
-}
-
-.fact dt {
-  font-size: 10px;
-}
-
-.factValue {
-  font-size: 24px;
-  font-weight: 500;
-  color: var(--accent);
-  line-height: 1;
-}
-
 .qr {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   text-align: center;
 }
 
@@ -1107,7 +1116,7 @@
    Big on purpose, the back row has to scan it. */
 .qrCard {
   display: block;
-  padding: 14px;
+  padding: 16px;
   border: 1px solid var(--border);
   border-top: 2px solid var(--accent);
   border-radius: var(--radius);
@@ -1124,36 +1133,26 @@
 
 .qrCard img {
   display: block;
-  width: 280px;
-  height: 280px;
+  width: min(300px, 32vh);
+  height: min(300px, 32vh);
 }
 
 .qrUrl {
-  font-size: 15px;
+  font-size: clamp(18px, 1.5vw, 24px);
+  font-weight: 500;
   color: var(--fg);
-}
-
-.actions {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  margin-top: 6px;
-}
-
-.source {
-  font-size: 12px;
-  color: var(--fg-2);
   text-decoration: none;
-  border-bottom: 1px solid transparent;
-  transition:
-    color 0.2s var(--ease),
-    border-color 0.2s var(--ease);
+  border-bottom: 2px solid var(--accent);
+  transition: color 0.2s var(--ease);
 }
 
-.source:hover {
+.qrUrl:hover {
   color: var(--accent);
-  border-color: var(--accent);
+}
+
+.browsers {
+  max-width: 320px;
+  line-height: 1.5;
 }
 
 /* ---- keyframes ------------------------------------------------------------
@@ -1300,9 +1299,13 @@
 
 /* ---- folds ---------------------------------------------------------------- */
 
-@media (max-width: 1100px) {
+@media (max-width: 1280px) {
+  .body {
+    padding: 20px 32px;
+  }
+
   .map {
-    grid-template-columns: 150px 110px minmax(0, 1fr) 60px 180px;
+    grid-template-columns: minmax(170px, 0.8fr) 110px minmax(0, 2.4fr) 80px minmax(200px, 0.9fr);
   }
 
   .barRow {
@@ -1310,16 +1313,17 @@
   }
 
   .group[data-wide] .barRow {
-    grid-template-columns: minmax(0, 1fr) 110px;
+    grid-template-columns: minmax(0, 1fr) 112px;
+  }
+
+  .sheetHead,
+  .row {
+    gap: 0 16px;
   }
 
   .tryIt {
-    grid-template-columns: minmax(0, 1fr) 300px;
-  }
-
-  .qrCard img {
-    width: 240px;
-    height: 240px;
+    grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
+    gap: 36px;
   }
 }
 
@@ -1328,6 +1332,10 @@
   .slide {
     overflow-y: auto;
     justify-content: flex-start;
+  }
+
+  .body {
+    padding: 16px var(--gutter);
   }
 
   .hint {
@@ -1339,7 +1347,7 @@
     justify-items: center;
     gap: 28px;
     text-align: center;
-    padding-top: 24px;
+    padding: 24px var(--gutter) 0;
   }
 
   .coverMark {
@@ -1364,7 +1372,7 @@
   /* The map stacks: the edges turn with it. */
   .map {
     grid-template-columns: minmax(0, 1fr);
-    gap: 8px 0;
+    gap: 10px 0;
   }
 
   .step {
@@ -1375,29 +1383,36 @@
   }
 
   .edge {
-    width: 16px;
-    height: 40px;
+    width: 18px;
+    height: 44px;
     transform: rotate(90deg);
     transform-origin: center;
+  }
+
+  .fork {
+    width: 90px;
+    height: 90px;
+    transform: rotate(90deg);
   }
 
   .stepHint {
     text-align: left;
   }
 
-  .algos {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .coreHint {
+    display: none;
   }
 
-  .cards {
+  .steps {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px 28px;
   }
 
-  .card:last-child {
+  .stepItem:last-child {
     grid-column: 1 / -1;
   }
 
-  .studiesHead {
+  .benchHead {
     flex-direction: column;
     align-items: flex-start;
     gap: 0;
@@ -1409,10 +1424,10 @@
 
   .sheetHead,
   .row {
-    min-width: 720px;
+    min-width: 900px;
   }
 
-  .studiesFoot {
+  .benchFoot {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -1422,36 +1437,48 @@
     gap: 28px;
   }
 
+  .site {
+    grid-template-columns: 1fr;
+    height: auto;
+    padding: 20px 20px 0;
+    gap: 8px;
+  }
+
+  .siteBrand {
+    align-items: center;
+    text-align: center;
+  }
+
   .mock {
-    height: 220px;
+    height: 240px;
   }
 }
 
 @media (max-width: 600px) {
-  .body {
-    padding: 16px var(--gutter);
+  .head {
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 18px;
   }
 
-  .cards {
+  .steps {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .algos,
   .reps {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .facts {
-    grid-template-columns: 1fr;
+  .rep {
+    flex-direction: row;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 4px 12px;
   }
 
-  .fact {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .fact:last-child {
-    border-bottom: 0;
+  .picto {
+    width: 120px;
+    margin-bottom: 0;
   }
 
   .qrCard img {
@@ -1468,13 +1495,18 @@
   .figNode,
   .edgeHead,
   .figLoopHead,
+  .pictoHead,
+  .pictoDot,
+  .pictoBitOn,
+  .pictoBit,
+  .pictoCell,
   .coverText > * {
     opacity: 1;
     animation: none !important;
   }
 
   .edgeLine,
-  .fanLine,
+  .pictoLine,
   .figEdge,
   .figDrop path,
   .figCross path,
