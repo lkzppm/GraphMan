@@ -414,23 +414,26 @@ export const pt: Dictionary = {
       architecture: {
         eyebrow: '01 · arquitetura',
         title: 'Armazenamento é uma estratégia.',
-        lead: 'Um trait de cinco métodos; cada algoritmo escrito uma vez e monomorfizado por representação. Trocar o armazenamento não muda o resultado, só o custo.',
-        crates: [
-          {
-            name: 'graphman',
-            role: 'a biblioteca',
-            body: 'Trait Graph · lista de adjacência, matriz de bits, CSR · BFS, DFS, distâncias, componentes, quatro diâmetros · métricas de memória. Sem CLI, sem E/S: compila para wasm.',
-          },
-          {
-            name: 'graphman-cli',
-            role: 'o programa',
-            body: 'Um comando por funcionalidade, e study: o estudo de caso inteiro em JSON e Markdown, memória em um subprocesso novo por representação.',
-          },
-          {
-            name: 'graphman-wasm',
-            role: 'os bindings',
-            body: 'Só cola de wasm-bindgen. O mesmo código que rodou os estudos é o motor do observatório no navegador.',
-          },
+        lead: 'Um trait de cinco métodos, cada algoritmo escrito uma vez e monomorfizado por representação. Trocar o armazenamento não muda o resultado, só o custo.',
+        input: { label: 'entrada', name: 'grafo.txt', hint: 'uma lista de arestas' },
+        core: { label: 'a biblioteca', name: 'graphman' },
+        trait: {
+          name: 'trait Graph',
+          hint: 'cinco métodos',
+          methods: ['vertex_count', 'edge_count', 'degree', 'neighbors', 'has_edge'],
+        },
+        implement: 'implementado por',
+        reps: [
+          { name: 'AdjacencyList', hint: 'O(n + m) palavras' },
+          { name: 'AdjacencyMatrix', hint: 'O(n²) bits' },
+          { name: 'Csr', hint: 'dois arrays' },
+        ],
+        generic: 'escritos uma vez, genéricos sobre Graph',
+        algos: ['BFS', 'DFS', 'distâncias', 'componentes', 'diâmetro'],
+        outputsLabel: 'duas pontas',
+        outputs: [
+          { name: 'graphman-cli', hint: 'os estudos de caso, em JSON e Markdown' },
+          { name: 'graphman-wasm', hint: 'o observatório, no navegador' },
         ],
       },
       decisions: {
@@ -439,23 +442,28 @@ export const pt: Dictionary = {
         items: [
           {
             title: 'Normalizar uma vez',
-            body: 'Laços descartados, arestas orientadas [min, max], ordenadas e sem duplicatas, e toda representação ganha linhas de vizinhos crescentes e árvores de busca idênticas. Os testes garantem.',
+            body: 'Laços descartados, arestas orientadas [min, max], ordenadas e sem duplicatas: toda representação vê o mesmo grafo e devolve a mesma árvore de busca.',
+            caption: 'a leitura descarta o cinza, uma vez',
           },
           {
             title: 'Buscas observáveis',
-            body: 'BFS e DFS reportam a um Visitor e podem parar cedo; distância é uma BFS com parada. A DFS é iterativa, com memória O(profundidade).',
+            body: 'BFS e DFS reportam a um Visitor e podem parar cedo; distância é uma BFS que para no destino. A DFS é iterativa, memória O(profundidade).',
+            caption: 'um visitor para a busca no meio do nível',
           },
           {
             title: 'Nada é alocado duas vezes',
             body: 'Uma SearchTree reinicia só o que a última busca tocou: milhares de BFS não custam alocações nem limpezas O(n).',
+            caption: 'só as células tocadas são reiniciadas',
           },
           {
-            title: 'Orçamento de memória, não crash',
-            body: 'Os construtores calculam seus bytes antes; uma matriz de bits de 375 000 vértices (17,6 GB) vira um erro tipado e uma célula na tabela.',
+            title: 'Orçamento, não crash',
+            body: 'Os construtores calculam seus bytes antes: uma matriz de bits de 375 000 vértices (17,6 GB) vira um erro tipado e uma célula na tabela.',
+            caption: 'a matriz estoura o orçamento',
           },
           {
             title: 'Diâmetro de quatro jeitos',
-            body: 'Força bruta, iFUB, limites de Takes–Kosters e 4-sweep, todos canceláveis com um orçamento; componentes percorridas da maior para a menor.',
+            body: 'Força bruta, iFUB, limites de Takes–Kosters e 4-sweep, todos canceláveis, componentes percorridas da maior para a menor.',
+            caption: 'as BFS que cada método gasta',
           },
         ],
       },
@@ -464,22 +472,26 @@ export const pt: Dictionary = {
         title: 'Medido, não estimado.',
         columns: {
           graph: 'Grafo',
-          vertices: 'Vértices',
-          edges: 'Arestas',
-          list: 'Lista (memória)',
-          matrix: 'Matriz (memória)',
-          bfs: 'BFS (lista)',
-          dfs: 'DFS (lista)',
-          components: 'Componentes',
+          size: 'Tamanho',
+          memory: 'Memória',
+          time: 'Busca média',
+          components: 'Comp.',
           diameter: 'Diâmetro',
         },
+        legend: [
+          { key: 'list', label: 'lista de adjacência' },
+          { key: 'matrix', label: 'matriz de bits' },
+          { key: 'bfs', label: 'BFS' },
+          { key: 'dfs', label: 'DFS' },
+        ],
         needed: (bytes: string) => `precisa de ${bytes}`,
-        note: 'Memória: footprint do processo após carregar. Tempos: média de 100 buscas a partir de raízes distintas, sem leitura nem escrita. ≥ marca um limite inferior (4-sweep ou método interrompido pelo orçamento).',
+        note: 'As barras estão em uma escala log comum. Memória: footprint do processo após carregar. Tempos: média de 100 buscas a partir de raízes distintas na lista de adjacência, sem leitura nem escrita. ≥ marca um limite inferior (4-sweep ou método interrompido pelo orçamento).',
       },
       observatory: {
         eyebrow: '04 · o observatório',
         title: 'A biblioteca, na sua aba.',
         lead: 'Sem servidor, sem dados exportados: o arquivo que você solta é lido pelo crate Rust compilado para WebAssembly e desenhado com WebGPU.',
+        url: 'graphman.vercel.app/observatory',
         facts: [
           {
             value: '1.3M',
