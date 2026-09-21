@@ -15,6 +15,8 @@ export const pt: Dictionary = {
     presentation: 'Apresentação',
     source: 'Código no GitHub',
     language: 'Idioma',
+    menu: 'Menu',
+    close: 'Fechar o menu',
   },
 
   hero: {

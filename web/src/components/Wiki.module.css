@@ -130,6 +130,7 @@
 /* ---- the column --------------------------------------------------------- */
 
 .content {
+  width: 100%;
   min-width: 0;
   max-width: 760px;
   display: flex;
@@ -524,12 +525,8 @@
   }
 
   .flow {
-    grid-template-columns: 1fr;
+    flex-direction: column;
     gap: 14px;
-  }
-
-  .flow::before {
-    display: none;
   }
 
   .bar {
@@ -538,5 +535,34 @@
 
   .barValue {
     grid-column: 2;
+  }
+
+  /* The call sequence goes under its figure. */
+  .sequence {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 28px;
+  }
+
+  .callText {
+    min-width: 0;
+  }
+
+  /* Wide tables scroll sideways inside their own frame. */
+  .table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .flow .piece {
+    align-items: center;
+    text-align: center;
+  }
+
+  .flowNote {
+    max-width: 240px;
   }
 }

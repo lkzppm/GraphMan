@@ -202,15 +202,177 @@
   transform: translateY(-1px);
 }
 
-@media (max-width: 760px) {
-  .tabs {
-    margin-left: 0;
+/* ---- the phone bar ------------------------------------------------------ */
+
+/* The menu button: two hairlines that cross once the drawer is open. Only
+   drawn on a phone, where the tabs would not fit in the bar. */
+.menuButton {
+  display: none;
+  position: relative;
+  width: 38px;
+  height: 34px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  color: var(--fg);
+  transition:
+    color 0.2s var(--ease),
+    border-color 0.2s var(--ease);
+}
+
+.menuButton:hover,
+.nav[data-open] .menuButton {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.menuIcon,
+.menuIcon::before,
+.menuIcon::after {
+  position: absolute;
+  left: 50%;
+  width: 16px;
+  height: 1.5px;
+  background: currentColor;
+  transition:
+    transform 0.3s var(--ease),
+    opacity 0.2s var(--ease);
+}
+
+.menuIcon {
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: transparent;
+}
+
+.menuIcon::before,
+.menuIcon::after {
+  content: '';
+  left: 0;
+}
+
+.menuIcon::before {
+  transform: translateY(-4px);
+}
+
+.menuIcon::after {
+  transform: translateY(4px);
+}
+
+.nav[data-open] .menuIcon::before {
+  transform: rotate(45deg);
+}
+
+.nav[data-open] .menuIcon::after {
+  transform: rotate(-45deg);
+}
+
+/* The rest of the page dims behind the open drawer; a tap on it closes. */
+/* Absolute, not fixed: the bar's backdrop-filter makes it the containing
+   block of fixed descendants anyway, so the sheet hangs from its bottom. */
+.backdrop {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 100dvh;
+  z-index: 18;
+  background: rgba(23, 23, 23, 0.18);
+  cursor: default;
+  animation: fadeIn 0.25s var(--ease) both;
+}
+
+/* The drawer: the pages as one column under the bar, each with its index
+   in mono, the current one in blue with the accent edge. */
+.drawer {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 19;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 16px 32px -16px rgba(0, 0, 0, 0.16);
+  animation: drawerIn 0.3s var(--ease) both;
+}
+
+.drawerLink {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  box-shadow: inset 0 0 0 0 var(--accent);
+  transition:
+    color 0.2s var(--ease),
+    background 0.2s var(--ease),
+    box-shadow 0.2s var(--ease);
+}
+
+.drawerLink:first-child {
+  border-top: 0;
+}
+
+.drawerLink:hover {
+  color: var(--fg);
+  background: var(--bg-2);
+}
+
+.drawerLink[data-active] {
+  color: var(--accent);
+  background: var(--accent-muted);
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
+
+.drawerIndex {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.drawerLink[data-active] .drawerIndex {
+  color: var(--accent);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
   }
 
-  .tab,
-  .tabActive {
-    padding: 0 8px;
-    font-size: 11px;
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes drawerIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .inner {
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  .tabs {
+    display: none;
+  }
+
+  .menuButton {
+    display: inline-flex;
   }
 
   .wordmark,
@@ -225,5 +387,13 @@
   .languageButton,
   .languageActive {
     padding: 4px 6px;
+  }
+}
+
+/* With the tabs in a drawer the wordmark fits again on all but the
+   narrowest phones. */
+@media (min-width: 400px) and (max-width: 900px) {
+  .wordmark {
+    display: inline;
   }
 }

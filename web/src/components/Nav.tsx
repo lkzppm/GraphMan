@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { siGithub } from 'simple-icons';
 import { useLocale } from '@/i18n/LocaleProvider';
 import type { Dictionary } from '@/i18n';
@@ -20,7 +20,8 @@ const TABS: { href: string; label: keyof Dictionary['nav'] }[] = [
 /**
  * Sticky top bar: the wordmark is the home link, then one tab per other
  * page. A single blue indicator (pill and underline) slides to whichever
- * tab is current, Golem-style, and hides on the home page.
+ * tab is current, Golem-style, and hides on the home page. On a phone the
+ * tabs move into a drawer under the bar, opened by the menu button.
  */
 export default function Nav() {
   const pathname = usePathname();
@@ -32,8 +33,32 @@ export default function Nav() {
     ready: false,
   });
 
+  // The drawer remembers the route it was opened on, so a route change
+  // closes it without an effect.
+  const [openedOn, setOpenedOn] = useState<string | null>(null);
+  const open = openedOn === pathname;
+  const setOpen = (next: boolean) => setOpenedOn(next ? pathname : null);
+
   const activeIndex = TABS.findIndex((tab) => pathname.startsWith(tab.href));
   const home = pathname === '/';
+
+  // Escape closes the drawer, and so does a window wide enough for the tabs.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenedOn(null);
+    };
+    const wide = window.matchMedia('(min-width: 901px)');
+    const onWide = () => {
+      if (wide.matches) setOpenedOn(null);
+    };
+    window.addEventListener('keydown', onKey);
+    wide.addEventListener('change', onWide);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      wide.removeEventListener('change', onWide);
+    };
+  }, [open]);
 
   useLayoutEffect(() => {
     const list = tabsRef.current;
@@ -53,7 +78,7 @@ export default function Nav() {
   }, [activeIndex, locale]);
 
   return (
-    <header className={styles.nav}>
+    <header className={styles.nav} data-open={open || undefined}>
       <div className={styles.inner}>
         <Link
           href="/"
@@ -110,7 +135,47 @@ export default function Nav() {
           <BrandIcon icon={siGithub} size={18} />
           <span>GitHub</span>
         </a>
+        <button
+          type="button"
+          className={styles.menuButton}
+          aria-expanded={open}
+          aria-controls="site-drawer"
+          aria-label={open ? t.nav.close : t.nav.menu}
+          onClick={() => setOpen(!open)}
+        >
+          <span className={styles.menuIcon} aria-hidden="true" />
+        </button>
       </div>
+      {open && (
+        <>
+          <button
+            type="button"
+            className={styles.backdrop}
+            aria-label={t.nav.close}
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+          />
+          <nav id="site-drawer" className={styles.drawer} aria-label={t.nav.pages}>
+            {TABS.map((tab, i) => {
+              const active = i === activeIndex;
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  className={styles.drawerLink}
+                  data-active={active || undefined}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  <span className={`mono ${styles.drawerIndex}`}>
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  {t.nav[tab.label]}
+                </Link>
+              );
+            })}
+          </nav>
+        </>
+      )}
     </header>
   );
 }

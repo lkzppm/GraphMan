@@ -636,6 +636,21 @@ g[data-apart] .sideLabel {
 
 /* ---- folds ---------------------------------------------------------------- */
 
+/* Below 1100 px the three-column last row gives the diameter its own row. */
+@media (max-width: 1100px) {
+  .rowLast {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  }
+
+  .rowLast > :last-child {
+    grid-column: 1 / -1;
+  }
+
+  .rowLast .track {
+    padding-right: 220px;
+  }
+}
+
 @media (max-width: 900px) {
   .content {
     gap: 28px;
@@ -664,7 +679,7 @@ g[data-apart] .sideLabel {
   .track,
   .rowThree .track,
   .rowLast .track {
-    padding-right: 160px;
+    padding-right: 220px;
   }
 }
 
@@ -697,5 +712,45 @@ g[data-apart] .sideLabel {
   .bar,
   .rowThree .bar {
     grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  /* The diameter methods keep their full names. */
+  .rowLast .bar {
+    grid-template-columns: 92px minmax(0, 1fr);
+  }
+
+  /* The parents tables scroll sideways rather than clipping their cells. */
+  .table {
+    display: block;
+    overflow-x: auto;
+    table-layout: auto;
+    white-space: nowrap;
+  }
+
+  .table thead th:first-child {
+    width: auto;
+  }
+}
+
+/* Seven picks on one edge again, balls only: the sheet's title right under
+   the menu names the current one. */
+@media (max-width: 480px) {
+  .menuInner {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    gap: 0;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .menuInner::before {
+    display: block;
+    left: calc(var(--gutter) + 15px);
+    right: calc(var(--gutter) + 15px);
+    top: 25px;
+  }
+
+  .pickName {
+    display: none;
   }
 }
