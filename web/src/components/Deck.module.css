@@ -755,7 +755,11 @@
   animation: pop 0.4s var(--ease-spring) var(--d, 0s) both;
 }
 
-.slideCurrent .figEdge,
+/* The kept edges redraw on a loop; the dropped ones draw once and dim. */
+.slideCurrent .figEdge {
+  animation: drawLoop 3.2s var(--ease) var(--d, 0s) infinite;
+}
+
 .slideCurrent .figDrop path {
   animation: draw 0.45s var(--ease) var(--d, 0s) both;
 }
@@ -768,23 +772,23 @@
   animation: draw 0.3s var(--ease) var(--d, 0s) both;
 }
 
+/* The search relights level by level, holds, goes dark, and runs again. */
 .slideCurrent .figTree {
-  animation:
-    draw 0.35s var(--ease) var(--d, 0s) both,
-    light 0.35s var(--ease) var(--d, 0s) both;
+  animation: treeLoop 3.6s var(--ease) var(--d, 0s) infinite;
 }
 
 .slideCurrent .figLit {
-  animation: lightFill 0.35s var(--ease) var(--d, 0s) both;
+  animation: litLoop 3.6s var(--ease) var(--d, 0s) infinite;
 }
 
 .slideCurrent .figBreak {
-  animation: draw 0.3s var(--ease) var(--d, 0s) both;
+  animation: breakLoop 3.6s var(--ease) var(--d, 0s) infinite;
 }
 
-/* A lit cell fills, holds, then the reset sweeps it back. */
+/* A lit cell fills, holds, the reset sweeps it back, and the next search
+   lights it again. */
 .slideCurrent .figCellOn {
-  animation: cell 2.4s var(--ease) var(--d, 0s) both;
+  animation: cell 3s var(--ease) var(--d, 0s) infinite;
 }
 
 .slideCurrent .figLoop {
@@ -800,8 +804,11 @@
   animation: growRect 0.8s var(--ease) var(--d, 0s) both;
 }
 
+/* The budget line draws once, then blinks. */
 .slideCurrent .figLimit {
-  animation: draw 0.4s var(--ease) var(--d, 0s) both;
+  animation:
+    draw 0.4s var(--ease) var(--d, 0s) both,
+    blink 1.8s ease-in-out calc(var(--d, 0s) + 0.9s) infinite;
 }
 
 /* ---- 03 benchmark: the sheet -------------------------------------------- */
@@ -1070,15 +1077,18 @@
 /* The site's front: the mark and the wordmark in one row at the top left,
    the thanks under them. */
 .siteBrand {
+  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  align-self: start;
-  gap: 28px;
-  padding-top: 36px;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
 }
 
 .siteRow {
+  position: absolute;
+  top: 32px;
+  left: 0;
   display: inline-flex;
   align-items: center;
   gap: 16px;
@@ -1217,25 +1227,88 @@
   }
 }
 
-@keyframes light {
-  to {
-    stroke: var(--c, var(--accent));
+@keyframes drawLoop {
+  0% {
+    stroke-dashoffset: 1.1;
+  }
+
+  15%,
+  72% {
+    stroke-dashoffset: 0;
+  }
+
+  85%,
+  100% {
+    stroke-dashoffset: 1.1;
   }
 }
 
-@keyframes lightFill {
-  from {
+@keyframes treeLoop {
+  0% {
+    stroke-dashoffset: 1.1;
+    stroke: var(--edge-dim);
+  }
+
+  10%,
+  70% {
+    stroke-dashoffset: 0;
+    stroke: var(--c, var(--accent));
+  }
+
+  80%,
+  100% {
+    stroke-dashoffset: 1.1;
+    stroke: var(--edge-dim);
+  }
+}
+
+@keyframes litLoop {
+  0% {
     fill: var(--node-dim);
     transform: scale(1);
   }
 
-  50% {
+  5% {
     transform: scale(1.35);
   }
 
-  to {
+  10%,
+  70% {
     fill: var(--c, var(--accent));
     transform: scale(1);
+  }
+
+  80%,
+  100% {
+    fill: var(--node-dim);
+    transform: scale(1);
+  }
+}
+
+@keyframes breakLoop {
+  0% {
+    stroke-dashoffset: 1;
+  }
+
+  8%,
+  70% {
+    stroke-dashoffset: 0;
+  }
+
+  80%,
+  100% {
+    stroke-dashoffset: 1;
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.2;
   }
 }
 
@@ -1458,10 +1531,12 @@
   }
 
   .siteBrand {
-    align-items: center;
-    text-align: center;
-    align-self: auto;
-    padding-top: 0;
+    height: auto;
+    gap: 20px;
+  }
+
+  .siteRow {
+    position: static;
   }
 
   .mock {

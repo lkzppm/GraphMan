@@ -102,7 +102,7 @@ export default function Deck({ studies }: { studies: GraphStudy[] }) {
   const slides = [
     <Cover key="cover" t={t} />,
     <Architecture key="architecture" t={t} />,
-    <Decisions key="decisions" t={t} studies={studies} active={index === 2} />,
+    <Decisions key="decisions" t={t} studies={studies} />,
     <Benchmark key="benchmark" t={t} studies={studies} />,
     <TryIt key="try" t={t} />,
   ];
@@ -486,9 +486,11 @@ function Architecture({ t }: { t: T }) {
 
 /* ---- 02 decisions: five figures --------------------------------------------
    Five columns under one rule, each a figure drawn in a 168 × 96 box that
-   runs once when the slide arrives; it holds no words except numbers, so it
+   runs when the slide arrives; it holds no words except numbers, so it
    reads the same in both languages. The title and the mono caption are the
-   dictionary's. */
+   dictionary's. Part of each figure keeps looping while the slide is up
+   (the kept edges redraw, the search relights, the touched cells refill,
+   the budget line blinks); the rest runs once. */
 
 /** Normalising once: a self-loop and a second copy of an edge appear grey,
     get struck out and fade; what the parser keeps draws in blue. */
@@ -724,20 +726,8 @@ function FigDiameter({ t, study }: { t: T; study: GraphStudy | undefined }) {
   );
 }
 
-/** Seconds between two runs of the decision figures while their slide is up. */
-const DECISIONS_LOOP = 5200;
-
-function Decisions({ t, studies, active }: { t: T; studies: GraphStudy[]; active: boolean }) {
+function Decisions({ t, studies }: { t: T; studies: GraphStudy[] }) {
   const s = t.presentation.slides.decisions;
-  // The figures loop: while the slide is current a timer remounts them, so
-  // every animation inside restarts with its delays intact. Leaving the
-  // slide stops the timer; coming back starts a fresh run.
-  const [cycle, setCycle] = useState(0);
-  useEffect(() => {
-    if (!active) return;
-    const id = window.setInterval(() => setCycle((c) => c + 1), DECISIONS_LOOP);
-    return () => window.clearInterval(id);
-  }, [active]);
   // The diameter figure shows the graph on which every method finished, the
   // largest such graph: that is where the counts differ most.
   const shown = [...studies]
@@ -762,7 +752,7 @@ function Decisions({ t, studies, active }: { t: T; studies: GraphStudy[]; active
             className={`${styles.stepItem} ${styles.rise}`}
             style={at(0.15 + i * 0.1)}
           >
-            <span key={cycle} className={styles.figWrap} style={at(0.5 + i * 0.3)}>
+            <span className={styles.figWrap} style={at(0.5 + i * 0.3)}>
               {figures[i]}
             </span>
             <span className={`mono ${styles.stepIndex}`}>{String(i + 1).padStart(2, '0')}</span>
