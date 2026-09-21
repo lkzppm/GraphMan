@@ -35,8 +35,8 @@ const SWIPE = 60;
  * is gated on the current slide, so moving away and back replays the
  * drawing like the mark on the landing page replays on load: the
  * architecture map draws its edges in order, the decision figures run, the
- * bars of the benchmark sheet grow, the browser mock keeps a BFS wave
- * looping next to the QR code. The words come from the dictionary, the
+ * bars of the benchmark sheet grow, the browser frame spells the thanks as
+ * a graph with a wave running along it next to the QR code. The words come from the dictionary, the
  * numbers from the same results.json as the case-studies page.
  */
 export default function Deck({ studies }: { studies: GraphStudy[] }) {
@@ -961,65 +961,38 @@ function Benchmark({ t, studies }: { t: T; studies: GraphStudy[] }) {
 }
 
 /* ---- 04 try it: the site in a browser, and the QR code ---------------------
-   A browser frame showing the site's front: the mark and the wordmark on
-   the left, a BFS drawn on the canvas's level ramp on the right, its wave
-   looping level by level while the slide is up. Beside it the QR code that
-   takes the room to the home page. The graph is built once from a fixed
-   seed, so it is the same on the server, in the browser and in the room. */
+   A browser frame showing the site's front: the mark and the wordmark at
+   the top left, and the thanks spelled as a graph, one letter per vertex,
+   the letters joined in reading order with a few chords so it is a graph
+   and not a path. The edges draw in order like the mark's, the vertices
+   pop in spelling the word, then a wave keeps running along it while the
+   slide is up. Beside it the QR code that takes the room to the home page. */
 
-const MOCK = buildMock();
-
-function buildMock() {
-  let seed = 20260920;
-  const random = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
-  const counts = [1, 6, 12, 17, 21];
-  const radius = [0, 30, 58, 84, 108];
-  const nodes: { x: number; y: number; level: number }[] = [];
-  const rings: number[][] = [];
-  counts.forEach((count, level) => {
-    const start = random() * Math.PI * 2;
-    const ring: number[] = [];
-    for (let i = 0; i < count; i++) {
-      const angle = start + (i + random() * 0.7 - 0.35) * ((Math.PI * 2) / count);
-      const r = radius[level] * (0.84 + random() * 0.28);
-      ring.push(nodes.length);
-      nodes.push({ x: Math.cos(angle) * r, y: Math.sin(angle) * r * 0.9, level });
-    }
-    rings.push(ring);
-  });
-  const edges: { a: number; b: number; tree: boolean }[] = [];
-  for (let level = 1; level < rings.length; level++) {
-    for (const id of rings[level]) {
-      // The nearest vertex of the ring above is the parent: that is the tree edge.
-      let parent = rings[level - 1][0];
-      let best = Infinity;
-      for (const up of rings[level - 1]) {
-        const d = (nodes[up].x - nodes[id].x) ** 2 + (nodes[up].y - nodes[id].y) ** 2;
-        if (d < best) {
-          best = d;
-          parent = up;
-        }
-      }
-      edges.push({ a: parent, b: id, tree: true });
-    }
-  }
-  // A handful of chords, because a graph is not a tree.
-  for (let i = 0; i < 18; i++) {
-    const ring = rings[1 + Math.floor(random() * (rings.length - 1))];
-    const a = ring[Math.floor(random() * ring.length)];
-    const b = ring[Math.floor(random() * ring.length)];
-    if (a !== b) edges.push({ a, b, tree: false });
-  }
-  return { nodes, edges, maxLevel: counts.length - 1 };
+/** Where the letters of `word` sit in an 800 × 320 box: evenly spaced,
+    riding a gentle wave, and which pairs are joined. */
+function spell(word: string) {
+  const letters = [...word.replace(/\s+/g, '').toUpperCase()];
+  const n = letters.length;
+  const nodes = letters.map((letter, i) => ({
+    letter,
+    x: n > 1 ? 64 + (i * 672) / (n - 1) : 400,
+    y: 172 + 62 * Math.sin(i * 0.95 + 0.6),
+  }));
+  const edges: [number, number][] = [];
+  for (let i = 0; i + 1 < n; i++) edges.push([i, i + 1]);
+  const chords: [number, number][] = [];
+  for (let i = 0; i + 2 < n; i += 3) chords.push([i, i + 2]);
+  return { nodes, edges, chords };
 }
 
-/** Seconds between two levels of the looping wave. */
-const WAVE_STEP = 0.45;
+/** Seconds between two letters of the spelling and of the wave. */
+const LETTER_STEP = 0.18;
+const WAVE_PERIOD = 4.2;
 
 function TryIt({ t }: { t: T }) {
   const s = t.presentation.slides.observatory;
-  const wave = (level: number) =>
-    ({ '--d': `${level * WAVE_STEP}s`, '--c': levelColour(level, MOCK.maxLevel) }) as CSSProperties;
+  const word = spell(s.thanks);
+  const settle = 0.4 + word.nodes.length * LETTER_STEP;
   return (
     <div className={styles.body}>
       <Head eyebrow={s.eyebrow} title={s.title} />
@@ -1035,47 +1008,65 @@ function TryIt({ t }: { t: T }) {
           </div>
           <div className={styles.site}>
             <Constellation count={60} className={styles.siteStars} />
-            <div className={`${styles.siteBrand} ${styles.rise}`} style={at(0.5)}>
-              <span className={styles.siteRow}>
-                <Logo size={56} shake={false} />
-                <span className={`mono ${styles.siteWordmark}`}>
-                  graphman<span className="accent">.</span>
-                </span>
+            <span className={`${styles.siteRow} ${styles.rise}`} style={at(0.5)}>
+              <Logo size={56} shake={false} />
+              <span className={`mono ${styles.siteWordmark}`}>
+                graphman<span className="accent">.</span>
               </span>
-              <span className={styles.thanks}>{s.thanks}</span>
-            </div>
-            <svg viewBox="-132 -118 264 236" className={styles.mock} aria-hidden="true">
-              {MOCK.edges.map((e, i) =>
-                e.tree ? (
-                  <line
-                    key={i}
-                    className={styles.mockEdge}
-                    style={wave(MOCK.nodes[e.b].level)}
-                    x1={MOCK.nodes[e.a].x}
-                    y1={MOCK.nodes[e.a].y}
-                    x2={MOCK.nodes[e.b].x}
-                    y2={MOCK.nodes[e.b].y}
-                  />
-                ) : (
-                  <line
-                    key={i}
-                    className={styles.mockChord}
-                    x1={MOCK.nodes[e.a].x}
-                    y1={MOCK.nodes[e.a].y}
-                    x2={MOCK.nodes[e.b].x}
-                    y2={MOCK.nodes[e.b].y}
-                  />
-                ),
-              )}
-              {MOCK.nodes.map((n, i) => (
-                <circle
-                  key={i}
-                  className={styles.mockNode}
-                  style={wave(n.level)}
-                  cx={n.x}
-                  cy={n.y}
-                  r={n.level === 0 ? 5 : 3.4}
+            </span>
+            <svg
+              viewBox="0 0 800 320"
+              className={styles.word}
+              role="img"
+              aria-label={s.thanks}
+              style={{ '--period': `${WAVE_PERIOD}s` } as CSSProperties}
+            >
+              {word.chords.map(([a, b]) => (
+                <line
+                  key={`c${a}-${b}`}
+                  className={styles.wordChord}
+                  style={at(settle + 0.2)}
+                  x1={word.nodes[a].x}
+                  y1={word.nodes[a].y}
+                  x2={word.nodes[b].x}
+                  y2={word.nodes[b].y}
+                  pathLength={1}
                 />
+              ))}
+              {word.edges.map(([a, b]) => (
+                <line
+                  key={`e${a}-${b}`}
+                  className={styles.wordEdge}
+                  style={at(0.5 + a * LETTER_STEP)}
+                  x1={word.nodes[a].x}
+                  y1={word.nodes[a].y}
+                  x2={word.nodes[b].x}
+                  y2={word.nodes[b].y}
+                  pathLength={1}
+                />
+              ))}
+              {word.nodes.map((node, i) => (
+                <circle
+                  key={`h${i}`}
+                  className={styles.wordHalo}
+                  style={at(settle + 0.6 + i * 0.22)}
+                  cx={node.x}
+                  cy={node.y}
+                  r="30"
+                />
+              ))}
+              {word.nodes.map((node, i) => (
+                <g
+                  key={`n${i}`}
+                  className={styles.wordNode}
+                  style={at(0.4 + i * LETTER_STEP)}
+                  transform={`translate(${node.x} ${node.y})`}
+                >
+                  <circle r="30" />
+                  <text className={styles.wordLetter} y="1">
+                    {node.letter}
+                  </text>
+                </g>
               ))}
             </svg>
           </div>

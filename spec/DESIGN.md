@@ -377,10 +377,13 @@ the WebGPU one, drawn only when discs are at least 5 px.
   component count and the best diameter answer with `≥` for a bound; a
   legend names the three colours, the machine and the timing rule take one
   line under the sheet, and a button opens the case-studies page, which
-  holds the rest. **Try it**: a browser frame showing the site's front, the
-  mark and the wordmark in one row at the top left with the thanks under
-  them, and a BFS drawn on the level ramp on the right, its wave looping
-  level by level while the slide is up; beside it the QR code to the home
+  holds the rest. **Try it**: a browser frame showing the site's front over the
+  drifting constellation, the mark and the wordmark in one row at the top
+  left, and the thanks spelled as a graph: one blue vertex per letter with
+  the letter in white mono, joined in reading order by edges that draw
+  themselves like the mark's, a few grey chords after, halos running along
+  the word while the slide is up (the word is the dictionary's, so the
+  English deck spells its own); beside it the QR code to the home
   page (`public/brand/qr-home.svg`, the deep level blue on white, 380 px
   under a bare accent edge so the back row can scan it) and the address as
   the only link. ← → / space /

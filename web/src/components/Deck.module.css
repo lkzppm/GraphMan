@@ -1088,21 +1088,32 @@
   z-index: 1;
 }
 
-/* The site's front: the mark and the wordmark in one row at the top left,
-   the thanks under them. */
-.siteBrand {
+/* The site's front in the frame: the brand row at the top left, the word
+   spelled as a graph over the rest. */
+.site {
   position: relative;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  height: 100%;
+  height: clamp(320px, 52vh, 600px);
+  padding: 76px 36px 20px;
+}
+
+/* The same drifting constellation the hero and the empty stage draw. */
+.siteStars {
+  z-index: 0;
+  mask-image: linear-gradient(to bottom, #000 60%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
+}
+
+.site > :not(.siteStars) {
+  position: relative;
+  z-index: 1;
 }
 
 .siteRow {
   position: absolute;
-  top: 32px;
-  left: 0;
+  top: 28px;
+  left: 36px;
   display: inline-flex;
   align-items: center;
   gap: 16px;
@@ -1115,42 +1126,75 @@
   line-height: 1;
 }
 
-.thanks {
-  font-size: clamp(40px, 4.4vw, 68px);
-  font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1;
-}
-
-.mock {
+/* The word as a graph: blue vertices with a white letter each, joined in
+   reading order by edges that draw themselves, a few grey chords after,
+   then halos running along the word for as long as the slide is up. */
+.word {
   display: block;
   width: 100%;
   height: 100%;
+  overflow: visible;
 }
 
-/* The wave: tree edges and vertices sit dim and light in level order,
-   hold, then dim again, forever while the slide is up. Each carries its
-   own level colour in `--c` and its level's delay in `--d`. */
-.mockChord {
-  stroke: var(--edge-dim);
-  stroke-width: 0.8;
+.wordEdge {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 1 3;
+  stroke-dashoffset: 1.1;
 }
 
-.mockEdge {
-  stroke: var(--edge-dim);
-  stroke-width: 1;
+.wordChord {
+  fill: none;
+  stroke: var(--border-2);
+  stroke-width: 1.5;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
 }
 
-.mockNode {
-  fill: var(--node-dim);
+.slideCurrent .wordEdge {
+  animation: draw 0.4s var(--ease) var(--d, 0s) both;
 }
 
-.slideCurrent .mockEdge {
-  animation: wave 4.4s ease-in-out var(--d, 0s) infinite;
+.slideCurrent .wordChord {
+  animation: draw 0.5s var(--ease) var(--d, 0s) both;
 }
 
-.slideCurrent .mockNode {
-  animation: waveFill 4.4s ease-in-out var(--d, 0s) infinite;
+.wordNode {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.wordNode circle {
+  fill: var(--accent);
+}
+
+.slideCurrent .wordNode {
+  animation: pop 0.5s var(--ease-spring) var(--d, 0s) both;
+}
+
+.wordLetter {
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 600;
+  fill: #fff;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.wordHalo {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.slideCurrent .wordHalo {
+  animation: halo var(--period, 4s) var(--ease) var(--d, 0s) infinite;
 }
 
 .qr {
@@ -1315,6 +1359,23 @@
   }
 }
 
+@keyframes halo {
+  0% {
+    opacity: 0;
+    transform: scale(1);
+  }
+
+  6% {
+    opacity: 0.9;
+  }
+
+  30%,
+  100% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
 @keyframes blink {
   0%,
   100% {
@@ -1362,38 +1423,6 @@
 
   to {
     width: var(--w, 0);
-  }
-}
-
-@keyframes wave {
-  0%,
-  100% {
-    stroke: var(--edge-dim);
-  }
-
-  10%,
-  62% {
-    stroke: var(--c, var(--accent));
-  }
-
-  78% {
-    stroke: var(--edge-dim);
-  }
-}
-
-@keyframes waveFill {
-  0%,
-  100% {
-    fill: var(--node-dim);
-  }
-
-  10%,
-  62% {
-    fill: var(--c, var(--accent));
-  }
-
-  78% {
-    fill: var(--node-dim);
   }
 }
 
@@ -1538,23 +1567,17 @@
   }
 
   .site {
-    grid-template-columns: 1fr;
-    height: auto;
-    padding: 20px 20px 0;
-    gap: 8px;
-  }
-
-  .siteBrand {
-    height: auto;
-    gap: 20px;
+    height: 300px;
+    padding: 64px 16px 12px;
   }
 
   .siteRow {
-    position: static;
+    left: 16px;
+    top: 16px;
   }
 
-  .mock {
-    height: 240px;
+  .wordLetter {
+    font-size: 34px;
   }
 }
 
@@ -1653,13 +1676,18 @@
     animation: none !important;
   }
 
-  .mockEdge {
-    stroke: var(--c, var(--accent));
+  .wordNode {
+    opacity: 1;
     animation: none !important;
   }
 
-  .mockNode {
-    fill: var(--c, var(--accent));
+  .wordEdge,
+  .wordChord {
+    stroke-dashoffset: 0;
+    animation: none !important;
+  }
+
+  .wordHalo {
     animation: none !important;
   }
 }
