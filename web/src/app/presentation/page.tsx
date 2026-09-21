@@ -5,7 +5,7 @@ import { studies } from '@/lib/studies';
 export const metadata: Metadata = {
   title: 'Apresentação',
   description:
-    'Os cinco slides da apresentação do GraphMan: arquitetura, decisões, estudos de caso e o observatório.',
+    'Os cinco slides da apresentação do GraphMan: arquitetura, decisões, estudos de caso e o QR code do observatório.',
 };
 
 export default function PresentationPage() {

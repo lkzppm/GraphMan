@@ -1,8 +1,12 @@
 /* The presentation: one slide fills the viewport under the nav, a thin bar
    at the bottom holds the navigation. In full screen the deck is the whole
-   screen and the bar fades unless hovered. Every slide but the cover is a
-   drawing with words around it: a map of the crates, five figures, a sheet
-   of bars, a browser with a search in it. */
+   screen and the bar fades unless hovered.
+
+   Every slide is a drawing that runs when it arrives. All motion is gated
+   on `.slideCurrent`, so an element's animation restarts each time its
+   slide comes back, like the mark on the landing page redraws itself on
+   load. Each animated element carries `--d`, the second at which it
+   starts, set inline from the component. */
 
 .deck {
   position: relative;
@@ -21,6 +25,7 @@
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  touch-action: pan-y;
 }
 
 /* Slides stack on top of each other; the current one rises in, the rest
@@ -143,13 +148,39 @@
   margin-left: auto;
 }
 
+/* ---- the entrances every slide uses ------------------------------------- */
+
+/* Text and boxes rise in; chips and vertices pop. Both start invisible and
+   run once the slide is current. */
+.rise,
+.pop {
+  opacity: 0;
+}
+
+.slideCurrent .rise {
+  animation: rise 0.6s var(--ease) var(--d, 0s) both;
+}
+
+.slideCurrent .pop {
+  animation: pop 0.45s var(--ease-spring) var(--d, 0s) both;
+}
+
+/* Numbers and captions that appear once their bar has grown. */
+.figFade {
+  opacity: 0;
+}
+
+.slideCurrent .figFade {
+  animation: fade 0.4s var(--ease) var(--d, 0s) both;
+}
+
 /* ---- slide layouts ------------------------------------------------------ */
 
 .body {
   width: 100%;
-  max-width: var(--container);
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 24px var(--gutter);
+  padding: 20px var(--gutter);
 }
 
 .head {
@@ -160,7 +191,7 @@
 }
 
 .title {
-  font-size: clamp(26px, 3vw, 36px);
+  font-size: clamp(26px, 3vw, 38px);
   font-weight: 600;
   letter-spacing: -0.03em;
   line-height: 1.12;
@@ -169,11 +200,12 @@
 .lead {
   color: var(--fg-2);
   font-size: 15px;
-  max-width: 760px;
+  max-width: 720px;
   line-height: 1.55;
 }
 
-/* Cover: the mark and the words, like the landing hero. */
+/* ---- cover ---------------------------------------------------------------- */
+
 .cover {
   position: relative;
   height: 100%;
@@ -193,10 +225,14 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 56px;
+  gap: 64px;
   width: 100%;
   max-width: var(--container);
   padding: 0 var(--gutter);
+}
+
+.coverMark {
+  width: 320px;
 }
 
 .coverText {
@@ -228,7 +264,7 @@
 }
 
 .wordmark {
-  font-size: clamp(48px, 7vw, 84px);
+  font-size: clamp(48px, 7vw, 88px);
   font-weight: 500;
   letter-spacing: -0.05em;
   line-height: 1;
@@ -240,8 +276,13 @@
   color: var(--fg-2);
 }
 
-.author {
+.authors {
   color: var(--fg);
+}
+
+.authorDot {
+  margin: 0 10px;
+  color: var(--accent);
 }
 
 .stack {
@@ -268,19 +309,17 @@
 
 .map {
   display: grid;
-  grid-template-columns: 158px 36px minmax(0, 1fr) 36px 216px;
+  grid-template-columns: 180px 130px minmax(0, 1fr) 80px 210px;
   align-items: center;
-  gap: 10px;
+  gap: 0 8px;
 }
 
-.mapSide {
+.side {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  animation: rise 0.6s var(--ease) both;
+  gap: 8px;
 }
 
-/* The course's file, and the two front ends: the same bordered surface. */
 .file,
 .output {
   display: flex;
@@ -290,13 +329,13 @@
   border: 1px solid var(--border);
   border-left: 2px solid var(--accent);
   border-radius: var(--radius);
-  background: var(--bg);
+  background: var(--bg-2);
 }
 
 .fileName,
 .outputName {
   font-size: 13px;
-  font-weight: 500;
+  color: var(--fg);
 }
 
 .fileLines {
@@ -306,73 +345,158 @@
 }
 
 .fileLines i {
+  display: block;
   height: 3px;
   border-radius: 2px;
-  background: var(--bg-3);
+  background: var(--border-2);
 }
 
 .fileLines i:nth-child(1) {
-  width: 32%;
-  background: var(--accent-muted);
+  width: 18%;
+  background: var(--accent);
 }
 
 .fileLines i:nth-child(2) {
-  width: 70%;
+  width: 40%;
 }
 
 .fileLines i:nth-child(3) {
-  width: 58%;
+  width: 46%;
 }
 
 .fileLines i:nth-child(4) {
-  width: 66%;
+  width: 36%;
 }
 
 .outputHint {
   font-size: 12px;
-  line-height: 1.45;
   color: var(--fg-2);
 }
 
-/* The library: one panel holding the three tiers. */
-.core {
-  padding: 16px 18px 18px;
-  border: 1px solid var(--border);
-  border-top: 2px solid var(--accent);
-  border-radius: var(--radius-lg);
-  background: var(--bg-2);
-  animation: rise 0.6s var(--ease) 0.08s both;
+/* The edges between the columns: a vertex at the tail, a line that draws
+   itself, an arrowhead that appears once the line arrives. */
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
-.coreHead {
+.edge {
+  display: block;
+  width: 100%;
+  height: 16px;
+  overflow: visible;
+}
+
+.edgeTail,
+.fanRoot {
+  fill: var(--accent);
+}
+
+.edgeLine,
+.fanLine {
+  fill: none;
+  stroke: var(--border-2);
+  stroke-width: 1.5;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.slideCurrent .edgeLine,
+.slideCurrent .fanLine {
+  animation: draw 0.5s var(--ease) var(--d, 0s) both;
+}
+
+.edgeHead {
+  fill: var(--border-2);
+  opacity: 0;
+}
+
+.slideCurrent .edgeHead {
+  animation: fade 0.2s var(--ease) calc(var(--d, 0s) + 0.4s) both;
+}
+
+.stepName {
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.stepHint {
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* The library: one panel with an accent top edge. */
+.core {
+  position: relative;
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 18px 18px 16px;
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg-2);
 }
 
 .coreName {
-  font-size: 15px;
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.tier {
+  text-align: center;
+  font-size: 11px;
+}
+
+.fan {
+  display: block;
+  width: 100%;
+  height: 28px;
+  overflow: visible;
+}
+
+.algos,
+.reps {
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.algos {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 4px;
+}
+
+.algo {
+  padding: 8px 6px;
+  text-align: center;
+  font-size: 13px;
   font-weight: 500;
-}
-
-.coreLabel {
-  margin-left: auto;
-}
-
-.trait {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 10px;
-  padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
 }
 
+.trait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 4px auto;
+  padding: 12px 18px 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-muted);
+}
+
 .traitName {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   color: var(--accent);
 }
@@ -381,70 +505,37 @@
   list-style: none;
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 6px;
-  width: 100%;
 }
 
 .method {
   padding: 3px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
   font-size: 11px;
-  color: var(--fg-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
   background: var(--bg);
-}
-
-.tier {
-  margin-top: 10px;
-  text-align: center;
-  color: var(--fg-3);
-}
-
-/* One edge from the tier above to each box under it. */
-.fan {
-  display: block;
-  width: 100%;
-  height: 26px;
-  overflow: visible;
-}
-
-.fan line {
-  stroke: var(--border-2);
-  stroke-width: 1;
-}
-
-.fan circle {
-  fill: var(--accent);
-}
-
-.reps,
-.algos {
-  list-style: none;
-  display: grid;
-  gap: 8px;
+  color: var(--fg-2);
 }
 
 .reps {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.algos {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
 .rep {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 9px 11px;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
 }
 
 .repName {
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: 13px;
+  color: var(--fg);
 }
 
 .repHint {
@@ -452,31 +543,9 @@
   color: var(--fg-3);
 }
 
-.algo {
-  padding: 8px 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  font-size: 12.5px;
+.mapCaption {
+  margin-top: 18px;
   text-align: center;
-}
-
-.arrow {
-  justify-self: center;
-  overflow: visible;
-}
-
-.arrow line {
-  stroke: var(--border-2);
-  stroke-width: 1;
-}
-
-.arrow circle {
-  fill: var(--accent);
-}
-
-.arrowHead {
-  fill: var(--border-2);
 }
 
 /* ---- 02 decisions: five figures ----------------------------------------- */
@@ -485,32 +554,35 @@
   list-style: none;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
 .card {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 14px;
+  padding: 14px 14px 16px;
   border: 1px solid var(--border);
-  border-top: 2px solid var(--accent);
   border-radius: var(--radius);
   background: var(--bg);
-  animation: rise 0.6s var(--ease) both;
   transition:
-    transform 0.35s var(--ease),
-    box-shadow 0.35s var(--ease);
+    transform 0.3s var(--ease),
+    box-shadow 0.3s var(--ease),
+    border-color 0.3s var(--ease);
 }
 
 .card:hover {
   transform: translateY(-3px);
+  border-color: var(--border-2);
   box-shadow: var(--shadow-hover);
 }
 
+/* The figure box: a bg-2 plate, the drawing scales with the card. The
+   `--d` on the wrapper offsets every animation inside it, so the five
+   figures run one after another. */
 .figWrap {
   display: block;
-  padding: 6px 0;
+  padding: 10px;
   border-radius: var(--radius);
   background: var(--bg-2);
 }
@@ -519,118 +591,215 @@
   display: block;
   width: 100%;
   height: auto;
-}
-
-.caption {
-  line-height: 1.4;
-  color: var(--fg-3);
-}
-
-.cardHead {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-top: 2px;
+  aspect-ratio: 168 / 96;
+  overflow: visible;
 }
 
 .cardIndex {
+  margin-top: 4px;
   font-size: 11px;
-  color: var(--fg-3);
+  color: var(--accent);
 }
 
 .cardTitle {
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.3;
 }
 
-.cardBody {
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--fg-2);
+.caption {
+  line-height: 1.45;
 }
 
-/* The parts the figures are drawn from. */
-.figEdge line {
-  stroke: var(--accent);
-  stroke-width: 1.6;
-}
-
+/* Figure parts. Each animated part reads the card's `--d` through the
+   wrapper (inherited custom property) plus its own offset, so the same
+   `at()` delays work inside the figure. */
 .figNode {
-  fill: var(--bg);
+  fill: var(--accent);
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+}
+
+.figEdge {
+  fill: none;
   stroke: var(--accent);
-  stroke-width: 1.5;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 1 3;
+  stroke-dashoffset: 1.1;
 }
 
 .figDrop path {
   fill: none;
   stroke: var(--border-2);
-  stroke-width: 1.5;
-  stroke-dasharray: 3 3;
+  stroke-width: 2;
+  stroke-dasharray: 1 3;
+  stroke-dashoffset: 1.1;
 }
 
 .figCross path {
   fill: none;
   stroke: var(--fg-3);
-  stroke-width: 1.3;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
 }
 
-.figTree {
-  stroke-width: 1.8;
+.figTree,
+.figTreeOff {
+  fill: none;
+  stroke: var(--edge-dim);
+  stroke-width: 2;
+  stroke-dasharray: 1 3;
+  stroke-dashoffset: 1.1;
+}
+
+.figTreeOff {
+  stroke-dashoffset: 0;
+  stroke-dasharray: none;
+}
+
+.figLit,
+.figLitOff {
+  fill: var(--node-dim);
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 .figBreak {
-  stroke: var(--accent);
-  stroke-width: 1.5;
-  stroke-dasharray: 3 3;
+  fill: none;
+  stroke: var(--fg);
+  stroke-width: 2;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
 }
 
-.figCell {
-  fill: none;
+.figCell,
+.figCellOn {
+  fill: var(--bg);
   stroke: var(--border-2);
   stroke-width: 1;
 }
 
-.figCellOn {
-  fill: var(--accent);
-}
-
 .figLoop {
   fill: none;
-  stroke: var(--accent);
-  stroke-width: 1.4;
+  stroke: var(--fg-2);
+  stroke-width: 1.5;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.figLoopHead {
+  fill: none;
+  stroke: var(--fg-2);
+  stroke-width: 1.5;
   stroke-linecap: round;
-  stroke-linejoin: round;
+  opacity: 0;
 }
 
 .figTrack {
   fill: var(--bg-3);
 }
 
+.figFill {
+  fill: var(--accent);
+  width: 0;
+}
+
 .figOver {
   fill: none;
-  stroke: color-mix(in srgb, var(--accent) 55%, white);
+  stroke: var(--fg-3);
   stroke-width: 1.5;
   stroke-dasharray: 4 3;
+  width: 0;
 }
 
 .figLimit {
-  stroke: var(--fg-3);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
+  fill: none;
+  stroke: var(--fg);
+  stroke-width: 1.5;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
 }
 
-/* ---- 03 case studies: one sheet of bars --------------------------------- */
+.figLabel,
+.figCount {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  fill: var(--fg-2);
+}
 
-.resultsHead {
+.figCount {
+  fill: var(--fg);
+}
+
+/* The figures run when their slide is current. */
+.slideCurrent .figNode {
+  animation: pop 0.4s var(--ease-spring) var(--d, 0s) both;
+}
+
+.slideCurrent .figEdge,
+.slideCurrent .figDrop path {
+  animation: draw 0.45s var(--ease) var(--d, 0s) both;
+}
+
+.slideCurrent .figDrop {
+  animation: dim 0.5s var(--ease) calc(var(--d, 0s) + 1.1s) both;
+}
+
+.slideCurrent .figCross path {
+  animation: draw 0.3s var(--ease) var(--d, 0s) both;
+}
+
+.slideCurrent .figTree {
+  animation:
+    draw 0.35s var(--ease) var(--d, 0s) both,
+    light 0.35s var(--ease) var(--d, 0s) both;
+}
+
+.slideCurrent .figLit {
+  animation: lightFill 0.35s var(--ease) var(--d, 0s) both;
+}
+
+.slideCurrent .figBreak {
+  animation: draw 0.3s var(--ease) var(--d, 0s) both;
+}
+
+/* A lit cell fills, holds, then the reset sweeps it back. */
+.slideCurrent .figCellOn {
+  animation: cell 2.4s var(--ease) var(--d, 0s) both;
+}
+
+.slideCurrent .figLoop {
+  animation: draw 0.6s var(--ease) var(--d, 0s) both;
+}
+
+.slideCurrent .figLoopHead {
+  animation: fade 0.2s var(--ease) var(--d, 0s) both;
+}
+
+.slideCurrent .figFill,
+.slideCurrent .figOver {
+  animation: growRect 0.8s var(--ease) var(--d, 0s) both;
+}
+
+.slideCurrent .figLimit {
+  animation: draw 0.4s var(--ease) var(--d, 0s) both;
+}
+
+/* ---- 03 case studies: the sheet ----------------------------------------- */
+
+.studiesHead {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
 }
 
-.resultsHead .head {
+.studiesHead .head {
   margin-bottom: 16px;
 }
 
@@ -638,22 +807,21 @@
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 16px;
-  margin-bottom: 18px;
+  gap: 6px 18px;
+  margin-bottom: 20px;
+  font-size: 12px;
+  color: var(--fg-2);
 }
 
 .legendItem {
   display: inline-flex;
   align-items: center;
-  font-size: 12px;
-  color: var(--fg-2);
-  white-space: nowrap;
+  gap: 8px;
 }
 
 .swatch {
-  width: 10px;
-  height: 10px;
-  margin-right: 7px;
+  width: 14px;
+  height: 6px;
   border-radius: 2px;
   background: var(--accent);
 }
@@ -668,29 +836,32 @@
 
 .sheet {
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
+  border-radius: var(--radius);
   background: var(--bg);
+  overflow: hidden;
 }
 
 .sheetHead,
 .row {
   display: grid;
-  grid-template-columns: 88px 116px minmax(0, 1fr) minmax(0, 1fr) 58px 84px;
+  grid-template-columns: 90px 118px minmax(0, 2fr) minmax(0, 1.5fr) 72px 96px;
   align-items: center;
-  gap: 18px;
-  padding: 9px 16px;
+  gap: 0 20px;
+  padding: 0 16px;
 }
 
 .sheetHead {
-  background: var(--bg-2);
+  height: 34px;
   border-bottom: 1px solid var(--border);
-  color: var(--fg-2);
+  background: var(--bg-2);
+  font-size: 11px;
 }
 
 .row {
+  padding-top: 9px;
+  padding-bottom: 9px;
   border-bottom: 1px solid var(--border);
-  animation: rise 0.6s var(--ease) both;
+  transition: background 0.2s var(--ease);
 }
 
 .row:last-child {
@@ -709,56 +880,62 @@
 .size {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
 .sizeValue {
   font-size: 12px;
-  color: var(--fg-2);
-  white-space: nowrap;
+  color: var(--fg);
 }
 
 .sizeValue i {
-  font-family: var(--font-sans);
   font-style: normal;
-  font-size: 10.5px;
   color: var(--fg-3);
 }
 
 .group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .barRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 96px;
+  grid-template-columns: minmax(0, 1fr) 76px;
   align-items: center;
   gap: 10px;
 }
 
 .group[data-wide] .barRow {
-  grid-template-columns: minmax(0, 1fr) 140px;
+  grid-template-columns: minmax(0, 1fr) 120px;
 }
 
 .track {
-  height: 9px;
+  position: relative;
+  display: block;
+  height: 8px;
   border-radius: 2px;
   background: var(--bg-3);
+  overflow: hidden;
 }
 
+/* Bars grow to their share once the row is in. */
 .fill {
-  display: block;
-  width: var(--w);
-  height: 100%;
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
   border-radius: 2px;
-  background: var(--colour);
-  animation: grow 0.9s var(--ease) both;
+  background: var(--colour, var(--accent));
+}
+
+.slideCurrent .fill {
+  animation: growBar 0.9s var(--ease) var(--d, 0s) both;
 }
 
 .barRow[data-ghost] .fill {
   background: transparent;
-  border: 1.5px dashed color-mix(in srgb, var(--accent) 45%, white);
+  border: 1px dashed var(--fg-3);
+  border-right: 0;
 }
 
 .barValue {
@@ -772,152 +949,216 @@
 }
 
 .answer {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 500;
-  color: var(--accent);
-  line-height: 1;
+  color: var(--fg);
 }
 
 .bound {
-  font-size: 17px;
-  color: var(--fg-3);
+  color: var(--accent);
 }
 
 .centre {
   text-align: center;
 }
 
+.studiesFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 16px;
+}
+
 .note {
-  margin-top: 12px;
   font-size: 12px;
   line-height: 1.5;
   color: var(--fg-3);
-  max-width: 900px;
+  max-width: 760px;
 }
 
-/* ---- 04 the observatory: a browser and the facts ------------------------ */
+.more {
+  flex: none;
+}
 
-.observatory {
+/* ---- 04 try it: the observatory and the QR code ------------------------- */
+
+.tryIt {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 374px;
-  gap: 32px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  align-items: start;
+  gap: 40px;
 }
 
 .browser {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  overflow: hidden;
   background: var(--bg);
-  box-shadow: var(--shadow-hover);
-  animation: rise 0.7s var(--ease) both;
+  overflow: hidden;
+  box-shadow: var(--glow);
 }
 
 .browserBar {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 12px;
+  height: 34px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-2);
 }
 
 .lights {
-  display: flex;
+  display: inline-flex;
   gap: 5px;
 }
 
 .lights i {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background: var(--border-2);
+  border: 1px solid var(--border-2);
+  background: var(--bg);
 }
 
 .url {
-  padding: 3px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 11px;
-  color: var(--fg-3);
+  flex: 1;
+  padding: 4px 10px;
+  border-radius: var(--radius);
   background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--fg-2);
 }
 
 .mock {
   display: block;
   width: 100%;
   height: 300px;
-  background: var(--bg);
 }
 
-.side {
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
+/* The wave: tree edges and vertices sit dim and light in level order,
+   hold, then dim again, forever while the slide is up. Each carries its
+   own level colour in `--c` and its level's delay in `--d`. */
+.mockChord {
+  stroke: var(--edge-dim);
+  stroke-width: 0.8;
+}
+
+.mockEdge {
+  stroke: var(--edge-dim);
+  stroke-width: 1;
+}
+
+.mockNode {
+  fill: var(--node-dim);
+}
+
+.slideCurrent .mockEdge {
+  animation: wave 4.4s ease-in-out var(--d, 0s) infinite;
+}
+
+.slideCurrent .mockNode {
+  animation: waveFill 4.4s ease-in-out var(--d, 0s) infinite;
 }
 
 .facts {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  background: var(--border);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--border);
 }
 
 .fact {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 16px 18px;
-  background: var(--bg);
-  animation: rise 0.6s var(--ease) both;
+  gap: 4px;
+  padding: 12px 16px;
+  border-right: 1px solid var(--border);
 }
 
-.fact dd {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.fact:last-child {
+  border-right: 0;
+}
+
+.fact dt {
+  font-size: 10px;
 }
 
 .factValue {
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 500;
-  letter-spacing: -0.03em;
   color: var(--accent);
   line-height: 1;
 }
 
-.factHint {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--fg-3);
+.qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.scan {
+  color: var(--accent);
+}
+
+/* The code: a white plate with the accent edge the site puts on surfaces.
+   Big on purpose, the back row has to scan it. */
+.qrCard {
+  display: block;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: #fff;
+  transition:
+    transform 0.3s var(--ease),
+    box-shadow 0.3s var(--ease);
+}
+
+.qrCard:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-hover);
+}
+
+.qrCard img {
+  display: block;
+  width: 280px;
+  height: 280px;
+}
+
+.qrUrl {
+  font-size: 15px;
+  color: var(--fg);
 }
 
 .actions {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 10px;
+  margin-top: 6px;
 }
 
 .source {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--fg-2);
-  text-decoration: underline;
-  text-decoration-color: transparent;
-  text-underline-offset: 4px;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
   transition:
     color 0.2s var(--ease),
-    text-decoration-color 0.2s var(--ease);
+    border-color 0.2s var(--ease);
 }
 
 .source:hover {
   color: var(--accent);
-  text-decoration-color: var(--accent-2);
+  border-color: var(--accent);
 }
 
-/* Redeclared here: CSS modules scope animation names. */
+/* ---- keyframes ------------------------------------------------------------
+   Redeclared here: CSS modules scope animation names. */
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -930,48 +1171,218 @@
   }
 }
 
-@keyframes grow {
+@keyframes pop {
   from {
-    width: 0;
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dim {
+  to {
+    opacity: 0.3;
+  }
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes light {
+  to {
+    stroke: var(--c, var(--accent));
+  }
+}
+
+@keyframes lightFill {
+  from {
+    fill: var(--node-dim);
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.35);
+  }
+
+  to {
+    fill: var(--c, var(--accent));
+    transform: scale(1);
+  }
+}
+
+@keyframes cell {
+  0% {
+    fill: var(--bg);
+    stroke: var(--border-2);
+  }
+
+  15%,
+  60% {
+    fill: var(--accent);
+    stroke: var(--accent);
+  }
+
+  85%,
+  100% {
+    fill: var(--bg);
+    stroke: var(--accent);
+  }
+}
+
+@keyframes growRect {
+  from {
+    width: 0;
+  }
+
+  to {
+    width: var(--w, 0);
+  }
+}
+
+@keyframes growBar {
+  from {
+    width: 0;
+  }
+
+  to {
+    width: var(--w, 0);
+  }
+}
+
+@keyframes wave {
+  0%,
+  100% {
+    stroke: var(--edge-dim);
+  }
+
+  10%,
+  62% {
+    stroke: var(--c, var(--accent));
+  }
+
+  78% {
+    stroke: var(--edge-dim);
+  }
+}
+
+@keyframes waveFill {
+  0%,
+  100% {
+    fill: var(--node-dim);
+  }
+
+  10%,
+  62% {
+    fill: var(--c, var(--accent));
+  }
+
+  78% {
+    fill: var(--node-dim);
+  }
+}
+
+/* ---- folds ---------------------------------------------------------------- */
+
 @media (max-width: 1100px) {
   .map {
-    grid-template-columns: 140px 30px minmax(0, 1fr) 30px 180px;
+    grid-template-columns: 150px 110px minmax(0, 1fr) 60px 180px;
   }
 
   .barRow {
-    grid-template-columns: minmax(0, 1fr) 84px;
+    grid-template-columns: minmax(0, 1fr) 70px;
   }
 
   .group[data-wide] .barRow {
-    grid-template-columns: minmax(0, 1fr) 128px;
+    grid-template-columns: minmax(0, 1fr) 110px;
+  }
+
+  .tryIt {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+
+  .qrCard img {
+    width: 240px;
+    height: 240px;
   }
 }
 
 @media (max-width: 900px) {
+  /* Slides scroll instead of fitting once the drawings stack. */
+  .slide {
+    overflow-y: auto;
+    justify-content: flex-start;
+  }
+
+  .hint {
+    display: none;
+  }
+
   .coverInner {
     grid-template-columns: 1fr;
     justify-items: center;
+    gap: 28px;
     text-align: center;
+    padding-top: 24px;
+  }
+
+  .coverMark {
+    width: 200px;
+  }
+
+  /* HeroMark sizes itself inline; on a phone the wrapper is the size. */
+  .coverMark > div {
+    width: 100% !important;
+    height: auto !important;
+    aspect-ratio: 1;
   }
 
   .coverText {
     align-items: center;
   }
 
-  .coverMark {
-    display: none;
+  .stack {
+    justify-content: center;
   }
 
-  /* The map stacks: the arrows turn with it. */
+  /* The map stacks: the edges turn with it. */
   .map {
     grid-template-columns: minmax(0, 1fr);
+    gap: 8px 0;
   }
 
-  .arrow {
+  .step {
+    flex-direction: row;
+    justify-content: center;
+    gap: 12px;
+    padding: 6px 0;
+  }
+
+  .edge {
+    width: 16px;
+    height: 40px;
     transform: rotate(90deg);
+    transform-origin: center;
+  }
+
+  .stepHint {
+    text-align: left;
   }
 
   .algos {
@@ -980,6 +1391,16 @@
 
   .cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .card:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .studiesHead {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
   }
 
   .sheet {
@@ -991,50 +1412,118 @@
     min-width: 720px;
   }
 
-  .observatory {
+  .studiesFoot {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .tryIt {
     grid-template-columns: 1fr;
+    gap: 28px;
   }
 
   .mock {
     height: 220px;
   }
-
-  .hint {
-    display: none;
-  }
-
-  .slide {
-    overflow-y: auto;
-    justify-content: flex-start;
-  }
 }
 
-@media (max-width: 640px) {
-  .resultsHead {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0;
+@media (max-width: 600px) {
+  .body {
+    padding: 16px var(--gutter);
   }
 
-  .reps,
-  .algos {
+  .cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .algos,
+  .reps {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .facts {
     grid-template-columns: 1fr;
   }
+
+  .fact {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .fact:last-child {
+    border-bottom: 0;
+  }
+
+  .qrCard img {
+    width: 220px;
+    height: 220px;
+  }
 }
 
+/* With reduced motion every drawing is simply there. */
 @media (prefers-reduced-motion: reduce) {
-  .mapSide,
-  .core,
-  .card,
-  .row,
-  .browser,
-  .fact,
-  .coverText > *,
+  .rise,
+  .pop,
+  .figFade,
+  .figNode,
+  .edgeHead,
+  .figLoopHead,
+  .coverText > * {
+    opacity: 1;
+    animation: none !important;
+  }
+
+  .edgeLine,
+  .fanLine,
+  .figEdge,
+  .figDrop path,
+  .figCross path,
+  .figTree,
+  .figBreak,
+  .figLoop,
+  .figLimit {
+    stroke-dashoffset: 0;
+    animation: none !important;
+  }
+
+  .figDrop {
+    opacity: 0.3;
+    animation: none !important;
+  }
+
+  .figTree {
+    stroke: var(--c, var(--accent));
+  }
+
+  .figLit {
+    fill: var(--c, var(--accent));
+    animation: none !important;
+  }
+
+  .figCellOn {
+    fill: var(--accent);
+    stroke: var(--accent);
+    animation: none !important;
+  }
+
+  .figFill,
+  .figOver {
+    width: var(--w, 0);
+    animation: none !important;
+  }
+
   .fill {
-    animation: none;
+    width: var(--w, 0);
+    animation: none !important;
+  }
+
+  .mockEdge {
+    stroke: var(--c, var(--accent));
+    animation: none !important;
+  }
+
+  .mockNode {
+    fill: var(--c, var(--accent));
+    animation: none !important;
   }
 }

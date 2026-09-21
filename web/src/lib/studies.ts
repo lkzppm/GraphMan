@@ -71,6 +71,14 @@ export interface DiameterAnswer {
   elapsed_ms: number;
 }
 
+export interface Machine {
+  os: string;
+  arch: string;
+  cpu: string;
+  total_memory_bytes: number;
+  threads: number;
+}
+
 export interface GraphStudy {
   name: string;
   file: string;
@@ -85,6 +93,7 @@ export interface GraphStudy {
   distances: DistanceAnswer[];
   components: ComponentsAnswer;
   diameters: DiameterAnswer[];
+  machine?: Machine;
 }
 
 export const studies: GraphStudy[] = (results as GraphStudy[])
