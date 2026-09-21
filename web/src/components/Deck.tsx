@@ -1056,14 +1056,11 @@ function TryIt({ t }: { t: T }) {
                 />
               ))}
               {word.nodes.map((node, i) => (
-                <g
-                  key={`n${i}`}
-                  className={styles.wordNode}
-                  style={at(0.4 + i * LETTER_STEP)}
-                  transform={`translate(${node.x} ${node.y})`}
-                >
-                  <circle r="30" />
-                  <text className={styles.wordLetter} y="1">
+                {/* Positioned by attributes, not a transform: the pop animation
+                    owns the group's transform. */}
+                <g key={`n${i}`} className={styles.wordNode} style={at(0.4 + i * LETTER_STEP)}>
+                  <circle cx={node.x} cy={node.y} r="30" />
+                  <text className={styles.wordLetter} x={node.x} y={node.y + 1}>
                     {node.letter}
                   </text>
                 </g>

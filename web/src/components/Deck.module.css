@@ -1105,13 +1105,14 @@
   -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
 }
 
-.site > :not(.siteStars) {
+.word {
   position: relative;
   z-index: 1;
 }
 
 .siteRow {
   position: absolute;
+  z-index: 1;
   top: 28px;
   left: 36px;
   display: inline-flex;
