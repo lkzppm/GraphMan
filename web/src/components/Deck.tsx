@@ -1055,9 +1055,9 @@ function TryIt({ t }: { t: T }) {
                   r="30"
                 />
               ))}
+              {/* Vertices are placed by attributes, not a transform: the pop
+                  animation owns the group's transform. */}
               {word.nodes.map((node, i) => (
-                {/* Positioned by attributes, not a transform: the pop animation
-                    owns the group's transform. */}
                 <g key={`n${i}`} className={styles.wordNode} style={at(0.4 + i * LETTER_STEP)}>
                   <circle cx={node.x} cy={node.y} r="30" />
                   <text className={styles.wordLetter} x={node.x} y={node.y + 1}>
