@@ -78,107 +78,110 @@ export default function Nav() {
   }, [activeIndex, locale]);
 
   return (
-    <header className={styles.nav} data-open={open || undefined}>
-      <div className={styles.inner}>
-        <Link
-          href="/"
-          className={styles.brand}
-          aria-label={t.nav.home}
-          aria-current={home ? 'page' : undefined}
-        >
-          <Logo size={30} />
-          <span className={`mono ${styles.wordmark}`}>
-            graphman<span className="accent">.</span>
-          </span>
-        </Link>
-        <nav ref={tabsRef} className={styles.tabs} aria-label={t.nav.pages}>
-          <span
-            className={`${styles.indicator} ${indicator.ready ? styles.indicatorLive : ''}`}
-            style={{ transform: `translateX(${indicator.left}px)`, width: indicator.width }}
-            aria-hidden="true"
-          />
-          {TABS.map((tab, i) => {
-            const active = i === activeIndex;
-            return (
-              <Link
-                key={tab.href}
-                href={tab.href}
-                className={active ? styles.tabActive : styles.tab}
-                data-active={active ? 'true' : undefined}
-                aria-current={active ? 'page' : undefined}
+    <>
+      <header className={styles.nav} data-open={open || undefined}>
+        <div className={styles.inner}>
+          <Link
+            href="/"
+            className={styles.brand}
+            aria-label={t.nav.home}
+            aria-current={home ? 'page' : undefined}
+          >
+            <Logo size={30} />
+            <span className={`mono ${styles.wordmark}`}>
+              graphman<span className="accent">.</span>
+            </span>
+          </Link>
+          <nav ref={tabsRef} className={styles.tabs} aria-label={t.nav.pages}>
+            <span
+              className={`${styles.indicator} ${indicator.ready ? styles.indicatorLive : ''}`}
+              style={{ transform: `translateX(${indicator.left}px)`, width: indicator.width }}
+              aria-hidden="true"
+            />
+            {TABS.map((tab, i) => {
+              const active = i === activeIndex;
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  className={active ? styles.tabActive : styles.tab}
+                  data-active={active ? 'true' : undefined}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  {t.nav[tab.label]}
+                </Link>
+              );
+            })}
+          </nav>
+          <div className={styles.language} role="group" aria-label={t.nav.language}>
+            {(['pt', 'en'] as const).map((code) => (
+              <button
+                key={code}
+                type="button"
+                className={locale === code ? styles.languageActive : styles.languageButton}
+                aria-pressed={locale === code}
+                onClick={() => setLocale(code)}
               >
-                {t.nav[tab.label]}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className={styles.language} role="group" aria-label={t.nav.language}>
-          {(['pt', 'en'] as const).map((code) => (
-            <button
-              key={code}
-              type="button"
-              className={locale === code ? styles.languageActive : styles.languageButton}
-              aria-pressed={locale === code}
-              onClick={() => setLocale(code)}
-            >
-              {code}
-            </button>
-          ))}
+                {code}
+              </button>
+            ))}
+          </div>
+          <a
+            className={styles.github}
+            href="https://github.com/lkzppm/GraphMan"
+            target="_blank"
+            rel="noreferrer"
+            aria-label={t.nav.source}
+          >
+            <BrandIcon icon={siGithub} size={18} />
+            <span>GitHub</span>
+          </a>
+          <button
+            type="button"
+            className={styles.menuButton}
+            aria-expanded={open}
+            aria-controls="site-drawer"
+            aria-label={open ? t.nav.close : t.nav.menu}
+            onClick={() => setOpen(!open)}
+          >
+            <span className={styles.menuIcon} aria-hidden="true" />
+          </button>
         </div>
-        <a
-          className={styles.github}
-          href="https://github.com/lkzppm/GraphMan"
-          target="_blank"
-          rel="noreferrer"
-          aria-label={t.nav.source}
+        {/* Always mounted so it can grow and shrink; inert while closed. */}
+        <nav
+          id="site-drawer"
+          className={styles.drawer}
+          aria-label={t.nav.pages}
+          data-open={open || undefined}
+          inert={!open}
         >
-          <BrandIcon icon={siGithub} size={18} />
-          <span>GitHub</span>
-        </a>
-        <button
-          type="button"
-          className={styles.menuButton}
-          aria-expanded={open}
-          aria-controls="site-drawer"
-          aria-label={open ? t.nav.close : t.nav.menu}
-          onClick={() => setOpen(!open)}
-        >
-          <span className={styles.menuIcon} aria-hidden="true" />
-        </button>
-      </div>
-      {/* Always mounted so it can grow and shrink; inert while closed. */}
+          <div className={styles.drawerInner}>
+            {TABS.map((tab, i) => {
+              const active = i === activeIndex;
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  className={styles.drawerLink}
+                  data-active={active || undefined}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  {t.nav[tab.label]}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      </header>
+      {/* Outside the bar, fixed: it dims the page without adding to its scroll height. */}
       <button
         type="button"
-        className={styles.backdrop}
+        className={`${styles.backdrop} ${open ? styles.backdropOpen : ''}`}
         aria-label={t.nav.close}
         tabIndex={-1}
         inert={!open}
         onClick={() => setOpen(false)}
       />
-      <nav
-        id="site-drawer"
-        className={styles.drawer}
-        aria-label={t.nav.pages}
-        data-open={open || undefined}
-        inert={!open}
-      >
-        <div className={styles.drawerInner}>
-          {TABS.map((tab, i) => {
-            const active = i === activeIndex;
-            return (
-              <Link
-                key={tab.href}
-                href={tab.href}
-                className={styles.drawerLink}
-                data-active={active || undefined}
-                aria-current={active ? 'page' : undefined}
-              >
-                {t.nav[tab.label]}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
-    </header>
+    </>
   );
 }

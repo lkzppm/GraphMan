@@ -443,8 +443,9 @@ its bar and let the parents tables scroll; at 480 px the menu keeps its
 seven balls on one edge with no names, the sheet's title naming the
 current one. The deck stacks its cards and facts at 600 px. The observatory sheds sidebar pieces by viewport height
 (above) and stacks at 840 px: stage on top, the sidebar becomes a scrollable
-bottom sheet of at most half the viewport with a mini nav of three tabs
-(graph, search, diameter) showing one section at a time, the diameter
-always unfolded and nothing squeezed; the empty stage's card drops the
-"drop a file" line, since a phone cannot drop one.
+bottom sheet of exactly half the viewport (so the stage does not jump
+between tabs) with a mini nav of three tabs (graph, search, diameter)
+showing one section at a time, the diameter always unfolded and nothing
+squeezed; the empty stage keeps only the format sample, since a phone
+cannot drop a file and the sheet offers the example and the picker.
 Touch targets stay at least 30 px; the stage uses `touch-action: none`.
