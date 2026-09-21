@@ -157,6 +157,8 @@ const MORPH_MS = 700;
 const PATH_FILL = 0.62;
 /** Pointer travel (CSS px) under which a press is a click, not a drag or a pan. */
 const CLICK_SLOP = 4;
+/** The vertex card's widest usual line, for keeping it inside the window. */
+const TOOLTIP_WIDTH = 190;
 
 /** The sample file's lines; the first two carry the format notes. */
 const FORMAT_LINES = ['5', '1 2', '2 5', '5 3', '4 5', '1 5'];
@@ -233,14 +235,36 @@ export default function Observatory() {
 
   // Pointer interaction state lives in refs: it changes every frame.
   const gesture = useRef<{
-    mode: 'none' | 'pan' | 'drag' | 'maybe-click';
+    mode: 'none' | 'pan' | 'drag' | 'maybe-click' | 'pinch';
     startX: number;
     startY: number;
     camX: number;
     camY: number;
     vertex: number;
     pointerId: number;
-  }>({ mode: 'none', startX: 0, startY: 0, camX: 0, camY: 0, vertex: 0, pointerId: -1 });
+    /** Touch pointers currently down, by pointer id. */
+    touches: Map<number, { x: number; y: number }>;
+    /** The pinch as it began: finger distance, midpoint and camera zoom. */
+    pinchDistance: number;
+    pinchMidX: number;
+    pinchMidY: number;
+    pinchZoom: number;
+  }>({
+    mode: 'none',
+    startX: 0,
+    startY: 0,
+    camX: 0,
+    camY: 0,
+    vertex: 0,
+    pointerId: -1,
+    touches: new Map(),
+    pinchDistance: 1,
+    pinchMidX: 0,
+    pinchMidY: 0,
+    pinchZoom: 1,
+  });
+  // A tapped vertex keeps its card up (touch has no hover) until the next tap.
+  const pinnedRef = useRef(false);
   const hoverFrame = useRef(0);
   const revealRef = useRef(0);
   /** Keep the whole graph in view while the layout settles, until the user takes over. */
@@ -883,6 +907,26 @@ export default function Observatory() {
     autoFit.current = false;
     cancelAnimationFrame(glideFrame.current);
     const g = gesture.current;
+    if (event.pointerType === 'touch') {
+      g.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (g.touches.size >= 2) {
+        // A second finger turns whatever the first began into a pinch.
+        event.currentTarget.setPointerCapture(event.pointerId);
+        if (g.mode === 'pinch') return;
+        if (g.mode === 'drag') renderer.endDrag();
+        if (followRef.current) setFollow(false);
+        const [a, b] = [...g.touches.values()];
+        const camera = cameraRef.current;
+        g.mode = 'pinch';
+        g.pinchDistance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+        g.pinchMidX = (a.x + b.x) / 2;
+        g.pinchMidY = (a.y + b.y) / 2;
+        g.camX = camera.x;
+        g.camY = camera.y;
+        g.pinchZoom = camera.zoom;
+        return;
+      }
+    }
     g.pointerId = event.pointerId;
     g.startX = event.clientX;
     g.startY = event.clientY;
@@ -891,6 +935,11 @@ export default function Observatory() {
     const v = pick(event.clientX, event.clientY);
     g.vertex = v;
     g.mode = v ? 'maybe-click' : 'pan';
+    if (pinnedRef.current && v !== hovered) {
+      pinnedRef.current = false;
+      setHovered(0);
+      renderer.setHovered(0);
+    }
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -900,6 +949,30 @@ export default function Observatory() {
     if (!renderer) return;
     const g = gesture.current;
     const { clientX, clientY } = event;
+    if (g.mode === 'pinch') {
+      if (!g.touches.has(event.pointerId)) return;
+      g.touches.set(event.pointerId, { x: clientX, y: clientY });
+      const stage = stageRef.current;
+      if (g.touches.size < 2 || !stage) return;
+      const [a, b] = [...g.touches.values()];
+      const distance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+      const zoom = Math.min(80, Math.max(0.005, (g.pinchZoom * distance) / g.pinchDistance));
+      // The world point under the fingers' first midpoint follows their
+      // current midpoint, so the graph zooms and pans with the hand.
+      const rect = stage.getBoundingClientRect();
+      const px0 = g.pinchMidX - rect.left - rect.width / 2;
+      const py0 = g.pinchMidY - rect.top - rect.height / 2;
+      const px1 = (a.x + b.x) / 2 - rect.left - rect.width / 2;
+      const py1 = (a.y + b.y) / 2 - rect.top - rect.height / 2;
+      applyCamera({
+        x: g.camX + px0 / g.pinchZoom - px1 / zoom,
+        y: g.camY + py0 / g.pinchZoom - py1 / zoom,
+        zoom,
+      });
+      return;
+    }
+    // A lone finger left over from a pinch does nothing until it lifts.
+    if (event.pointerType === 'touch' && g.mode === 'none') return;
     if (g.mode === 'pan') {
       if (followRef.current) setFollow(false);
       const zoom = cameraRef.current.zoom;
@@ -940,9 +1013,24 @@ export default function Observatory() {
   const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     const renderer = rendererRef.current;
     const g = gesture.current;
+    if (event.pointerType === 'touch') g.touches.delete(event.pointerId);
+    if (g.mode === 'pinch') {
+      if (g.touches.size < 2) g.mode = 'none';
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      return;
+    }
     if (g.mode === 'maybe-click' && g.vertex) {
       setSelected(g.vertex);
       renderer?.setSelected(g.vertex);
+      if (event.pointerType === 'touch') {
+        // No hover on a touch screen: the tap pins the vertex card.
+        pinnedRef.current = true;
+        setPointer({ x: event.clientX, y: event.clientY });
+        setHovered(g.vertex);
+        renderer?.setHovered(g.vertex);
+      }
       // In distance mode, with an origin already chosen, a click on another
       // vertex picks the target; otherwise it picks the origin.
       if (mode === 'distance' && rootValid && g.vertex !== root) setTargetInput(String(g.vertex));
@@ -955,6 +1043,9 @@ export default function Observatory() {
     ) {
       setSelected(0);
       renderer?.setSelected(0);
+      pinnedRef.current = false;
+      setHovered(0);
+      renderer?.setHovered(0);
     }
     if (g.mode === 'drag') {
       renderer?.endDrag();
@@ -966,6 +1057,7 @@ export default function Observatory() {
   };
 
   const onPointerLeave = () => {
+    if (pinnedRef.current) return;
     setPointer(null);
     if (hovered) {
       setHovered(0);
@@ -1934,12 +2026,14 @@ export default function Observatory() {
                 <IconButton label={t.fit} onClick={fit}>
                   <Maximize2 size={15} />
                 </IconButton>
-                <IconButton
-                  label={fullscreen ? t.exitFullscreen : t.fullscreen}
-                  onClick={toggleFullscreen}
-                >
-                  {fullscreen ? <Minimize2 size={15} /> : <Expand size={15} />}
-                </IconButton>
+                {!phone && (
+                  <IconButton
+                    label={fullscreen ? t.exitFullscreen : t.fullscreen}
+                    onClick={toggleFullscreen}
+                  >
+                    {fullscreen ? <Minimize2 size={15} /> : <Expand size={15} />}
+                  </IconButton>
+                )}
               </div>
             </div>
 
@@ -1978,7 +2072,11 @@ export default function Observatory() {
         {meta && hovered !== 0 && pointer && hoverInfo && (
           <div
             className={styles.tooltip}
-            style={{ left: pointer.x + 14, top: pointer.y + 14 }}
+            style={
+              pointer.x + 14 + TOOLTIP_WIDTH > window.innerWidth
+                ? { right: window.innerWidth - pointer.x + 14, top: pointer.y + 14 }
+                : { left: pointer.x + 14, top: pointer.y + 14 }
+            }
             role="status"
           >
             <span className="mono">{t.vertex(hovered)}</span>
