@@ -362,7 +362,7 @@ the WebGPU one, drawn only when discs are at least 5 px.
   at their ends; it stacks under 900 px with the edges turned.
   **Decisions**: five columns under one hairline with a blue segment each,
   no boxes: a 168 × 96 figure at full column width, a blue index, a title
-  and a mono caption; the figures run one after another: the parser's grey
+  and a mono caption; the figures run one after another and loop every five seconds while the slide is up: the parser's grey
   self-loop and duplicate struck out and dimmed, a BFS lit level by level
   on the canvas ramp and stopped by a break, a row of cells where only the
   touched ones light and are swept back, two bars against a budget line

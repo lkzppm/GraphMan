@@ -102,7 +102,7 @@ export default function Deck({ studies }: { studies: GraphStudy[] }) {
   const slides = [
     <Cover key="cover" t={t} />,
     <Architecture key="architecture" t={t} />,
-    <Decisions key="decisions" t={t} studies={studies} />,
+    <Decisions key="decisions" t={t} studies={studies} active={index === 2} />,
     <Benchmark key="benchmark" t={t} studies={studies} />,
     <TryIt key="try" t={t} />,
   ];
@@ -724,8 +724,20 @@ function FigDiameter({ t, study }: { t: T; study: GraphStudy | undefined }) {
   );
 }
 
-function Decisions({ t, studies }: { t: T; studies: GraphStudy[] }) {
+/** Seconds between two runs of the decision figures while their slide is up. */
+const DECISIONS_LOOP = 5200;
+
+function Decisions({ t, studies, active }: { t: T; studies: GraphStudy[]; active: boolean }) {
   const s = t.presentation.slides.decisions;
+  // The figures loop: while the slide is current a timer remounts them, so
+  // every animation inside restarts with its delays intact. Leaving the
+  // slide stops the timer; coming back starts a fresh run.
+  const [cycle, setCycle] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = window.setInterval(() => setCycle((c) => c + 1), DECISIONS_LOOP);
+    return () => window.clearInterval(id);
+  }, [active]);
   // The diameter figure shows the graph on which every method finished, the
   // largest such graph: that is where the counts differ most.
   const shown = [...studies]
@@ -750,7 +762,7 @@ function Decisions({ t, studies }: { t: T; studies: GraphStudy[] }) {
             className={`${styles.stepItem} ${styles.rise}`}
             style={at(0.15 + i * 0.1)}
           >
-            <span className={styles.figWrap} style={at(0.5 + i * 0.3)}>
+            <span key={cycle} className={styles.figWrap} style={at(0.5 + i * 0.3)}>
               {figures[i]}
             </span>
             <span className={`mono ${styles.stepIndex}`}>{String(i + 1).padStart(2, '0')}</span>
