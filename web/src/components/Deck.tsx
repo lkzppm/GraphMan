@@ -691,7 +691,7 @@ function FigDiameter({ t, study }: { t: T; study: GraphStudy | undefined }) {
     <svg viewBox="0 0 168 96" className={styles.fig} aria-hidden="true">
       {rows.map(({ method, run }, i) => {
         const y = 10 + i * 21;
-        const width = run ? Math.max(3, 4 + scale(run.bfs_count) * 92) : 0;
+        const width = run ? Number(Math.max(3, 4 + scale(run.bfs_count) * 92).toFixed(2)) : 0;
         return (
           <g key={method}>
             <text className={styles.figLabel} x="0" y={y + 9}>
@@ -798,7 +798,9 @@ function Bar({
           style={
             {
               ...at(delay),
-              '--w': `${Math.max(1.5, width * 100)}%`,
+              // Rounded: Math.log10 differs in its last digit between Node and
+              // the browser, and a different string would break hydration.
+              '--w': `${Math.max(1.5, width * 100).toFixed(2)}%`,
               '--colour': colour,
             } as CSSProperties
           }
