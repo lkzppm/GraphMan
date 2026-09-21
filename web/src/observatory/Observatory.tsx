@@ -38,6 +38,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ChangeEvent,
   type DragEvent,
   type PointerEvent as ReactPointerEvent,
@@ -223,6 +224,11 @@ export default function Observatory() {
   const glideFrame = useRef(0);
   const labelCanvasRef = useRef<HTMLCanvasElement>(null);
   const [diameterOpen, setDiameterOpen] = useState(false);
+  // On a phone the sidebar is a sheet under the stage showing one section
+  // at a time, and the diameter section is always unfolded.
+  const phone = usePhone();
+  const [sheet, setSheet] = useState<Sheet>('graph');
+  const diameterShown = diameterOpen || phone;
   const appRef = useRef<HTMLDivElement>(null);
 
   // Pointer interaction state lives in refs: it changes every frame.
@@ -1217,11 +1223,27 @@ export default function Observatory() {
       <aside
         className={`${styles.sidebar} ${meta ? '' : styles.sidebarEmpty}`}
         data-search={search ? '' : undefined}
+        data-sheet={meta && phone ? sheet : undefined}
       >
         {meta ? (
           <>
+            <nav className={styles.sheetTabs} aria-label={t.sections}>
+              {SHEETS.map((which) => (
+                <button
+                  key={which}
+                  type="button"
+                  className={styles.sheetTab}
+                  data-active={sheet === which || undefined}
+                  aria-pressed={sheet === which}
+                  onClick={() => setSheet(which)}
+                >
+                  {which === 'graph' ? t.graph : which === 'search' ? t.search : t.diameter}
+                </button>
+              ))}
+            </nav>
             <Panel
               title={t.graph}
+              sheet="graph"
               actions={
                 <>
                   <IconButton label={t.loadFile} onClick={() => fileInputRef.current?.click()}>
@@ -1292,6 +1314,7 @@ export default function Observatory() {
 
             <Panel
               title={t.search}
+              sheet="search"
               grow
               actions={
                 search && (
@@ -1482,15 +1505,15 @@ export default function Observatory() {
               )}
             </Panel>
 
-            <section className={`${styles.panel} ${styles.panelCollapsible}`}>
+            <section className={`${styles.panel} ${styles.panelCollapsible}`} data-sheet="diameter">
               <button
                 type="button"
                 className={styles.panelToggle}
                 onClick={() => setDiameterOpen((o) => !o)}
-                aria-expanded={diameterOpen}
+                aria-expanded={diameterShown}
               >
                 <span className={styles.panelTitle}>{t.diameter}</span>
-                {diameter && !diameterOpen && (
+                {diameter && !diameterShown && (
                   <span className={styles.panelSummary}>
                     <span className={styles.summaryTag}>
                       {t.diameterMethods[diameterMethod].label}
@@ -1506,11 +1529,11 @@ export default function Observatory() {
                 )}
                 <ChevronDown
                   size={14}
-                  className={diameterOpen ? styles.chevronOpen : styles.chevron}
+                  className={diameterShown ? styles.chevronOpen : styles.chevron}
                   aria-hidden="true"
                 />
               </button>
-              <div className={styles.collapse} data-open={diameterOpen} inert={!diameterOpen}>
+              <div className={styles.collapse} data-open={diameterShown} inert={!diameterShown}>
                 <div className={styles.collapseInner}>
                   <div className={styles.panelBody}>
                     <div className={styles.field}>
@@ -1684,7 +1707,7 @@ export default function Observatory() {
                 <span className={styles.dropIcon} aria-hidden="true">
                   <Upload size={22} strokeWidth={1.5} />
                 </span>
-                <span className={styles.dropTitle}>
+                <span className={styles.dropTitle} data-drop={status.kind === 'ready' || undefined}>
                   {status.kind === 'booting'
                     ? t.booting
                     : status.kind === 'parsing'
@@ -1992,19 +2015,41 @@ function pathSteps(path: Uint32Array): string[] {
   return [...all.slice(0, 4), '…', ...all.slice(-4)];
 }
 
+const SHEETS = ['graph', 'search', 'diameter'] as const;
+type Sheet = (typeof SHEETS)[number];
+
+const PHONE_QUERY = '(max-width: 840px)';
+
+/** Whether the observatory is laid out as a phone: stage on top, one sheet
+    section below. False on the server and until hydration. */
+function usePhone() {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia(PHONE_QUERY);
+      query.addEventListener('change', onChange);
+      return () => query.removeEventListener('change', onChange);
+    },
+    () => window.matchMedia(PHONE_QUERY).matches,
+    () => false,
+  );
+}
+
 function Panel({
   title,
   actions,
   grow = false,
+  sheet,
   children,
 }: {
   title: string;
   actions?: ReactNode;
   grow?: boolean;
+  /** Which phone sheet section this panel belongs to. */
+  sheet?: Sheet;
   children: ReactNode;
 }) {
   return (
-    <section className={`${styles.panel} ${grow ? styles.panelGrow : ''}`}>
+    <section className={`${styles.panel} ${grow ? styles.panelGrow : ''}`} data-sheet={sheet}>
       <header className={styles.panelHeader}>
         <h2 className={styles.panelTitle}>{title}</h2>
         {actions && <div className={styles.panelActions}>{actions}</div>}

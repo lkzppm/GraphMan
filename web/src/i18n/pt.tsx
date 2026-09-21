@@ -322,6 +322,7 @@ export const pt: Dictionary = {
     openFile: 'Abrir um arquivo',
     openFileHint: '.txt · formato da disciplina',
     controlsTitle: 'Controles',
+    sections: 'Seções',
     keysNote: '// rust → wasm · webgpu · roda na sua aba',
     canvas: 'Tela do grafo',
     noWebGpu: 'WebGPU não está disponível',

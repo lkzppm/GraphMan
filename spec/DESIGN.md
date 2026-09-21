@@ -428,9 +428,9 @@ the WebGPU one, drawn only when discs are at least 5 px.
 ## Responsive rules
 
 The nav folds at 900 px: the tabs leave the bar for a drawer under it
-(one row per page with its mono index, the current one in blue on the
-accent edge, a dimmed backdrop behind), opened by a two-hairline button
-that crosses into an X; the language switch and the GitHub icon stay in
+(one row per page, the current one in blue on the accent edge, a dimmed
+backdrop behind; it grows and shrinks by its grid row, so closing animates
+too), opened by a two-hairline button that crosses into an X; the language switch and the GitHub icon stay in
 the bar, the wordmark leaves it under 400 px. The landing folds at 900 px
 (hero stacks, mark first; decisions grid becomes one column) and 720/640 px
 (mark 240 px, footer columns stack); the representations figure folds at
@@ -443,5 +443,8 @@ its bar and let the parents tables scroll; at 480 px the menu keeps its
 seven balls on one edge with no names, the sheet's title naming the
 current one. The deck stacks its cards and facts at 600 px. The observatory sheds sidebar pieces by viewport height
 (above) and stacks at 840 px: stage on top, the sidebar becomes a scrollable
-bottom sheet of at most 46 % of the viewport with every piece shown again.
+bottom sheet of at most half the viewport with a mini nav of three tabs
+(graph, search, diameter) showing one section at a time, the diameter
+always unfolded and nothing squeezed; the empty stage's card drops the
+"drop a file" line, since a phone cannot drop one.
 Touch targets stay at least 30 px; the stage uses `touch-action: none`.

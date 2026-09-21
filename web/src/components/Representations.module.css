@@ -258,6 +258,10 @@
   .piece:first-child {
     grid-column: 1 / -1;
   }
+
+  .piece:first-child .graph {
+    align-self: center;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

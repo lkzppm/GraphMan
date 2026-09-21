@@ -1640,6 +1640,40 @@
   }
 }
 
+/* The phone sheet's mini nav: three tracked tabs, the current one in blue
+   over an accent hairline. Only drawn on a phone. */
+.sheetTabs {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.sheetTab {
+  flex: 1 1 0;
+  padding: 11px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  box-shadow: inset 0 0 0 var(--accent);
+  transition:
+    color 0.2s var(--ease),
+    box-shadow 0.25s var(--ease);
+}
+
+.sheetTab:hover {
+  color: var(--fg);
+}
+
+.sheetTab[data-active] {
+  color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
 @media (max-width: 840px) {
   .app {
     grid-template-columns: 1fr;
@@ -1648,11 +1682,44 @@
 
   .sidebar {
     order: 2;
-    max-height: 46dvh;
+    max-height: 50dvh;
     overflow-y: auto;
     border-right: 0;
     border-top: 1px solid var(--border);
     padding-bottom: 0;
+  }
+
+  .sheetTabs {
+    display: flex;
+  }
+
+  /* One section at a time, none of them squeezed: the sheet scrolls. */
+  .sidebar[data-sheet='graph'] > .panel:not([data-sheet='graph']),
+  .sidebar[data-sheet='search'] > .panel:not([data-sheet='search']),
+  .sidebar[data-sheet='diameter'] > .panel:not([data-sheet='diameter']) {
+    display: none;
+  }
+
+  .panelGrow {
+    flex: none;
+  }
+
+  .panel {
+    border-bottom: 0;
+  }
+
+  /* The tab names the section; the header keeps only its actions. */
+  .sidebar[data-sheet] .panelHeader .panelTitle {
+    display: none;
+  }
+
+  .sidebar[data-sheet] .panelHeader {
+    justify-content: flex-end;
+    padding-top: 8px;
+  }
+
+  .sidebar[data-sheet] .panelHeader:not(:has(.panelActions)) {
+    display: none;
   }
 
   .panelCollapsible {
@@ -1660,11 +1727,41 @@
     box-shadow: none !important;
   }
 
+  .sidebar[data-sheet] .panelToggle {
+    display: none;
+  }
+
+  .sidebar[data-sheet] .collapse {
+    grid-template-rows: 1fr;
+  }
+
+  .sidebar[data-sheet] .collapseInner {
+    max-height: none;
+    overflow: visible;
+    opacity: 1;
+    transform: none;
+  }
+
   .shedFirst,
   .shedSecond,
   .shedThird,
   .shedFourth {
     display: flex;
+  }
+
+  /* A phone cannot drop a file: the card keeps the format and the buttons. */
+  .dropTitle[data-drop] {
+    display: none;
+  }
+
+  .dropCard {
+    padding: 18px 18px 16px;
+    gap: 10px;
+  }
+
+  .dropIcon {
+    width: 36px;
+    height: 36px;
   }
 }
 
