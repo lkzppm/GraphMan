@@ -27,8 +27,9 @@ import {
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const web = new URL('..', import.meta.url).pathname;
+const web = fileURLToPath(new URL('..', import.meta.url));
 const root = join(web, '..');
 const cargoBin = join(homedir(), '.cargo', 'bin');
 process.env.PATH = `${cargoBin}${delimiter}${process.env.PATH ?? ''}`;
@@ -67,7 +68,7 @@ if (has('rustup')) {
 
 // 2. The wasm-bindgen CLI, matching the crate version in Cargo.lock exactly.
 const lock = readFileSync(join(root, 'Cargo.lock'), 'utf8');
-const version = /name = "wasm-bindgen"\nversion = "([^"]+)"/.exec(lock)?.[1];
+const version = /name = "wasm-bindgen"\r?\nversion = "([^"]+)"/.exec(lock)?.[1];
 if (!version) {
   console.error('wasm-bindgen is not in Cargo.lock');
   process.exit(1);

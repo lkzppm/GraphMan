@@ -18,3 +18,5 @@ web/.vite/
 .idea/
 .vscode/
 *.log
+.vercel
+.env*

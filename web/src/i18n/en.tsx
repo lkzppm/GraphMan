@@ -15,6 +15,8 @@ export const en = {
     presentation: 'Presentation',
     source: 'Source on GitHub',
     language: 'Language',
+    menu: 'Menu',
+    close: 'Close the menu',
   },
 
   hero: {
@@ -318,6 +320,7 @@ export const en = {
     openFile: 'Open a file',
     openFileHint: '.txt · course format',
     controlsTitle: 'Controls',
+    sections: 'Sections',
     keysNote: '// rust → wasm · webgpu · runs in your tab',
     canvas: 'Graph canvas',
     noWebGpu: 'WebGPU is not available',

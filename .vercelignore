@@ -1,0 +1,10 @@
+# Never upload these from the CLI: the course graphs weigh a gigabyte and
+# builds happen from the Git connection anyway.
+graphs/
+target/
+node_modules/
+web/node_modules/
+web/.next/
+web/.cache/
+studies/*.json
+!studies/results.json

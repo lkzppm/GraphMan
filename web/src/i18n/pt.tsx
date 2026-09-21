@@ -15,6 +15,8 @@ export const pt: Dictionary = {
     presentation: 'Apresentação',
     source: 'Código no GitHub',
     language: 'Idioma',
+    menu: 'Menu',
+    close: 'Fechar o menu',
   },
 
   hero: {
@@ -320,6 +322,7 @@ export const pt: Dictionary = {
     openFile: 'Abrir um arquivo',
     openFileHint: '.txt · formato da disciplina',
     controlsTitle: 'Controles',
+    sections: 'Seções',
     keysNote: '// rust → wasm · webgpu · roda na sua aba',
     canvas: 'Tela do grafo',
     noWebGpu: 'WebGPU não está disponível',
