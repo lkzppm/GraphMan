@@ -427,10 +427,21 @@ the WebGPU one, drawn only when discs are at least 5 px.
 
 ## Responsive rules
 
-The landing folds at 900 px (hero stacks, mark first; decisions grid
-becomes one column) and 720/640 px (mark 240 px, footer columns stack);
-the representations figure folds at 560 px (the drawing full width, the
-list and the matrix side by side, CSR under them). The observatory sheds sidebar pieces by viewport height
+The nav folds at 900 px: the tabs leave the bar for a drawer under it
+(one row per page with its mono index, the current one in blue on the
+accent edge, a dimmed backdrop behind), opened by a two-hairline button
+that crosses into an X; the language switch and the GitHub icon stay in
+the bar, the wordmark leaves it under 400 px. The landing folds at 900 px
+(hero stacks, mark first; decisions grid becomes one column) and 720/640 px
+(mark 240 px, footer columns stack); the representations figure folds at
+560 px (the drawing full width, the list and the matrix side by side, CSR
+under them). The library drops its rail at 1240 px and at 720 px stacks
+its split figures, the call sequence and the file flow, and lets its
+tables scroll sideways. The case studies give the diameter its own row at
+1100 px, go to one column at 900 px, and at 600 px drop each value under
+its bar and let the parents tables scroll; at 480 px the menu keeps its
+seven balls on one edge with no names, the sheet's title naming the
+current one. The deck stacks its cards and facts at 600 px. The observatory sheds sidebar pieces by viewport height
 (above) and stacks at 840 px: stage on top, the sidebar becomes a scrollable
 bottom sheet of at most 46 % of the viewport with every piece shown again.
 Touch targets stay at least 30 px; the stage uses `touch-action: none`.

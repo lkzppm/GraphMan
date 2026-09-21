@@ -15,6 +15,8 @@ export const en = {
     presentation: 'Presentation',
     source: 'Source on GitHub',
     language: 'Language',
+    menu: 'Menu',
+    close: 'Close the menu',
   },
 
   hero: {
