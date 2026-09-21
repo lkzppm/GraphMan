@@ -378,11 +378,12 @@ the WebGPU one, drawn only when discs are at least 5 px.
   legend names the three colours, the machine and the timing rule take one
   line under the sheet, and a button opens the case-studies page, which
   holds the rest. **Try it**: a browser frame showing the site's front, the
-  mark and the wordmark on the left and a BFS drawn on the level ramp on
-  the right, its wave looping level by level while the slide is up; beside
-  it the QR code to the home page (`public/brand/qr-home.svg`, the deep
-  level blue on white, 300 px so the back row can scan it), the address as
-  the only link, and the supported browsers as a comment. ← → / space /
+  mark and the wordmark in one row at the top left with the thanks under
+  them, and a BFS drawn on the level ramp on the right, its wave looping
+  level by level while the slide is up; beside it the QR code to the home
+  page (`public/brand/qr-home.svg`, the deep level blue on white, 380 px
+  under a bare accent edge so the back row can scan it) and the address as
+  the only link. ← → / space /
   PageUp-Down and a touch swipe move, Home/End jump, F is full screen (the
   bar fades unless hovered); a thin bar holds prev/next, dots, the counter
   and the hint. The hidden slides are `inert`.

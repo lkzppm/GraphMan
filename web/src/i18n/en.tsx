@@ -470,7 +470,7 @@ export const en = {
         title: 'Try it in your browser',
         url: 'graphman-ufrj.vercel.app',
         scan: 'point your camera',
-        browsers: '// the observatory needs Chrome, Edge, Safari 26 or Firefox 141 and newer',
+        thanks: 'Thank you',
       },
     },
   },

@@ -473,7 +473,7 @@ export const pt: Dictionary = {
         title: 'Teste no seu navegador',
         url: 'graphman-ufrj.vercel.app',
         scan: 'aponte a câmera',
-        browsers: '// o observatório precisa de Chrome, Edge, Safari 26 ou Firefox 141 em diante',
+        thanks: 'Obrigado',
       },
     },
   },

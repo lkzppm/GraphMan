@@ -1043,11 +1043,13 @@ function TryIt({ t }: { t: T }) {
           </div>
           <div className={styles.site}>
             <div className={`${styles.siteBrand} ${styles.rise}`} style={at(0.5)}>
-              <Logo size={72} shake={false} />
-              <span className={`mono ${styles.siteWordmark}`}>
-                graphman<span className="accent">.</span>
+              <span className={styles.siteRow}>
+                <Logo size={56} shake={false} />
+                <span className={`mono ${styles.siteWordmark}`}>
+                  graphman<span className="accent">.</span>
+                </span>
               </span>
-              <span className="eyebrow">{t.presentation.slides.cover.eyebrow}</span>
+              <span className={styles.thanks}>{s.thanks}</span>
             </div>
             <svg viewBox="-132 -118 264 236" className={styles.mock} aria-hidden="true">
               {MOCK.edges.map((e, i) =>
@@ -1090,7 +1092,7 @@ function TryIt({ t }: { t: T }) {
           <p className={`label ${styles.scan}`}>{s.scan}</p>
           <a href={`https://${s.url}`} className={styles.qrCard} target="_blank" rel="noreferrer">
             {/* eslint-disable-next-line @next/next/no-img-element -- a static SVG, drawn at build */}
-            <img src="/brand/qr-home.svg" alt={s.url} width={300} height={300} />
+            <img src="/brand/qr-home.svg" alt={s.url} width={380} height={380} />
           </a>
           <a
             href={`https://${s.url}`}
@@ -1100,7 +1102,6 @@ function TryIt({ t }: { t: T }) {
           >
             {s.url}
           </a>
-          <p className={`comment ${styles.browsers}`}>{s.browsers}</p>
         </div>
       </div>
     </div>
