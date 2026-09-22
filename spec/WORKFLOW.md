@@ -17,14 +17,14 @@ Rust job: `cargo fmt --check`, `cargo clippy --all-targets --all-features
 -D warnings`, `cargo test --all-features`, `cargo doc` with warnings denied,
 and a smoke test of the release CLI on the Figure 1 graph.
 
-Web job: installs the wasm32 target, then `npm ci`, `npm run prepare-assets`
-(wasm + data), `npm run typecheck`, `npm run lint`, `npx next build`.
+Web job: installs the wasm32 target, then `pnpm install --frozen-lockfile`, `pnpm run prepare-assets`
+(wasm + data), `pnpm run typecheck`, `pnpm run lint`, `pnpm exec next build`.
 
 Run the same locally before committing:
 
 ```
 cargo fmt --all && cargo clippy --all-targets --all-features -- -D warnings && cargo test --all-features
-cd web && npm run prepare-assets && npm run typecheck && npm run lint && npm run build
+cd web && pnpm run prepare-assets && pnpm run typecheck && pnpm run lint && pnpm run build
 ```
 
 ## Case studies
@@ -51,14 +51,14 @@ runs out the best lower bound so far is recorded and flagged).
 
 ```
 cd web
-npm install
-npm run dev          # builds the wasm + syncs data, then http://localhost:3000
-npm run build        # same, then `next build`
-npm run wasm         # only rebuild crates/graphman-wasm → src/wasm + public/wasm
-npm run data         # only copy studies/results.json and the wiki examples → src/data
+pnpm install
+pnpm run dev         # builds the wasm + syncs data, then http://localhost:3000
+pnpm run build       # same, then `next build`
+pnpm run wasm        # only rebuild crates/graphman-wasm → src/wasm + public/wasm
+pnpm run data        # only copy studies/results.json and the wiki examples → src/data
 ```
 
-`npm run wasm` needs `cargo` with the `wasm32-unknown-unknown` target
+`pnpm run wasm` needs `cargo` with the `wasm32-unknown-unknown` target
 (`rustup target add wasm32-unknown-unknown`); it downloads the matching
 `wasm-bindgen` CLI into `web/.cache` by itself. The observatory needs a
 browser with WebGPU (Chrome/Edge, Safari 26+, Firefox 141+).
@@ -67,7 +67,7 @@ browser with WebGPU (Chrome/Edge, Safari 26+, Firefox 141+).
 
 Import the GitHub repository, set **Root Directory** to `web` and keep
 "Include source files outside of the Root Directory" enabled (the build
-compiles `crates/`). `web/vercel.json` sets `npm ci` / `npm run build`; the
+compiles `crates/`). `web/vercel.json` sets `pnpm install --frozen-lockfile` / `pnpm run build`; the
 build script installs a minimal Rust toolchain with rustup when `cargo` is
 missing, so nothing else is configured. Production deploys track `main`,
 previews come from pull requests.

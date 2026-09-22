@@ -49,17 +49,17 @@ cargo clippy --all-targets -- -D warnings   # must be clean (CI enforces)
 cargo fmt --all
 cargo build --release                       # binary at target/release/graphman
 graphman study graphs/grafo_1.txt --out studies   # case studies → JSON + RESULTS.md
-cd web && npm install && npm run dev        # builds the wasm, syncs data, starts Next.js
-cd web && npm run typecheck && npm run lint # must be green (CI enforces)
+cd web && pnpm install && pnpm run dev      # builds the wasm, syncs data, starts Next.js
+cd web && pnpm run typecheck && pnpm run lint # must be green (CI enforces)
 ```
 
 ## Rules
 
 - Never commit directly to `main`. Work on `feat/*` or `fix/*` from `dev`, use
   the `/commit` skill to commit and the `/merge` skill to open PRs (CI gates).
-- Keep `cargo clippy -D warnings`, `cargo fmt --check`, `npm run typecheck`
-  and `npm run lint` green before committing. `web/src/wasm`, `web/public/wasm`
-  and `web/src/data` are generated (`npm run prepare-assets`), never edited.
+- Keep `cargo clippy -D warnings`, `cargo fmt --check`, `pnpm run typecheck`
+  and `pnpm run lint` green before committing. `web/src/wasm`, `web/public/wasm`
+  and `web/src/data` are generated (`pnpm run prepare-assets`), never edited.
 - Vertices are 1-based (`1..=n`, as in the input files); `0` is `NO_VERTEX`.
 - Algorithms are generic over `Graph`; never write an algorithm for one
   representation. Use `dispatch!` on `AnyGraph` at the CLI boundary only.

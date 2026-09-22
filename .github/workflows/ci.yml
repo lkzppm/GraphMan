@@ -48,15 +48,18 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
       # Builds crates/graphman-wasm and copies studies/results.json in place;
       # the typecheck needs the generated glue in src/wasm.
-      - run: npm run prepare-assets
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npx next build
+      - run: pnpm run prepare-assets
+      - run: pnpm run typecheck
+      - run: pnpm run lint
+      - run: pnpm exec next build
