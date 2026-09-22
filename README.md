@@ -44,7 +44,7 @@ cargo build --release
 ./target/release/graphman study graphs/grafo_1.txt --out studies   # JSON + RESULTS.md
 
 # Observatory (needs the wasm32-unknown-unknown target; a WebGPU browser to view)
-cd web && npm install && npm run dev
+cd web && pnpm install && pnpm run dev
 ```
 
 Using the library from another program:

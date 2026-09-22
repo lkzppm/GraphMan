@@ -113,8 +113,8 @@ debug info) and runs the `wasm-bindgen` CLI pinned to the crate version in
 and `web/public/wasm/graphman.<hash>.wasm` (fetched at runtime; the name
 carries a content hash because `/wasm` is served as immutable, and
 `src/wasm/manifest.ts` exports the URL). All of it is
-gitignored and rebuilt by `npm run prepare-assets`, which `npm run dev` and
-`npm run build` trigger. On a machine without Rust in CI or Vercel the
+gitignored and rebuilt by `pnpm run prepare-assets`, which `pnpm run dev` and
+`pnpm run build` trigger. On a machine without Rust in CI or Vercel the
 script installs a minimal toolchain with rustup first.
 
 ## Web (`web/`)

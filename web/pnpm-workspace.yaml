@@ -1,0 +1,6 @@
+# The observatory renders in the browser. The native WebGPU (Dawn) binary that
+# vgpu's node adapter pulls in is never used, so its build scripts stay off.
+allowBuilds:
+  '@vgpu/adapter-node': false
+  unrs-resolver: false
+  webgpu: false
