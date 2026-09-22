@@ -107,6 +107,6 @@ linha por linha: apontar três coisas e mandar para a aba de estudos de caso.
 
 - Sem internet na sala: o deck é uma página, então gerar um PDF na véspera
   com Imprimir no navegador em cada slide, ou levar o repositório no
-  pendrive e rodar `npm run dev` localmente.
+  pendrive e rodar `pnpm run dev` localmente.
 - Se o observatório não abrir no computador da sala (sem WebGPU), a demo
   passa a ser a página de estudos de caso, que não precisa de GPU.

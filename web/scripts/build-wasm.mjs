@@ -12,7 +12,7 @@
 // It needs a Rust toolchain with the wasm32-unknown-unknown target and the
 // wasm-bindgen CLI at exactly the version pinned in Cargo.lock. Both are
 // installed on demand: rustup when running in CI/Vercel and cargo is missing,
-// and a prebuilt wasm-bindgen release into web/.cache. So `npm run build`
+// and a prebuilt wasm-bindgen release into web/.cache. So `pnpm run build`
 // works on a fresh Vercel build container as well as on a laptop.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';

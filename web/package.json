@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "description": "GraphMan observatory: the Rust library in the browser, drawn with WebGPU",
   "scripts": {
-    "predev": "npm run prepare-assets",
+    "predev": "pnpm run prepare-assets",
     "dev": "next dev",
-    "prebuild": "npm run prepare-assets",
+    "prebuild": "pnpm run prepare-assets",
     "build": "next build",
     "start": "next start",
     "prepare-assets": "node scripts/sync-data.mjs && node scripts/build-wasm.mjs",
@@ -17,6 +17,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"scripts/*.mjs\""
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "geist": "^1.7.2",
     "lucide-react": "^1.47.0",
     "next": "16.3.5",
@@ -34,5 +35,6 @@
     "eslint-config-next": "16.3.5",
     "prettier": "^3.9.7",
     "typescript": "^5.9"
-  }
+  },
+  "packageManager": "pnpm@11.25.0"
 }
