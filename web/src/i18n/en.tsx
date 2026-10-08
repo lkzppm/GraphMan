@@ -369,6 +369,8 @@ export const en = {
     browse: 'Browse files',
     hideControls: 'Hide the controls',
     showControls: 'Show the controls',
+    hideWeights: 'Hide edge weights',
+    showWeights: 'Show edge weights',
     hideNumbers: 'Hide vertex numbers',
     showNumbers: 'Show vertex numbers',
     stopFollowing: 'Stop following the search',
