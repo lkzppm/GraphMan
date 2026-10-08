@@ -92,8 +92,8 @@ fn dispatch() {
     // What each one costs is known before anything is allocated, and every
     // builder checks it against a MemoryBudget (the machine's memory by
     // default): over it is a typed error, not a process dying in swap.
-    let bytes = Representation::Csr.required_bytes(5, 6); // 76
-    let matrix = Representation::AdjacencyMatrix.required_bytes(375_000, 0); // 17_580_000_000
+    let bytes = Representation::Csr.required_bytes(5, 6, false); // 76
+    let matrix = Representation::AdjacencyMatrix.required_bytes(375_000, 0, false); // 17_580_000_000
     let refused = chosen.build_within(&edges, MemoryBudget::Bytes(64)); // Err(OverBudget { .. })
     // wiki:end
     assert_eq!(depth, 2);
@@ -227,4 +227,116 @@ fn diameter() {
         let d = algo::diameter(&graph, method);
         assert_eq!((d.value, d.is_exact), (2, method.is_exact()));
     }
+}
+
+#[test]
+fn weights() -> Result<(), Box<dyn std::error::Error>> {
+    // wiki:start weights
+    use graphman::{Build, Csr, EdgeList, Weighted};
+
+    // A third column makes a weighted graph: the sample, each edge weighed.
+    let text = b"5\n1 2 0.5\n1 3 2\n2 3 1\n2 4 2.5\n3 5 1\n4 5 0.75\n";
+    let edges = EdgeList::parse(text)?;
+    let graph = Csr::build(&edges)?;
+    let weighted = graph.is_weighted(); // true
+    let around_2: Vec<_> = graph.weighted_neighbors(2).collect(); // [(1, 0.5), (3, 1.0), (4, 2.5)]
+    let w = graph.weight(4, 5); // Some(0.75)
+
+    // The weights are a column beside the adjacency: BFS never reads it, and
+    // a graph without one weighs 1 per edge, so hops are the unit-weight case.
+    let plain = Csr::build(&EdgeList::parse(b"5\n1 2\n1 3\n2 3\n2 4\n3 5\n4 5\n")?)?;
+    let unit = plain.weight(4, 5); // Some(1.0)
+
+    // A repeated edge keeps its smallest weight, the only one a path would use.
+    let repeated = EdgeList::parse(b"2\n1 2 4\n2 1 0.5\n")?;
+    let kept = repeated.weights(); // Some([0.5])
+    // wiki:end
+    assert!(weighted);
+    assert_eq!(around_2, [(1, 0.5), (3, 1.0), (4, 2.5)]);
+    assert_eq!((w, unit), (Some(0.75), Some(1.0)));
+    assert_eq!(kept, Some(&[0.5][..]));
+    Ok(())
+}
+
+#[test]
+fn dijkstra() -> Result<(), Box<dyn std::error::Error>> {
+    // wiki:start dijkstra
+    use graphman::{Build, Csr, EdgeList, FrontierKind, algo};
+
+    let text = b"5\n1 2 0.5\n1 3 2\n2 3 1\n2 4 2.5\n3 5 1\n4 5 0.75\n";
+    let graph = Csr::build(&EdgeList::parse(text)?)?;
+
+    // One Dijkstra; the frontier (how estimates are kept) is the strategy.
+    let tree = algo::dijkstra(&graph, 1, FrontierKind::Heap)?;
+    let to_5 = tree.distance(5); // Some(2.5)
+    let path = tree.path_to(5); // Some([1, 2, 3, 5]): three edges, lighter than 1-3-5
+    let order = tree.order(); // [1, 2, 3, 5, 4], by distance
+
+    // The vector scan (O(n²)) and the heap (O((n + m) log n)) agree exactly:
+    // ties go to the smaller vertex in both, so even the tree is the same.
+    let vector = algo::dijkstra(&graph, 1, FrontierKind::Vector)?;
+    let same = vector == tree; // true
+
+    // A negative weight is refused, not answered wrongly.
+    let negative = Csr::build(&EdgeList::parse(b"3\n1 2 1\n2 3 -1\n")?)?;
+    let refused = algo::dijkstra(&negative, 1, FrontierKind::Heap); // Err(NegativeWeight { .. })
+    // wiki:end
+    assert_eq!((to_5, path), (Some(2.5), Some(vec![1, 2, 3, 5])));
+    assert_eq!(order, [1, 2, 3, 5, 4]);
+    assert!(same);
+    let refused = refused.unwrap_err();
+    assert_eq!(
+        (refused.edge.u, refused.edge.v, refused.edge.weight),
+        (2, 3, -1.0)
+    );
+    assert_eq!(algo::bfs(&graph, 1).path_to(5), Some(vec![1, 3, 5]));
+    Ok(())
+}
+
+#[test]
+fn frontiers() -> Result<(), Box<dyn std::error::Error>> {
+    // wiki:start frontiers
+    use graphman::algo::{self, Frontier, HeapFrontier, ShortestPathTree};
+    use graphman::{Build, Csr, EdgeList, Graph};
+
+    let text = b"5\n1 2 0.5\n1 3 2\n2 3 1\n2 4 2.5\n3 5 1\n4 5 0.75\n";
+    let graph = Csr::build(&EdgeList::parse(text)?)?;
+
+    // A pair query stops as soon as the target is settled.
+    let path = algo::shortest_path(&graph, 1, 4)?.unwrap();
+    let (distance, via) = (path.distance, path.vertices); // (3.0, [1, 2, 4])
+
+    // k sources (the case study): one frontier and one tree for every run,
+    // each run resetting only what the previous one touched.
+    let mut frontier = HeapFrontier::default();
+    let mut tree = ShortestPathTree::new(graph.vertex_count());
+    let mut farthest = Vec::new();
+    for root in graph.vertices() {
+        algo::dijkstra_into(&graph, root, &mut frontier, &mut tree, &mut ())?;
+        farthest.push(tree.last_settled()); // (vertex, distance) farthest from root
+    }
+    let kind = frontier.kind(); // FrontierKind::Heap
+    // wiki:end
+    assert_eq!((distance, via), (3.0, vec![1, 2, 4]));
+    assert_eq!(farthest[0], (4, 3.0));
+    assert_eq!(kind, graphman::FrontierKind::Heap);
+    Ok(())
+}
+
+#[test]
+fn names() -> Result<(), Box<dyn std::error::Error>> {
+    // wiki:start names
+    use graphman::VertexNames;
+
+    // Names live beside the graph, in their own file (`index,name` per line).
+    let names =
+        VertexNames::parse("1,Edsger W. Dijkstra\n2,Alan M. Turing\n3,Éva Tardos\n".as_bytes())?;
+    let dijkstra = names.vertex("Edsger W. Dijkstra"); // Some(1), exact spelling
+    let third = names.name(3); // Some("Éva Tardos")
+    let near_miss = names.search("eva tardos", 5); // [3]: ignoring case and accents
+    // let names = VertexNames::from_path("graphs/rede_colaboracao_vertices.txt")?;
+    // wiki:end
+    assert_eq!((dijkstra, third), (Some(1), Some("Éva Tardos")));
+    assert_eq!(near_miss, vec![3]);
+    Ok(())
 }
