@@ -261,6 +261,7 @@ export const pt: Dictionary = {
     format: {
       vertices: '// vértices',
       edge: '// uma aresta por linha',
+      weight: '// peso, opcional',
     },
     graph: 'Grafo',
     loadFile: 'Carregar um arquivo de grafo',
@@ -348,7 +349,8 @@ export const pt: Dictionary = {
     diameterBound: 'limite inferior',
     diameterHint: 'Escolha um método e calcule o mais longo dos caminhos mínimos.',
     showDiameterPath: (from: string, to: string) => `Desenhar o caminho de ${from} até ${to}`,
-    sample: 'Exemplo',
+    examples: 'Exemplos',
+    examplesHint: 'Com ou sem pesos',
     samples: {
       plain: { label: 'Sem pesos', hint: '5 vértices · 5 arestas' },
       weighted: { label: 'Com pesos', hint: '5 vértices · 6 arestas' },
@@ -368,8 +370,6 @@ export const pt: Dictionary = {
     drop: 'Solte um arquivo de grafo em qualquer lugar',
     fileFormat: 'Formato do arquivo',
     browse: 'Procurar arquivos',
-    trySample: 'Testar o exemplo',
-    tryWeightedSample: 'Com pesos',
     hideControls: 'Esconder os controles',
     showControls: 'Mostrar os controles',
     hideNumbers: 'Esconder os números dos vértices',

@@ -30,6 +30,8 @@ import {
   Scan,
   Trash2,
   Upload,
+  Waypoints,
+  Weight,
   X,
 } from 'lucide-react';
 import {
@@ -243,8 +245,17 @@ const CLICK_SLOP = 4;
 /** The vertex card's widest usual line, for keeping it inside the window. */
 const TOOLTIP_WIDTH = 190;
 
-/** The sample file's lines; the first two carry the format notes. */
-const FORMAT_LINES = ['5', '1 2', '2 5', '5 3', '4 5', '1 5'];
+/** The sample file's lines as `[edge, weight]`; the first three carry the
+    format notes. The weights are drawn faint: the column is optional. */
+const FORMAT_LINES: readonly (readonly [string, string])[] = [
+  ['5', ''],
+  ['1 2', '0.5'],
+  ['2 5', '2'],
+  ['5 3', '1'],
+  ['4 5', '0.75'],
+  ['1 5', '3'],
+];
+const FORMAT_NOTES = ['vertices', 'edge', 'weight'] as const;
 
 export default function Observatory() {
   const t = useT().observatory;
@@ -2043,27 +2054,12 @@ export default function Observatory() {
           <>
             <Panel title={t.graph}>
               <div className={styles.starters}>
-                <div
-                  className={`${styles.starter} ${styles.starterGroup}`}
-                  role="group"
-                  aria-label={t.sample}
-                  data-disabled={status.kind !== 'ready' || undefined}
-                >
-                  <FlaskConical size={18} strokeWidth={1.75} aria-hidden="true" />
-                  <span className={styles.starterTitle}>{t.sample}</span>
-                  {(['plain', 'weighted'] as const).map((which) => (
-                    <button
-                      key={which}
-                      type="button"
-                      className={styles.starterChoice}
-                      onClick={() => loadExample(which)}
-                      disabled={status.kind !== 'ready'}
-                    >
-                      <span className={styles.starterChoiceLabel}>{t.samples[which].label}</span>
-                      <span className={styles.starterHint}>{t.samples[which].hint}</span>
-                    </button>
-                  ))}
-                </div>
+                <ExamplesMenu
+                  t={t}
+                  variant="tile"
+                  disabled={status.kind !== 'ready'}
+                  onPick={loadExample}
+                />
                 <button
                   type="button"
                   className={styles.starter}
@@ -2150,12 +2146,12 @@ export default function Observatory() {
                 </span>
                 <div className={`mono ${styles.format}`} aria-label={t.fileFormat}>
                   <span className={styles.formatName}>sample.txt</span>
-                  <span />
-                  {FORMAT_LINES.map((line, i) => (
-                    <Fragment key={line}>
-                      <span>{line}</span>
+                  {FORMAT_LINES.map(([edge, weight], i) => (
+                    <Fragment key={edge}>
+                      <span>{edge}</span>
+                      <span className={styles.formatWeight}>{weight}</span>
                       <span className={styles.formatNote}>
-                        {i === 0 ? t.format.vertices : i === 1 ? t.format.edge : ''}
+                        {FORMAT_NOTES[i] ? t.format[FORMAT_NOTES[i]] : ''}
                       </span>
                     </Fragment>
                   ))}
@@ -2169,22 +2165,12 @@ export default function Observatory() {
                   >
                     {t.browse}
                   </button>
-                  <button
-                    type="button"
-                    className="button button--secondary button--small"
-                    onClick={() => loadExample('plain')}
+                  <ExamplesMenu
+                    t={t}
+                    variant="button"
                     disabled={status.kind !== 'ready'}
-                  >
-                    {t.trySample}
-                  </button>
-                  <button
-                    type="button"
-                    className="button button--secondary button--small"
-                    onClick={() => loadExample('weighted')}
-                    disabled={status.kind !== 'ready'}
-                  >
-                    {t.tryWeightedSample}
-                  </button>
+                    onPick={loadExample}
+                  />
                 </div>
               </div>
             )}
@@ -2510,6 +2496,92 @@ function Panel({
       </header>
       <div className={styles.panelBody}>{children}</div>
     </section>
+  );
+}
+
+/** The two built-in samples, behind one "Examples" control: a tile in the
+    empty sidebar, a button on the empty stage. Either opens a small menu. */
+function ExamplesMenu({
+  t,
+  variant,
+  disabled,
+  onPick,
+}: {
+  t: ReturnType<typeof useT>['observatory'];
+  variant: 'tile' | 'button';
+  disabled: boolean;
+  onPick: (which: 'plain' | 'weighted') => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const trigger = {
+    type: 'button' as const,
+    onClick: () => setOpen((o) => !o),
+    disabled,
+    'aria-haspopup': 'menu' as const,
+    'aria-expanded': open,
+  };
+
+  return (
+    <div ref={ref} className={styles.examples} data-variant={variant} data-open={open || undefined}>
+      {variant === 'tile' ? (
+        <button {...trigger} className={styles.starter}>
+          <FlaskConical size={18} strokeWidth={1.75} aria-hidden="true" />
+          <span className={styles.starterTitle}>{t.examples}</span>
+          <span className={styles.starterHint}>{t.examplesHint}</span>
+        </button>
+      ) : (
+        <button {...trigger} className="button button--secondary button--small">
+          {t.examples}
+          <ChevronDown size={14} className={styles.examplesChevron} aria-hidden="true" />
+        </button>
+      )}
+      {open && (
+        <div
+          className={`${styles.help} ${styles.examplesMenu}`}
+          role="menu"
+          aria-label={t.examples}
+        >
+          {(['plain', 'weighted'] as const).map((which) => (
+            <button
+              key={which}
+              type="button"
+              role="menuitem"
+              className={styles.menuItem}
+              onClick={() => {
+                setOpen(false);
+                onPick(which);
+              }}
+            >
+              <span className={styles.menuIcon}>
+                {which === 'plain' ? <Waypoints size={16} /> : <Weight size={16} />}
+              </span>
+              <span className={styles.menuText}>
+                <span>{t.samples[which].label}</span>
+                <span className={styles.menuHint}>{t.samples[which].hint}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
