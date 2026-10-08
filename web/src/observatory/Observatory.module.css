@@ -1554,7 +1554,7 @@
 
 /* Empty stage: a compact card over the ambient constellation. */
 .dropCard {
-  width: min(420px, 100%);
+  width: min(500px, 100%);
   padding: 26px 26px 22px;
   display: flex;
   flex-direction: column;
@@ -1625,6 +1625,8 @@
 
 .dropActions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
   margin-top: 2px;
 }
@@ -1676,6 +1678,41 @@
 .starterHint {
   font-size: 11px;
   color: var(--fg-3);
+}
+
+/* The sample tile holds two samples: each a row that turns blue on hover,
+   the tile itself lifting like its neighbour. */
+.starterGroup[data-disabled] {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.starterChoice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 5px 7px;
+  margin: 0 -7px;
+  box-sizing: content-box;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  transition: background 0.18s var(--ease);
+}
+
+.starterChoice:hover:not(:disabled) {
+  background: var(--accent-muted);
+}
+
+.starterChoiceLabel {
+  font-size: 12px;
+  color: var(--fg-2);
+  transition: color 0.18s var(--ease);
+}
+
+.starterChoice:hover:not(:disabled) .starterChoiceLabel {
+  color: var(--accent);
 }
 
 .keys {

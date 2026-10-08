@@ -350,12 +350,15 @@ the WebGPU one, drawn only when discs are at least 5 px.
   `aria-pressed` fills it blue-muted. In a floating **cluster** (blurred,
   bordered pill on the stage) the borders drop and hover tints grey.
 - **Empty observatory**: the sidebar shows two starter tiles (Sample, Open
-  a file) and a cheat sheet of `kbd` chips (click, drag, scroll, F, space,
+  a file; the Sample tile holds two rows, unweighted, Figure 1 of the
+  assignment, and weighted, the library page's graph with all-positive
+  weights, each turning blue on hover) and a cheat sheet of `kbd` chips (click, drag, scroll, F, space,
   arrows, esc) with three-word labels; the stage draws a faint drifting
   constellation on the label canvas (grey dots, a few blue, hairline links,
   pushed away by the pointer; decoration only) under a compact dashed card:
   icon, "Drop a graph file anywhere", the sample file as the format
-  explanation (a tiny file card with `// comments`), and two buttons.
+  explanation (a tiny file card with `// comments`), and three buttons
+  (browse, the sample, the weighted sample).
 - **Storage picker** (a parsed file waiting for a representation): a card
   in place of the drop card, the file name and counts over three cards
   (pictogram, name, hint, the cost in mono with a bar). It never pops: the
