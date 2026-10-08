@@ -667,8 +667,9 @@ export default function Observatory() {
       const name = waiting.name;
       setStatus({ kind: 'parsing', name });
       setNotice(null);
-      // Let the status paint before the (synchronous) build.
-      await new Promise((resolve) => setTimeout(resolve, 30));
+      // Let the picker ease out (it leaves while the status is "parsing")
+      // before the synchronous build holds the main thread.
+      await new Promise((resolve) => setTimeout(resolve, 200));
       try {
         graphRef.current?.free();
         graphRef.current = null;
@@ -2111,6 +2112,7 @@ export default function Observatory() {
               <RepresentationPicker
                 t={t}
                 pending={pending}
+                leaving={status.kind === 'parsing'}
                 onChoose={(which) => void openPending(pending, which)}
               />
             ) : (
@@ -2657,15 +2659,18 @@ function RepresentationOption({
 function RepresentationPicker({
   t,
   pending,
+  leaving,
   onChoose,
 }: {
   t: Strings;
   pending: Pending;
+  /** A strategy was picked and is being built: the card eases out. */
+  leaving: boolean;
   onChoose: (which: Repr) => void;
 }) {
   const { memory } = pending;
   return (
-    <div className={styles.pickCard}>
+    <div className={styles.pickCard} data-leaving={leaving || undefined}>
       <div className={styles.pickHead}>
         <span className={`mono ${styles.pickName}`} title={pending.name}>
           {pending.name}

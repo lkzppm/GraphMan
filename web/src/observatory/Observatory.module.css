@@ -430,6 +430,46 @@
   border-radius: var(--radius-lg);
   background: var(--bg);
   box-shadow: var(--shadow-hover);
+  /* It eases in where the drop card was, its parts following in turn, and
+     eases out once a strategy is picked, before the build takes the thread. */
+  animation: pickIn 0.5s var(--ease) both;
+}
+
+/* An animation, not a transition: the entrance animation's end state
+   would otherwise keep winning over the leaving styles. */
+.pickCard[data-leaving] {
+  animation: pickOut 0.2s var(--ease) both;
+  pointer-events: none;
+}
+
+.pickHead,
+.pickTitle {
+  animation: rise 0.45s var(--ease) both;
+  animation-delay: 0.08s;
+}
+
+.pickTitle {
+  animation-delay: 0.14s;
+}
+
+.pickCard .reprCard {
+  animation: rise 0.5s var(--ease) both;
+  animation-delay: 0.2s;
+}
+
+.pickCard .reprCard:nth-child(2) {
+  animation-delay: 0.27s;
+}
+
+.pickCard .reprCard:nth-child(3) {
+  animation-delay: 0.34s;
+}
+
+/* The cost bars fill once their card has landed. */
+.pickCard .reprFill {
+  transform-origin: left;
+  animation: fill 0.7s var(--ease) both;
+  animation-delay: 0.45s;
 }
 
 .pickHead {
@@ -2031,6 +2071,35 @@
 
   to {
     opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pickIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pickOut {
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+}
+
+@keyframes fill {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
     transform: none;
   }
 }
