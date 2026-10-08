@@ -278,6 +278,9 @@ export default function Observatory() {
   const [status, setStatus] = useState<Status>({ kind: 'booting' });
   const [meta, setMeta] = useState<GraphMeta | null>(null);
   const [selected, setSelected] = useState(0);
+  /** The selected vertex for the label loop, which reads it every frame. */
+  const selectedRef = useRef(0);
+  selectedRef.current = selected;
   const [hovered, setHovered] = useState(0);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [kind, setKind] = useState<SearchKindName>('bfs');
@@ -1510,14 +1513,22 @@ export default function Observatory() {
       ctx.textBaseline = 'middle';
 
       // Weights first, so a vertex number is never covered: a small pill at
-      // the middle of each edge long enough on screen to hold one.
+      // the middle of each edge long enough on screen to hold one. The
+      // selected vertex's edges turn blue and are drawn last, on top.
       if (weights) {
         ctx.font = `500 10px ${mono}`;
-        const pillFill = style.getPropertyValue('--bg');
-        const pillStroke = style.getPropertyValue('--border-2');
-        const text = style.getPropertyValue('--fg-2');
-        let drawn = 0;
-        for (let e = 0; e < weights.length && drawn < 1500; e++) {
+        const background = style.getPropertyValue('--bg');
+        const plain = {
+          tint: '',
+          stroke: style.getPropertyValue('--border-2'),
+          text: style.getPropertyValue('--fg-2'),
+        };
+        const chosen = {
+          tint: style.getPropertyValue('--accent-muted'),
+          stroke: style.getPropertyValue('--accent'),
+          text: style.getPropertyValue('--accent'),
+        };
+        const pill = (e: number, colors: typeof plain) => {
           const u = edges[2 * e];
           const v = edges[2 * e + 1];
           const x1 = sx(u);
@@ -1526,22 +1537,40 @@ export default function Observatory() {
           const y2 = sy(v);
           const x = (x1 + x2) / 2;
           const y = (y1 + y2) / 2;
-          if (x < -30 || y < -30 || x > rect.width + 30 || y > rect.height + 30) continue;
+          if (x < -30 || y < -30 || x > rect.width + 30 || y > rect.height + 30) return false;
           const label = weightText[e];
           const width = ctx.measureText(label).width + 8;
           // Room for the pill between the two discs, or no label.
-          if (Math.hypot(x2 - x1, y2 - y1) < width + 28) continue;
+          if (Math.hypot(x2 - x1, y2 - y1) < width + 28) return false;
           ctx.beginPath();
           ctx.roundRect(x - width / 2, y - 7.5, width, 15, 4);
-          ctx.fillStyle = pillFill;
+          ctx.fillStyle = background;
           ctx.fill();
-          ctx.strokeStyle = pillStroke;
+          if (colors.tint) {
+            ctx.fillStyle = colors.tint;
+            ctx.fill();
+          }
+          ctx.strokeStyle = colors.stroke;
           ctx.lineWidth = 1;
           ctx.stroke();
-          ctx.fillStyle = text;
+          ctx.fillStyle = colors.text;
           ctx.fillText(label, x, y + 0.5);
-          drawn += 1;
+          return true;
+        };
+        const selectedVertex = selectedRef.current;
+        const mine: number[] = [];
+        let drawn = 0;
+        for (let e = 0; e < weights.length; e++) {
+          if (
+            selectedVertex &&
+            (edges[2 * e] === selectedVertex || edges[2 * e + 1] === selectedVertex)
+          ) {
+            mine.push(e);
+          } else if (drawn < 1500 && pill(e, plain)) {
+            drawn += 1;
+          }
         }
+        for (const e of mine) pill(e, chosen);
       }
 
       const radius = Math.min(12, Math.max(1.5, 3.5 * Math.sqrt(camera.zoom)));
