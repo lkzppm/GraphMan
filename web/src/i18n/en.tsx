@@ -350,7 +350,7 @@ export const en = {
     examplesHint: 'Weighted or not',
     samples: {
       plain: { label: 'Unweighted', hint: '5 vertices · 5 edges' },
-      weighted: { label: 'Weighted', hint: '5 vertices · 6 edges' },
+      weighted: { label: 'Weighted', hint: '10 vertices · 15 edges' },
     },
     openFile: 'Open a file',
     openFileHint: '.txt · course format',

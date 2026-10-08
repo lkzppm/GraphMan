@@ -100,8 +100,8 @@ link (the wordmark turns blue on the home page), then a tab per other page
 — **Observatory** (`/observatory`), **Library** (`/library`, the
 interactive manual), **Case studies** (`/studies`, the seven questions drawn), **Presentation**
 (`/presentation`, the five slides) — then, on the right, the language
-switch (two mono tags, `pt` · `en`, the current one in the blue-muted
-pill) and a bordered GitHub button. The current tab is marked in blue:
+switch (two mono tags, `pt` · `en`, over one blue-muted pill that slides
+to the current one) and a bordered square holding only the GitHub mark. The current tab is marked in blue:
 blue text, a blue-muted pill and a 2 px underline; the pill slides between
 tabs (a measured indicator, spring easing) and fades out on the home page.
 
@@ -357,12 +357,13 @@ the WebGPU one, drawn only when discs are at least 5 px.
   compact dashed card: icon, "Drop a graph file anywhere", the sample file
   as the format explanation (a tiny file card with `// comments`, the
   optional weight column in faint blue), and two buttons (browse,
-  Examples ▾). Examples, tile or button, opens a small menu of two rows
-  with icons: unweighted (waypoints, Figure 1 of the assignment) and
-  weighted (a weight, the library page's graph with all-positive weights).
-  The tile's menu opens inline under both tiles, pushing the cheat sheet
-  down; the button's hangs centred under it. A click outside or Esc closes
-  either.
+  Examples). Examples, tile or button, turns into the choice in place
+  (its two faces share one grid cell, so it keeps its size; the face fades
+  as the choices rise in): two rows in the tile, two halves with a hairline
+  between on the button, each with its icon, unweighted (waypoints,
+  Figure 1 of the assignment) and weighted (a weight, ten vertices and
+  fifteen positive edges whose lightest path from 1 to 10 is not the
+  shortest). A click outside or Esc turns it back.
 - **Storage picker** (a parsed file waiting for a representation): a card
   in place of the drop card, the file name and counts over three cards
   (pictogram, name, hint, the cost in mono with a bar). It never pops: the
