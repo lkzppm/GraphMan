@@ -73,8 +73,13 @@ impl Build for Csr {
     const REPRESENTATION: Representation = Representation::Csr;
 
     fn required_bytes(vertex_count: usize, edge_count: usize, weighted: bool) -> usize {
+        // Saturating, so a size that does not fit 32 bits exceeds every budget.
         let weights = if weighted { size_of::<Weight>() } else { 0 };
-        (vertex_count + 2) * size_of::<u32>() + 2 * edge_count * (size_of::<Vertex>() + weights)
+        let offsets = vertex_count
+            .saturating_add(2)
+            .saturating_mul(size_of::<u32>());
+        let entries = edge_count.saturating_mul(2);
+        offsets.saturating_add(entries.saturating_mul(size_of::<Vertex>() + weights))
     }
 
     fn build_unchecked(edges: &EdgeList) -> Result<Self, BuildError> {

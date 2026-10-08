@@ -6,7 +6,7 @@ use crate::ui::Ui;
 use anyhow::{Context, Result, bail, ensure};
 use graphman::{EdgeList, Vertex, Weight};
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -45,6 +45,10 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
         Some(path) => {
             let edges =
                 EdgeList::from_path(path).with_context(|| format!("reading {}", path.display()))?;
+            if range.is_none() {
+                // Nothing to draw: the copy keeps the file's own weights, if any.
+                return write(&edges, &args.output, ui);
+            }
             let pairs = edges.edges().iter().map(|&[u, v]| (u, v)).collect();
             (edges.vertex_count(), pairs)
         }
@@ -74,12 +78,16 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
             EdgeList::from_weighted_edges(n, weighted)?
         }
     };
-    let file = File::create(&args.output)
-        .with_context(|| format!("creating {}", args.output.display()))?;
+    write(&edges, &args.output, ui)
+}
+
+/// Writes `edges` in the course format and says so.
+fn write(edges: &EdgeList, output: &Path, ui: &Ui) -> Result<()> {
+    let file = File::create(output).with_context(|| format!("creating {}", output.display()))?;
     edges.write_to(file)?;
     ui.done(&format!(
         "wrote {}: {} vertices, {} {}edges",
-        args.output.display(),
+        output.display(),
         edges.vertex_count(),
         edges.edge_count(),
         if edges.is_weighted() { "weighted " } else { "" }

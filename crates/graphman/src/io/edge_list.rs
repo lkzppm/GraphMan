@@ -211,6 +211,10 @@ pub enum ParseError {
         /// What was there instead.
         found: String,
     },
+    /// The weights are finite but their sum is not, so a path's length could
+    /// overflow to infinity.
+    #[error("the weights add up to more than the largest float, so path lengths could overflow")]
+    WeightsOverflow,
     /// An edge line has a weight when the first one did not, or the reverse.
     #[error(
         "line {line}: the first edge line has {expected} columns and every edge must too \
@@ -288,7 +292,7 @@ impl EdgeList {
             })?;
             raw.push(WeightedRecord { u, v, weight });
         }
-        Ok(Self::normalise_weighted(vertex_count, raw))
+        Self::normalise_weighted(vertex_count, raw)
     }
 
     /// Reads and parses a file. With the `mmap` feature the file is memory
@@ -343,7 +347,7 @@ impl EdgeList {
             }
             raw.push(WeightedRecord { u, v, weight });
         }
-        Ok(Self::normalise_weighted(vertex_count, raw))
+        Self::normalise_weighted(vertex_count, raw)
     }
 
     fn normalise(vertex_count: usize, mut raw: EdgeStore<[Vertex; 2]>) -> Self {
@@ -388,7 +392,10 @@ impl EdgeList {
     /// The weighted twin of [`normalise`](Self::normalise): the same steps on
     /// `(u, v, weight)` records, then the records are split into the edge
     /// array and the parallel weight array.
-    fn normalise_weighted(vertex_count: usize, mut raw: EdgeStore<WeightedRecord>) -> Self {
+    fn normalise_weighted(
+        vertex_count: usize,
+        mut raw: EdgeStore<WeightedRecord>,
+    ) -> Result<Self, ParseError> {
         let records = raw.as_mut_slice();
         let before = records.len();
         let mut kept = 0;
@@ -427,21 +434,29 @@ impl EdgeList {
         let mut edges = EdgeStore::with_capacity(records.len());
         let mut weights = EdgeStore::with_capacity(records.len());
         let mut negative_edge = None;
+        let mut total: Weight = 0.0;
         for &WeightedRecord { u, v, weight } in records {
             edges.push([u, v]);
             weights.push(weight);
+            total += weight.abs();
             if weight < 0.0 && negative_edge.is_none() {
                 negative_edge = Some(WeightedEdge { u, v, weight });
             }
         }
-        Self {
+        // Every path weighs at most the sum of all weights; if that sum is
+        // not a finite float, a distance could overflow to infinity and a
+        // reachable vertex would look unreached.
+        if !total.is_finite() {
+            return Err(ParseError::WeightsOverflow);
+        }
+        Ok(Self {
             vertex_count,
             edges,
             weights: Some(weights),
             self_loops_dropped,
             duplicates_dropped,
             negative_edge,
-        }
+        })
     }
 
     /// Number of vertices declared in the file.
@@ -771,6 +786,11 @@ mod tests {
         assert!(matches!(
             EdgeList::from_weighted_edges(2, [(1, 2, f64::NAN)]),
             Err(ParseError::InvalidWeight { .. })
+        ));
+        // Each weight is finite, their sum is not: a path could overflow.
+        assert!(matches!(
+            EdgeList::parse(b"3\n1 2 1e308\n2 3 1e308\n"),
+            Err(ParseError::WeightsOverflow)
         ));
     }
 
