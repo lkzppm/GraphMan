@@ -47,6 +47,24 @@ Useful knobs: `--runs 100` (searches per representation), `--seed 42`,
 this many vertices), `--diameter-budget <seconds>` (per exact method; when it
 runs out the best lower bound so far is recorded and flagged).
 
+## Weighted graphs (Part 2)
+
+The weighted course files are not out yet; until they are, `samples/` has
+the handout's figures, a 100-vertex weighted graph and a synthetic named
+network (see `samples/README.md`), and `graphman generate --like
+graphs/grafo_N.txt --weights 0:1 -o grafo_W_N.txt` puts random weights on a
+Part 1 graph. The mechanisms:
+
+```
+graphman dijkstra G --from 10 --to 20 30 40 50 60 --frontier heap     # tree file + paths
+graphman bench G --algo dijkstra --frontier vector -n 100            # mean per source
+graphman dijkstra R --names R_names.txt --from "Edsger W. Dijkstra" --to "Alan M. Turing"
+```
+
+The vector frontier is `O(n²)` per source: fine up to grafo_2's 50 000
+vertices, about 16 s per source at 375 000 and hours at 4.8M, so run
+it with few sources there (the study runner will take a budget).
+
 ## Web app
 
 ```
