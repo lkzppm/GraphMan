@@ -352,7 +352,7 @@ export const pt: Dictionary = {
     examples: 'Exemplos',
     examplesHint: 'Com ou sem pesos',
     samples: {
-      plain: { label: 'Sem pesos', hint: '5 vértices · 5 arestas' },
+      plain: { label: 'Sem pesos', hint: '10 vértices · 15 arestas' },
       weighted: { label: 'Com pesos', hint: '10 vértices · 15 arestas' },
     },
     openFile: 'Abrir um arquivo',

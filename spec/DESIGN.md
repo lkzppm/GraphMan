@@ -360,10 +360,12 @@ the WebGPU one, drawn only when discs are at least 5 px.
   Examples). Examples, tile or button, turns into the choice in place
   (its two faces share one grid cell, so it keeps its size; the face fades
   as the choices rise in): two rows in the tile, two halves with a hairline
-  between on the button, each with its icon, unweighted (waypoints,
-  Figure 1 of the assignment) and weighted (a weight, ten vertices and
-  fifteen positive edges whose lightest path from 1 to 10 is not the
-  shortest). A click outside or Esc turns it back.
+  between on the button, each with its icon: the same ten vertices and
+  fifteen edges (`EXAMPLE_EDGES` in `web/src/lib/graphman.ts`) without
+  weights (waypoints) or with them (a weight), whose lightest path from 1
+  to 10 is not the shortest, so BFS and Dijkstra disagree visibly. A click
+  outside or Esc turns it back. The format card shows that file's first
+  lines.
 - **Storage picker** (a parsed file waiting for a representation): a card
   in place of the drop card, the file name and counts over three cards
   (pictogram, name, hint, the cost in mono with a bar). It never pops: the

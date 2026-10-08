@@ -50,7 +50,7 @@ import {
 } from 'react';
 import { formatBytes, formatCompact, formatInt, formatMs, formatWeight } from '@/lib/format';
 import {
-  FIGURE_ONE,
+  UNWEIGHTED_SAMPLE,
   WEIGHTED_SAMPLE,
   loadGraphman,
   UNREACHED,
@@ -245,15 +245,16 @@ const CLICK_SLOP = 4;
 /** The vertex card's widest usual line, for keeping it inside the window. */
 const TOOLTIP_WIDTH = 190;
 
-/** The sample file's lines as `[edge, weight]`; the first three carry the
-    format notes. The weights are drawn faint: the column is optional. */
+/** The first lines of the example file as `[edge, weight]` (see
+    `EXAMPLE_EDGES`); the first three carry the format notes. The weights
+    are drawn faint: the column is optional. */
 const FORMAT_LINES: readonly (readonly [string, string])[] = [
-  ['5', ''],
+  ['10', ''],
   ['1 2', '0.5'],
-  ['2 5', '2'],
-  ['5 3', '1'],
-  ['4 5', '0.75'],
-  ['1 5', '3'],
+  ['1 3', '4'],
+  ['1 4', '1.5'],
+  ['2 5', '1'],
+  ['…', ''],
 ];
 const FORMAT_NOTES = ['vertices', 'edge', 'weight'] as const;
 
@@ -843,14 +844,13 @@ export default function Observatory() {
     [parseBytes],
   );
 
-  /** Opens one of the two built-in samples: Figure 1 of the assignment, or
-      the library page's graph with weights. */
+  /** Opens the built-in example, without its weights or with them. */
   const loadExample = useCallback(
     (which: 'plain' | 'weighted' = 'plain') => {
       const [name, text] =
         which === 'weighted'
           ? ['sample_weighted.txt', WEIGHTED_SAMPLE]
-          : ['sample.txt', FIGURE_ONE];
+          : ['sample.txt', UNWEIGHTED_SAMPLE];
       void parseBytes(name, new TextEncoder().encode(text));
     },
     [parseBytes],
