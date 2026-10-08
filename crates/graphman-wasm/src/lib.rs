@@ -418,6 +418,18 @@ impl From<WeightStats> for WeightSummary {
     }
 }
 
+/// An edge with a negative weight: why Dijkstra refuses a graph.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy)]
+pub struct NegativeEdge {
+    /// The smaller endpoint.
+    pub u: u32,
+    /// The larger endpoint.
+    pub v: u32,
+    /// Its (negative) weight.
+    pub weight: f64,
+}
+
 /// A Dijkstra run: distance and parent of every settled vertex, and the
 /// settle order (which animates it the way discovery ranks animate a BFS).
 #[wasm_bindgen]
@@ -629,13 +641,15 @@ impl WasmGraph {
         self.graph.is_weighted()
     }
 
-    /// Why Dijkstra would refuse this graph (its first negative edge), or
-    /// `undefined` when every weight is non-negative.
+    /// The edge Dijkstra would refuse this graph for (its first negative
+    /// edge), or `undefined` when every weight is non-negative.
     #[wasm_bindgen(getter, js_name = negativeEdge)]
-    pub fn negative_edge(&self) -> Option<String> {
-        self.graph
-            .negative_edge()
-            .map(|edge| graphman::NegativeWeight { edge }.to_string())
+    pub fn negative_edge(&self) -> Option<NegativeEdge> {
+        self.graph.negative_edge().map(|edge| NegativeEdge {
+            u: edge.u,
+            v: edge.v,
+            weight: edge.weight,
+        })
     }
 
     /// Heap bytes owned by the representation.
@@ -1241,11 +1255,8 @@ mod tests {
         }
         let stats = csr.weight_stats().expect("weighted");
         assert_eq!((stats.min, stats.max, stats.negative), (-9.5, 5.0, 1));
-        assert!(
-            csr.negative_edge()
-                .expect("3-4 is negative")
-                .contains("not implemented yet")
-        );
+        let negative = csr.negative_edge().expect("3-4 is negative");
+        assert_eq!((negative.u, negative.v, negative.weight), (3, 4, -9.5));
         // An unweighted file weighs 1 per edge and has nothing to refuse.
         let plain = graph(RepresentationKind::Csr);
         assert!(!plain.weighted() && plain.negative_edge().is_none());

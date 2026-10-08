@@ -10,6 +10,7 @@ export type {
   MemoryReport,
   Parsed,
   SearchResult,
+  ShortestPathResult,
 } from '@/wasm/graphman';
 export type GraphmanModule = typeof Graphman;
 

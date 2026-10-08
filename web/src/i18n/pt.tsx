@@ -300,6 +300,19 @@ export const pt: Dictionary = {
     traversal: 'Algoritmo',
     theOrigin: 'a origem',
     runFrom: (kind: string, root: string) => `Rodar ${kind} a partir de ${root}`,
+    dijkstra: 'Dijkstra',
+    frontier: 'Fronteira',
+    frontiers: { vector: 'Vetor', heap: 'Heap' },
+    frontierHints: {
+      vector: 'um vetor de estimativas varrido em busca do mínimo: O(n²)',
+      heap: 'um heap binário com decrease-key: O((n + m) log n)',
+    },
+    weightsRange: (min: string, max: string) => `pesos de ${min} a ${max}`,
+    negativeWeights: (n: number) => (n === 1 ? '1 peso negativo' : `${n} pesos negativos`),
+    refusal: (u: number, v: number, w: string) =>
+      `O Dijkstra recusa este grafo: a aresta ${u} ${v} pesa ${w}, e caminhos mínimos com pesos negativos ainda não foram implementados.`,
+    distanceNoun: 'distância',
+    distanceAt: (d: string) => `distância ${d}`,
     mode: 'Modo',
     modeSearch: 'Max',
     modeDistance: 'Distância',
@@ -411,7 +424,7 @@ export const pt: Dictionary = {
     levelNoun: 'nível',
     depthNoun: 'profundidade',
     verticesPer: (noun: string) => `Vértices por ${noun}`,
-    goTo: (noun: string, n: number) => `Ir para ${noun} ${n}`,
+    goTo: (noun: string, n: number | string) => `Ir para ${noun} ${n}`,
     depthTrace: 'Profundidade ao longo da busca',
   },
 

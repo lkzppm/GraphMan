@@ -22,6 +22,14 @@ export function formatMs(ms: number): string {
   return `${(ms / 60_000).toFixed(1)} min`;
 }
 
+/** A weight or a weighted distance: at most three decimals, trailing zeros
+    dropped (`9.736`, `2.5`, `-9.5`); `∞` when unreached. */
+export function formatWeight(value: number): string {
+  if (!Number.isFinite(value)) return '∞';
+  const text = value.toFixed(3).replace(/\.?0+$/, '');
+  return text === '-0' ? '0' : text;
+}
+
 /** Bytes in KB, MB, GB or TB. */
 export function formatBytes(bytes: number): string {
   if (bytes >= 1024 ** 4) return `${(bytes / 1024 ** 4).toFixed(2)} TB`;

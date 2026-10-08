@@ -46,7 +46,7 @@ import {
   type ReactNode,
   type WheelEvent as ReactWheelEvent,
 } from 'react';
-import { formatBytes, formatCompact, formatInt, formatMs } from '@/lib/format';
+import { formatBytes, formatCompact, formatInt, formatMs, formatWeight } from '@/lib/format';
 import {
   FIGURE_ONE,
   loadGraphman,
@@ -56,6 +56,7 @@ import {
   type MemoryReport,
   type Parsed,
   type SearchResult,
+  type ShortestPathResult,
 } from '@/lib/graphman';
 import {
   acquireRenderer,
@@ -138,6 +139,10 @@ interface GraphMeta {
   largest: number;
   smallest: number;
   degrees: Uint32Array;
+  /** Smallest and largest weight and the negative count; `null` without a weight column. */
+  weights: { min: number; max: number; negative: number } | null;
+  /** The edge Dijkstra refuses the graph for, if any. */
+  negativeEdge: { u: number; v: number; weight: number } | null;
   componentSizes: Uint32Array;
   /** Component id per vertex (1 = largest, ranked by size). */
   componentLabels: Uint32Array;
@@ -147,7 +152,29 @@ interface GraphMeta {
   parseMs: number;
 }
 
-type SearchKindName = 'bfs' | 'dfs';
+type SearchKindName = 'bfs' | 'dfs' | 'dijkstra';
+/** How Dijkstra keeps its estimates: the course's two versions. */
+type FrontierName = 'vector' | 'heap';
+
+/** Dijkstra's tree is coloured and charted by distance bands: the origin
+    alone at 0, then BANDS equal slices up to the farthest settled vertex.
+    Vertices settle in distance order, so each band is one contiguous run of
+    the timeline, exactly like a BFS level, and the level chart, the arrow
+    keys and the colour ramp work on it unchanged. */
+const BANDS = 12;
+
+function distanceBands(
+  distances: Float64Array,
+  order: Uint32Array,
+): { levels: Uint32Array; width: number } {
+  const levels = new Uint32Array(distances.length).fill(UNREACHED);
+  const farthest = order.length ? distances[order[order.length - 1]] : 0;
+  const width = farthest > 0 ? farthest / BANDS : 1;
+  order.forEach((v, rank) => {
+    levels[v] = rank === 0 ? 0 : 1 + Math.min(BANDS - 1, Math.floor(distances[v] / width));
+  });
+  return { levels, width };
+}
 /** What the panel asks for: the whole traversal, or the path to a destination. */
 type SearchMode = 'search' | 'distance';
 
@@ -170,7 +197,13 @@ interface Search {
   order: Uint32Array;
   /** Discovery rank of each vertex (UNREACHED if not reached). */
   ranks: Uint32Array;
-  result: SearchResult;
+  /** Dijkstra only: the distance of every vertex (Infinity if unreached). */
+  distances: Float64Array | null;
+  /** Dijkstra only: the width of one distance band. */
+  bandWidth: number;
+  /** Dijkstra only: the frontier that ran. */
+  frontier: FrontierName | null;
+  result: SearchResult | ShortestPathResult;
 }
 
 interface DiameterInfo {
@@ -231,6 +264,7 @@ export default function Observatory() {
   const [hovered, setHovered] = useState(0);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [kind, setKind] = useState<SearchKindName>('bfs');
+  const [frontier, setFrontier] = useState<FrontierName>('heap');
   const [mode, setMode] = useState<SearchMode>('search');
   const [rootInput, setRootInput] = useState('');
   const [targetInput, setTargetInput] = useState('');
@@ -644,6 +678,16 @@ export default function Observatory() {
         setPending(null);
         graphRef.current = graph;
         const stats = graph.degreeStats();
+        const weightStats = graph.weightStats();
+        const weights = weightStats
+          ? { min: weightStats.min, max: weightStats.max, negative: weightStats.negative }
+          : null;
+        weightStats?.free();
+        const negative = graph.negativeEdge;
+        const negativeEdge = negative
+          ? { u: negative.u, v: negative.v, weight: negative.weight }
+          : null;
+        negative?.free();
         const sizes = graph.componentSizes();
         const degrees = graph.degrees();
         const labels = graph.componentLabels();
@@ -691,6 +735,8 @@ export default function Observatory() {
           largest: sizes[0] ?? 0,
           smallest: sizes[sizes.length - 1] ?? 0,
           degrees,
+          weights,
+          negativeEdge,
           componentSizes: sizes,
           componentLabels: labels,
           componentEdges,
@@ -849,26 +895,63 @@ export default function Observatory() {
       const renderer = rendererRef.current;
       if (!wasm || !graph || !renderer) return;
       keysTarget.current = 'search';
+      const refused = metaRef.current?.negativeEdge;
+      if (which === 'dijkstra' && refused) {
+        // The library refuses too; saying it here keeps the words the visitor's.
+        setNotice(tRef.current.refusal(refused.u, refused.v, formatWeight(refused.weight)));
+        return;
+      }
       try {
         search?.result.free();
-        const result = graph.search(
-          which === 'bfs' ? wasm.SearchKind.Bfs : wasm.SearchKind.Dfs,
-          root,
-        );
-        const levels = result.levels();
+        let result: SearchResult | ShortestPathResult;
+        let levels: Uint32Array;
+        let levelSizes: Uint32Array;
+        let depth: number;
+        let distances: Float64Array | null = null;
+        let bandWidth = 0;
+        let fullPath: Uint32Array | null = null;
+        if (which === 'dijkstra') {
+          const run = graph.dijkstra(
+            root,
+            frontier === 'vector' ? wasm.FrontierType.Vector : wasm.FrontierType.Heap,
+          );
+          result = run;
+          distances = run.distances();
+          const bands = distanceBands(distances, run.order());
+          levels = bands.levels;
+          bandWidth = bands.width;
+          depth = 0;
+          for (const v of run.order()) depth = Math.max(depth, levels[v]);
+          levelSizes = new Uint32Array(depth + 1);
+          for (const v of run.order()) levelSizes[levels[v]] += 1;
+          if (target) {
+            const found = run.pathTo(target);
+            fullPath = found.length ? found : null;
+          }
+        } else {
+          const traversal = graph.search(
+            which === 'bfs' ? wasm.SearchKind.Bfs : wasm.SearchKind.Dfs,
+            root,
+          );
+          result = traversal;
+          levels = traversal.levels();
+          levelSizes = traversal.levelSizes();
+          depth = traversal.depth;
+        }
         const parents = result.parents();
         const ranks = result.ranks();
-        // A distance query is the same traversal, its wave stopping when
-        // the target is discovered; the path is read back along the parents
-        // (the shortest one for a BFS, the tree path for a DFS).
+        // A distance query is the same run, its wave stopping when the target
+        // is reached; the path is read back along the parents (the shortest
+        // one for a BFS or Dijkstra, the tree path for a DFS).
         let path: Uint32Array | null = null;
         let span = result.reached;
         let order = result.order();
-        let levelSizes = result.levelSizes();
-        let depth = result.depth;
-        if (target && levels[target] !== UNREACHED) {
-          path = new Uint32Array(levels[target] + 1);
-          for (let v = target, i = path.length - 1; i >= 0; i--, v = parents[v]) path[i] = v;
+        if (target && ranks[target] !== UNREACHED) {
+          path = fullPath;
+          if (!path) {
+            path = new Uint32Array(levels[target] + 1);
+            for (let v = target, i = path.length - 1; i >= 0; i--, v = parents[v]) path[i] = v;
+          }
           // The traversal stops at the target: the sidebar describes only
           // what was visited until then.
           span = ranks[target] + 1;
@@ -895,6 +978,9 @@ export default function Observatory() {
           levelSizes,
           order,
           ranks,
+          distances,
+          bandWidth,
+          frontier: which === 'dijkstra' ? frontier : null,
           result,
         });
         // The search picture is the tree: no selection ring or neighbourhood on the origin.
@@ -908,7 +994,7 @@ export default function Observatory() {
         setNotice(error instanceof Error ? error.message : String(error));
       }
     },
-    [search, pathOnly],
+    [search, pathOnly, frontier],
   );
 
   // The reveal animation: discovery ranks light up over a duration that
@@ -954,7 +1040,7 @@ export default function Observatory() {
   const scrubToLevel = (level: number) => {
     if (!search) return;
     let rank = 0;
-    if (search.kind === 'bfs') {
+    if (search.kind !== 'dfs') {
       for (let l = 0; l <= level; l++) rank += search.levelSizes[l];
       rank -= 1;
     } else {
@@ -1275,7 +1361,7 @@ export default function Observatory() {
         // BFS: a level up or down; DFS: ten vertices.
         event.preventDefault();
         const dir = event.key === 'ArrowUp' ? 1 : -1;
-        if (k.search.kind === 'bfs') {
+        if (k.search.kind !== 'dfs') {
           k.scrubToLevel(Math.max(0, Math.min(k.search.depth, k.revealLevel + dir)));
         } else {
           k.scrub(
@@ -1413,23 +1499,31 @@ export default function Observatory() {
   const run = () => {
     if (canRun) runSearch(kind, root, mode === 'distance' ? target : 0);
   };
+  const kindLabel = kind === 'dijkstra' ? t.dijkstra : kind.toUpperCase();
   const runLabel =
     mode === 'distance'
       ? t.runDistance(
-          kind.toUpperCase(),
+          kindLabel,
           rootValid ? String(root) : t.theOrigin,
           targetValid ? String(target) : t.theTarget,
         )
-      : t.runFrom(kind.toUpperCase(), rootValid ? String(root) : t.theOrigin);
+      : t.runFrom(kindLabel, rootValid ? String(root) : t.theOrigin);
 
   const hoverInfo = useMemo(() => {
     if (!hovered || !meta) return null;
     const degree = meta.degrees[hovered];
-    if (!search) return { degree, level: null as number | null, parent: null as number | null };
+    if (!search)
+      return {
+        degree,
+        level: null as number | null,
+        distance: null as number | null,
+        parent: null as number | null,
+      };
     const level = search.levels[hovered];
     return {
       degree,
       level: level === UNREACHED ? null : level,
+      distance: search.distances && level !== UNREACHED ? search.distances[hovered] : null,
       parent: level === UNREACHED || level === 0 ? null : search.parents[hovered],
     };
   }, [hovered, meta, search]);
@@ -1558,6 +1652,19 @@ export default function Observatory() {
                   <div className={`${styles.chips} ${styles.shedFirst}`}>
                     <span className={styles.chip}>{t.loopsDropped(meta.selfLoops)}</span>
                     <span className={styles.chip}>{t.duplicatesDropped(meta.duplicates)}</span>
+                    {meta.weights && (
+                      <span className={styles.chip}>
+                        {t.weightsRange(
+                          formatWeight(meta.weights.min),
+                          formatWeight(meta.weights.max),
+                        )}
+                      </span>
+                    )}
+                    {meta.weights && meta.weights.negative > 0 && (
+                      <span className={styles.chip}>
+                        {t.negativeWeights(meta.weights.negative)}
+                      </span>
+                    )}
                     <span className={styles.chip}>
                       {t.memory.short[meta.representation]} {formatBytes(meta.heapBytes)}
                     </span>
@@ -1593,6 +1700,34 @@ export default function Observatory() {
               }
             >
               <div className={styles.searchRow}>
+                <div className={`${styles.field} ${styles.fieldWide}`}>
+                  <span className={styles.fieldLabel}>{t.traversal}</span>
+                  <div
+                    className={styles.segmented}
+                    role="radiogroup"
+                    aria-label={t.traversal}
+                    data-count="3"
+                    data-active={
+                      kind === 'dfs' ? 'second' : kind === 'dijkstra' ? 'third' : 'first'
+                    }
+                  >
+                    <span className={styles.thumb} aria-hidden="true" />
+                    {(['bfs', 'dfs', 'dijkstra'] as const).map((which) => (
+                      <button
+                        key={which}
+                        type="button"
+                        role="radio"
+                        aria-checked={kind === which}
+                        className={kind === which ? styles.segmentActive : styles.segment}
+                        onClick={() => setKind(which)}
+                      >
+                        {which === 'dijkstra' ? t.dijkstra : which.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className={styles.searchRow}>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t.mode}</span>
                   <div
@@ -1616,29 +1751,32 @@ export default function Observatory() {
                     ))}
                   </div>
                 </div>
-                <div className={styles.field}>
-                  <span className={styles.fieldLabel}>{t.traversal}</span>
-                  <div
-                    className={styles.segmented}
-                    role="radiogroup"
-                    aria-label={t.traversal}
-                    data-active={kind === 'dfs' ? 'second' : 'first'}
-                  >
-                    <span className={styles.thumb} aria-hidden="true" />
-                    {(['bfs', 'dfs'] as const).map((which) => (
-                      <button
-                        key={which}
-                        type="button"
-                        role="radio"
-                        aria-checked={kind === which}
-                        className={kind === which ? styles.segmentActive : styles.segment}
-                        onClick={() => setKind(which)}
-                      >
-                        {which.toUpperCase()}
-                      </button>
-                    ))}
+                {kind === 'dijkstra' && (
+                  <div className={styles.field}>
+                    <span className={styles.fieldLabel}>{t.frontier}</span>
+                    <div
+                      className={styles.segmented}
+                      role="radiogroup"
+                      aria-label={t.frontier}
+                      data-active={frontier === 'heap' ? 'second' : 'first'}
+                    >
+                      <span className={styles.thumb} aria-hidden="true" />
+                      {(['vector', 'heap'] as const).map((which) => (
+                        <button
+                          key={which}
+                          type="button"
+                          role="radio"
+                          aria-checked={frontier === which}
+                          title={t.frontierHints[which]}
+                          className={frontier === which ? styles.segmentActive : styles.segment}
+                          onClick={() => setFrontier(which)}
+                        >
+                          {t.frontiers[which]}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
               <div className={styles.searchRow}>
                 <div className={styles.field}>
@@ -1694,25 +1832,38 @@ export default function Observatory() {
                   <div className={styles.stats}>
                     {search.target ? (
                       <Stat
-                        label={search.kind === 'bfs' ? t.distance : t.pathLength}
-                        value={search.path ? String(search.path.length - 1) : '∞'}
+                        label={search.kind === 'dfs' ? t.pathLength : t.distance}
+                        value={
+                          !search.path
+                            ? '∞'
+                            : search.distances
+                              ? formatWeight(search.distances[search.target])
+                              : String(search.path.length - 1)
+                        }
                       />
                     ) : (
                       <Stat label={t.reached} value={formatInt(search.reached)} />
                     )}
                     <Stat
                       label={
-                        search.target ? t.reached : search.kind === 'bfs' ? t.eccentricity : t.depth
+                        search.target ? t.reached : search.kind === 'dfs' ? t.depth : t.eccentricity
                       }
-                      value={search.target ? formatInt(search.reached) : String(search.depth)}
+                      value={
+                        search.target
+                          ? formatInt(search.reached)
+                          : search.distances
+                            ? formatWeight(search.distances[search.order[search.order.length - 1]])
+                            : String(search.depth)
+                      }
                     />
                     <Stat label={t.time} value={formatMs(search.elapsedMs)} />
                   </div>
-                  {search.kind === 'bfs' ? (
+                  {search.kind !== 'dfs' ? (
                     <LevelProfile
                       t={t}
                       sizes={search.levelSizes}
                       kind={search.kind}
+                      bandWidth={search.distances ? search.bandWidth : 0}
                       current={revealLevel}
                       onSelect={scrubToLevel}
                     />
@@ -2216,9 +2367,13 @@ export default function Observatory() {
                 </>
               ) : search ? (
                 <>
-                  <span className={styles.swatchA} /> {t.level(0)}
+                  <span className={styles.swatchA} />{' '}
+                  {search.distances ? t.distanceAt('0') : t.level(0)}
                   <span className={styles.swatchBar} />
-                  <span className={styles.swatchB} /> {t.level(search.depth)}
+                  <span className={styles.swatchB} />{' '}
+                  {search.distances
+                    ? t.distanceAt(formatWeight(search.depth * search.bandWidth))
+                    : t.level(search.depth)}
                   <span className={styles.legendSep} />
                   <span className={styles.swatchDim} /> {t.notReached}
                 </>
@@ -2254,7 +2409,9 @@ export default function Observatory() {
                 <span>{t.notReached}</span>
               ) : (
                 <span>
-                  {t.level(hoverInfo.level)}
+                  {hoverInfo.distance !== null
+                    ? t.distanceAt(formatWeight(hoverInfo.distance))
+                    : t.level(hoverInfo.level)}
                   {hoverInfo.parent !== null && t.parent(hoverInfo.parent)}
                 </span>
               ))}
@@ -2707,12 +2864,16 @@ function LevelProfile({
   t,
   sizes,
   kind,
+  bandWidth = 0,
   current,
   onSelect,
 }: {
   t: Strings;
   sizes: Uint32Array;
   kind: SearchKindName;
+  /** Dijkstra: the width of a distance band; rows are labelled with the
+      distance their band reaches instead of a level number. */
+  bandWidth?: number;
   current: number;
   onSelect: (level: number) => void;
 }) {
@@ -2736,7 +2897,10 @@ function LevelProfile({
     return out;
   }, [sizes]);
   const peak = rows.reduce((m, r) => Math.max(m, r.count), 1);
-  const noun = kind === 'bfs' ? t.levelNoun : t.depthNoun;
+  const noun = kind === 'dijkstra' ? t.distanceNoun : kind === 'bfs' ? t.levelNoun : t.depthNoun;
+  /** A row's name: its level, or for a distance band the distance it reaches. */
+  const name = (level: number) =>
+    kind === 'dijkstra' ? String(Number((level * bandWidth).toPrecision(3))) : String(level);
 
   // Keep the current level in view while the wave plays.
   useEffect(() => {
@@ -2765,9 +2929,9 @@ function LevelProfile({
                 type="button"
                 className={`mono ${styles.levelIndex}`}
                 onClick={() => onSelect(row.from)}
-                title={t.goTo(noun, row.from)}
+                title={t.goTo(noun, name(row.from))}
               >
-                {row.from === row.to ? row.from : `${row.from}–${row.to}`}
+                {row.from === row.to ? name(row.from) : `${name(row.from)}–${name(row.to)}`}
               </button>
               <span className={styles.levelTrack}>
                 <span

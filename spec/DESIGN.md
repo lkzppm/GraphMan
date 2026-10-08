@@ -248,8 +248,12 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
 The observatory renders under the nav (`calc(100dvh - var(--nav-height))`)
 with no header of its own: a 340 px sidebar and the stage. The sidebar never
 scrolls; it is a column of panels (Graph: file, 2 × 2 tiles, degree
-histogram, component bar, chips; Search: two small segmented controls
-side by side — mode (Max, the whole traversal / Distance) and traversal (BFS / DFS) — then
+histogram, component bar, chips (a weighted file adds `weights MIN to
+MAX` and, when there are any, the negative count); Search: the algorithm
+as a full-width three-way segmented control (BFS / DFS / Dijkstra), under
+it mode (Max, the whole traversal / Distance) and, for Dijkstra only, the
+frontier (Vector / Heap, the course's two versions, so their times can be
+compared on the spot) side by side, then
 origin (and, in Distance, target) with a square play button, then result
 tiles, level profile and playback (replay + slider + count; download and
 clear live in the panel header). Controls are compact: 28 px inputs,
@@ -270,6 +274,16 @@ off the path shrinks to a third (the fit button frames the path; the
 view otherwise stays where it was); the legend reads origin ·
 destination · not reached. In Distance a
 click on the canvas picks the target once the origin is set;
+**Dijkstra** reads like a BFS whose levels are distance bands: the origin
+alone at 0, then twelve equal slices up to the farthest settled vertex.
+Vertices settle by distance, so each band is a contiguous stretch of the
+timeline and the level chart ("vertices per distance", rows named by the
+distance their band reaches, three significant figures), the ↑/↓ keys
+and the colour ramp all work unchanged; the legend reads `distance 0 →
+distance MAX`, the hover card the vertex's distance, the tiles the
+eccentricity (or, in Distance, the path's weight) with at most three
+decimals. A graph with a negative weight is refused with a notice in the
+visitor's language, as the course asks; the other algorithms still run.
 Diameter: a strip along the bottom that opens as a drawer over the panels,
 its body growing with a `grid-template-rows` transition). Search results
 are three compact stats (reached, eccentricity/depth, time) over a chart

@@ -219,10 +219,11 @@ Vertices are ids or exact names; a near miss lists the closest names.
   honest-cell treatment of the Part 1 matrix refusals), and the
   collaboration-network table with names. `petgraph::algo::dijkstra` as a
   baseline column (dev/bench-only dependency).
-- **Web.** The observatory: Dijkstra as a third search (the `reveal`
-  sweep over settle ranks, `setPath` for the path, weights tinting edges,
-  the refusal in the sidebar, names on hover and in a search box). The
-  wasm glue for all of it is in place. The Library page: chapters for the
+- **Web.** Done in the observatory: Dijkstra as a third search with a
+  vector/heap switch, distance bands for colour and chart, the refusal as a
+  notice, weight chips. Still open there: edges tinted by weight, and the
+  names file (hover, a search box, "Dijkstra to Turing"), whose wasm glue
+  (`setNames`, `vertexNamed`, `searchNames`) is in place. The Library page: chapters for the
   `weights`, `dijkstra`, `frontiers` and `names` blocks already proved in
   `tests/wiki.rs`. Studies and presentation: the Part 2 tables and the
   "one Dijkstra, three frontiers" slide.
