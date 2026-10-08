@@ -1514,7 +1514,8 @@ export default function Observatory() {
 
       // Weights first, so a vertex number is never covered: a small pill at
       // the middle of each edge long enough on screen to hold one. The
-      // selected vertex's edges turn blue and are drawn last, on top.
+      // selected vertex's edges, and the edges Dijkstra's tree has used so
+      // far in the replay, turn blue and are drawn last, on top.
       if (weights) {
         ctx.font = `500 10px ${mono}`;
         const background = style.getPropertyValue('--bg');
@@ -1558,13 +1559,23 @@ export default function Observatory() {
           return true;
         };
         const selectedVertex = selectedRef.current;
+        const run = searchRef.current?.kind === 'dijkstra' ? searchRef.current : null;
+        const revealed = revealRef.current;
+        /** Whether the edge `u v` joins a vertex to its parent in the tree,
+            and the replay has reached that vertex. */
+        const used = (u: number, v: number) => {
+          if (!run) return false;
+          const child = run.parents[v] === u ? v : run.parents[u] === v ? u : 0;
+          if (child === 0 || child === run.root) return false;
+          const rank = run.ranks[child];
+          return rank !== UNREACHED && rank <= revealed;
+        };
         const mine: number[] = [];
         let drawn = 0;
         for (let e = 0; e < weights.length; e++) {
-          if (
-            selectedVertex &&
-            (edges[2 * e] === selectedVertex || edges[2 * e + 1] === selectedVertex)
-          ) {
+          const u = edges[2 * e];
+          const v = edges[2 * e + 1];
+          if ((selectedVertex && (u === selectedVertex || v === selectedVertex)) || used(u, v)) {
             mine.push(e);
           } else if (drawn < 1500 && pill(e, plain)) {
             drawn += 1;
