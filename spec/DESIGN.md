@@ -249,10 +249,14 @@ The observatory renders under the nav (`calc(100dvh - var(--nav-height))`)
 with no header of its own: a 340 px sidebar and the stage. The sidebar never
 scrolls; it is a column of panels (Graph: file name with an info button
 whose tooltip lists what parsing dropped (loops, repeats and, when there
-are any, the negative weights), 2 × 2 tiles, the distribution chart (on a
+are any, the negative weights), 2 × 2 tiles, the distribution chart (titled Degrees; on a
 weighted file two tracked labels, Degrees / Weights, switch it between
 vertices per degree and edges per weight range, so the weight range reads
-off its axis), component bar); Search: the algorithm
+off its axis; both charts stay mounted, and switching grows the new bars
+from the axis, staggered left to right, as the old ones sink into it),
+component bar; the summary, the memory view and the components browser
+swap in place without a jump: the old view fades out, the next rises in,
+and the panel eases its height between them); Search: the algorithm
 as a full-width three-way segmented control (BFS / DFS / Dijkstra), under
 it mode (Max, the whole traversal / Distance) and, for Dijkstra only, the
 frontier (Vector / Heap, the course's two versions, so their times can be

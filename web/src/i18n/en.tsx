@@ -400,7 +400,6 @@ export const en = {
     tooLarge: (name: string, size: string, limit: string) =>
       `${name} is ${size}; the observatory accepts files up to ${limit}.`,
     distribution: 'Distribution',
-    degreeDistribution: 'Degree distribution',
     distributions: { degree: 'Degrees', weight: 'Weights' },
     distributionUnit: { degree: 'vertices per degree', weight: 'edges per weight' },
     distributionBucket: {

@@ -1744,47 +1744,49 @@ export default function Observatory() {
                   <MemoryStick size={14} />
                 </button>
               </div>
-              {memoryOpen ? (
-                <MemoryView t={t} meta={meta} busy={rebuilding} onSelect={switchRepresentation} />
-              ) : componentsOpen ? (
-                <ComponentsView
-                  t={t}
-                  meta={meta}
-                  current={component}
-                  onSelect={selectComponent}
-                  onClose={() => {
-                    selectComponent(0);
-                    setComponentsOpen(false);
-                  }}
-                />
-              ) : (
-                <>
-                  <div className={styles.tiles}>
-                    <Tile label={t.vertices} value={formatInt(meta.vertices)} />
-                    <Tile label={t.edges} value={formatInt(meta.edges)} />
-                    <Tile
-                      label={t.components}
-                      value={formatInt(meta.components)}
-                      action={
-                        <button
-                          type="button"
-                          className={styles.tileAction}
-                          aria-label={t.browseComponents}
-                          title={t.browseComponents}
-                          onClick={() => {
-                            setComponentsOpen(true);
-                            selectComponent(1);
-                          }}
-                        >
-                          <ChevronRight size={13} />
-                        </button>
-                      }
-                    />
-                    <Tile label={t.meanDegree} value={meta.degree.mean.toFixed(2)} />
-                  </div>
-                  <Distribution t={t} meta={meta} />
-                </>
-              )}
+              <Swap view={memoryOpen ? 'memory' : componentsOpen ? 'components' : 'summary'}>
+                {memoryOpen ? (
+                  <MemoryView t={t} meta={meta} busy={rebuilding} onSelect={switchRepresentation} />
+                ) : componentsOpen ? (
+                  <ComponentsView
+                    t={t}
+                    meta={meta}
+                    current={component}
+                    onSelect={selectComponent}
+                    onClose={() => {
+                      selectComponent(0);
+                      setComponentsOpen(false);
+                    }}
+                  />
+                ) : (
+                  <>
+                    <div className={styles.tiles}>
+                      <Tile label={t.vertices} value={formatInt(meta.vertices)} />
+                      <Tile label={t.edges} value={formatInt(meta.edges)} />
+                      <Tile
+                        label={t.components}
+                        value={formatInt(meta.components)}
+                        action={
+                          <button
+                            type="button"
+                            className={styles.tileAction}
+                            aria-label={t.browseComponents}
+                            title={t.browseComponents}
+                            onClick={() => {
+                              setComponentsOpen(true);
+                              selectComponent(1);
+                            }}
+                          >
+                            <ChevronRight size={13} />
+                          </button>
+                        }
+                      />
+                      <Tile label={t.meanDegree} value={meta.degree.mean.toFixed(2)} />
+                    </div>
+                    <Distribution t={t} meta={meta} />
+                  </>
+                )}
+              </Swap>
             </Panel>
 
             <Panel
@@ -2774,7 +2776,9 @@ function Tile({
 }
 
 /** A tiny bar chart: how many vertices have each degree or, on a weighted
-    graph, how many edges fall in each weight range (a switch picks which). */
+    graph, how many edges fall in each weight range (a switch picks which).
+    Both charts stay mounted: switching grows the new bars from the axis as
+    the old ones sink into it. */
 function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
   const [of, setOf] = useState<'degree' | 'weight'>('degree');
   const weights = meta.edgeWeights;
@@ -2784,12 +2788,22 @@ function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
     () => (weights && meta.weights ? weightHistogram(weights, meta.weights) : null),
     [weights, meta.weights],
   );
-  const bars = showing === 'weight' && weightBars ? weightBars : degreeBars;
-  const peak = bars.reduce((m, b) => Math.max(m, b.count), 1);
-  const axis =
-    showing === 'weight' && meta.weights
-      ? [formatWeight(meta.weights.min), formatWeight(meta.weights.max)]
-      : ['0', String(meta.degree.max)];
+  const layers = [
+    {
+      which: 'degree' as const,
+      bars: degreeBars,
+      axis: ['0', String(meta.degree.max)],
+    },
+    ...(weightBars && meta.weights
+      ? [
+          {
+            which: 'weight' as const,
+            bars: weightBars,
+            axis: [formatWeight(meta.weights.min), formatWeight(meta.weights.max)],
+          },
+        ]
+      : []),
+  ];
   return (
     <div className={`${styles.chart} ${styles.shedThird}`} aria-label={t.distribution}>
       <div className={styles.chartHeader}>
@@ -2808,22 +2822,98 @@ function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
             ))}
           </span>
         ) : (
-          <span className={`label ${styles.tileLabel}`}>{t.degreeDistribution}</span>
+          <span className={`label ${styles.tileLabel}`}>{t.distributions.degree}</span>
         )}
-        <span className={styles.tileHint}>{t.distributionUnit[showing]}</span>
+        <span className={styles.layers}>
+          {layers.map((layer) => (
+            <span
+              key={layer.which}
+              className={styles.tileHint}
+              data-active={layer.which === showing || undefined}
+              aria-hidden={layer.which !== showing}
+            >
+              {t.distributionUnit[layer.which]}
+            </span>
+          ))}
+        </span>
       </div>
-      <div className={styles.bars}>
-        {bars.map((b, i) => (
-          <span
-            key={i}
-            style={{ height: `${Math.max(b.count > 0 ? 3 : 0, (b.count / peak) * 100)}%` }}
-            title={t.distributionBucket[showing](b.range, formatInt(b.count))}
-          />
+      <div className={styles.layers}>
+        {layers.map((layer) => {
+          const peak = layer.bars.reduce((m, b) => Math.max(m, b.count), 1);
+          return (
+            <div
+              key={layer.which}
+              className={styles.bars}
+              data-active={layer.which === showing || undefined}
+              aria-hidden={layer.which !== showing}
+            >
+              {layer.bars.map((b, i) => (
+                <span
+                  key={i}
+                  style={{
+                    height: `${Math.max(b.count > 0 ? 3 : 0, (b.count / peak) * 100)}%`,
+                    transitionDelay: `${(i * 160) / layer.bars.length}ms`,
+                  }}
+                  title={t.distributionBucket[layer.which](b.range, formatInt(b.count))}
+                />
+              ))}
+            </div>
+          );
+        })}
+      </div>
+      <div className={styles.layers}>
+        {layers.map((layer) => (
+          <div
+            key={layer.which}
+            className={styles.axis}
+            data-active={layer.which === showing || undefined}
+            aria-hidden={layer.which !== showing}
+          >
+            <span>{layer.axis[0]}</span>
+            <span>{layer.axis[1]}</span>
+          </div>
         ))}
       </div>
-      <div className={styles.axis}>
-        <span>{axis[0]}</span>
-        <span>{axis[1]}</span>
+    </div>
+  );
+}
+
+/** Shows one of several views and never swaps them abruptly: the view on
+    its way out fades (as it last was), the next one rises in, and the box
+    eases its height from one to the other. `view` names what is shown. */
+function Swap({ view, children }: { view: string; children: ReactNode }) {
+  // What is on screen: the current view, kept fresh while it stays, and
+  // frozen as it last was while it leaves.
+  const [shown, setShown] = useState<{ view: string; children: ReactNode }>({ view, children });
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | null>(null);
+  const leaving = view !== shown.view;
+  if (!leaving && children !== shown.children) setShown({ view, children });
+
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = setTimeout(() => setShown({ view, children: null }), 140);
+    return () => clearTimeout(timer);
+  }, [leaving, view]);
+
+  useEffect(() => {
+    const inner = innerRef.current;
+    if (!inner) return;
+    const observer = new ResizeObserver(() => setHeight(inner.offsetHeight));
+    observer.observe(inner);
+    return () => observer.disconnect();
+    // A new view is a new inner box: observe that one.
+  }, [shown.view]);
+
+  return (
+    <div className={styles.swap} style={{ height: height ?? undefined }}>
+      <div
+        ref={innerRef}
+        key={shown.view}
+        className={styles.swapInner}
+        data-leaving={leaving || undefined}
+      >
+        {leaving ? shown.children : children}
       </div>
     </div>
   );

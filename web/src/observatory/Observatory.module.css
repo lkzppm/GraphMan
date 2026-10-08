@@ -870,7 +870,60 @@
   min-width: 1px;
   background: var(--accent);
   opacity: 0.85;
-  transition: opacity 0.15s var(--ease);
+  transform-origin: bottom;
+  transition:
+    opacity 0.15s var(--ease),
+    transform 0.4s var(--ease);
+}
+
+/* Stacked alternatives in one grid cell (the distribution's degree and
+   weight charts, hints and axes): only the active one shows, the others
+   fade, and their bars sink into the axis. */
+.layers {
+  display: grid;
+}
+
+.layers > * {
+  grid-area: 1 / 1;
+  transition: opacity 0.25s var(--ease);
+}
+
+.layers > :not([data-active]) {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.layers > .bars:not([data-active]) {
+  opacity: 1;
+  border-bottom-color: transparent;
+}
+
+.layers > .bars:not([data-active]) span {
+  transform: scaleY(0);
+  transition-delay: 0s !important;
+}
+
+/* The graph panel's views (summary, memory, components): the box eases its
+   height while the old view fades out and the next one rises in. */
+.swap {
+  transition: height 0.3s var(--ease);
+  overflow: clip;
+  overflow-clip-margin: 8px;
+}
+
+.swapInner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: swapIn 0.28s var(--ease) both;
+}
+
+.swapInner > * {
+  flex: none;
+}
+
+.swapInner[data-leaving] {
+  animation: swapOut 0.14s var(--ease) both;
 }
 
 .bars span:hover {
@@ -2300,6 +2353,30 @@
 
   to {
     transform: none;
+  }
+}
+
+@keyframes swapIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes swapOut {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
   }
 }
 
