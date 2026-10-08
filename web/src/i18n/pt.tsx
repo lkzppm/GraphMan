@@ -404,7 +404,6 @@ export const pt: Dictionary = {
     tooLarge: (name: string, size: string, limit: string) =>
       `${name} tem ${size}; o observatório aceita arquivos de até ${limit}.`,
     distribution: 'Distribuição',
-    degreeDistribution: 'Distribuição de graus',
     distributions: { degree: 'Graus', weight: 'Pesos' },
     distributionUnit: { degree: 'vértices por grau', weight: 'arestas por peso' },
     distributionBucket: {
