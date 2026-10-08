@@ -9,6 +9,7 @@ import {
   Download,
   Expand,
   FlaskConical,
+  Info,
   Focus,
   Hash,
   Highlighter,
@@ -1706,8 +1707,26 @@ export default function Observatory() {
             >
               <div className={styles.fileRow}>
                 <div className={styles.fileText}>
-                  <span className={`mono ${styles.fileName}`} title={meta.name}>
-                    {meta.name}
+                  <span className={styles.fileNameRow}>
+                    <span className={`mono ${styles.fileName}`} title={meta.name}>
+                      {meta.name}
+                    </span>
+                    <span className={styles.fileInfo}>
+                      <button
+                        type="button"
+                        className={styles.fileInfoButton}
+                        aria-label={t.parseDetails}
+                      >
+                        <Info size={13} />
+                      </button>
+                      <span className={styles.fileInfoTip} role="tooltip">
+                        <span>{t.loopsDropped(meta.selfLoops)}</span>
+                        <span>{t.duplicatesDropped(meta.duplicates)}</span>
+                        {meta.weights && meta.weights.negative > 0 && (
+                          <span>{t.negativeWeights(meta.weights.negative)}</span>
+                        )}
+                      </span>
+                    </span>
                   </span>
                   <span className={styles.fileMeta}>
                     {formatBytes(meta.bytes)} · {t.parsedIn(formatMs(meta.parseMs))}
@@ -1763,27 +1782,7 @@ export default function Observatory() {
                     />
                     <Tile label={t.meanDegree} value={meta.degree.mean.toFixed(2)} />
                   </div>
-                  <DegreeHistogram t={t} degrees={meta.degrees} max={meta.degree.max} />
-                  <div className={`${styles.chips} ${styles.shedFirst}`}>
-                    <span className={styles.chip}>{t.loopsDropped(meta.selfLoops)}</span>
-                    <span className={styles.chip}>{t.duplicatesDropped(meta.duplicates)}</span>
-                    {meta.weights && (
-                      <span className={styles.chip}>
-                        {t.weightsRange(
-                          formatWeight(meta.weights.min),
-                          formatWeight(meta.weights.max),
-                        )}
-                      </span>
-                    )}
-                    {meta.weights && meta.weights.negative > 0 && (
-                      <span className={styles.chip}>
-                        {t.negativeWeights(meta.weights.negative)}
-                      </span>
-                    )}
-                    <span className={styles.chip}>
-                      {t.memory.short[meta.representation]} {formatBytes(meta.heapBytes)}
-                    </span>
-                  </div>
+                  <Distribution t={t} meta={meta} />
                 </>
               )}
             </Panel>
@@ -2774,49 +2773,100 @@ function Tile({
   );
 }
 
-/** How many vertices have each degree, as a tiny bar chart. */
-function DegreeHistogram({ t, degrees, max }: { t: Strings; degrees: Uint32Array; max: number }) {
-  const bars = useMemo(() => {
-    const counts = new Uint32Array(max + 1);
-    for (let v = 1; v < degrees.length; v++) counts[degrees[v]] += 1;
-    // Bucket wide ranges to at most 48 bars.
-    const buckets = Math.min(48, max + 1);
-    const per = (max + 1) / buckets;
-    const out: { from: number; to: number; count: number }[] = [];
-    for (let b = 0; b < buckets; b++) {
-      const from = Math.floor(b * per);
-      const to = Math.max(from, Math.floor((b + 1) * per) - 1);
-      let count = 0;
-      for (let d = from; d <= to; d++) count += counts[d];
-      out.push({ from, to, count });
-    }
-    return out;
-  }, [degrees, max]);
+/** A tiny bar chart: how many vertices have each degree or, on a weighted
+    graph, how many edges fall in each weight range (a switch picks which). */
+function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
+  const [of, setOf] = useState<'degree' | 'weight'>('degree');
+  const weights = meta.edgeWeights;
+  const showing = weights ? of : 'degree';
+  const degreeBars = useMemo(() => degreeHistogram(meta.degrees, meta.degree.max), [meta]);
+  const weightBars = useMemo(
+    () => (weights && meta.weights ? weightHistogram(weights, meta.weights) : null),
+    [weights, meta.weights],
+  );
+  const bars = showing === 'weight' && weightBars ? weightBars : degreeBars;
   const peak = bars.reduce((m, b) => Math.max(m, b.count), 1);
+  const axis =
+    showing === 'weight' && meta.weights
+      ? [formatWeight(meta.weights.min), formatWeight(meta.weights.max)]
+      : ['0', String(meta.degree.max)];
   return (
-    <div className={`${styles.chart} ${styles.shedThird}`} aria-label={t.degreeDistribution}>
+    <div className={`${styles.chart} ${styles.shedThird}`} aria-label={t.distribution}>
       <div className={styles.chartHeader}>
-        <span className={`label ${styles.tileLabel}`}>{t.degreeDistribution}</span>
-        <span className={styles.tileHint}>{t.verticesPerDegree}</span>
+        {weights ? (
+          <span className={styles.chartSwitch} role="group" aria-label={t.distribution}>
+            {(['degree', 'weight'] as const).map((which) => (
+              <button
+                key={which}
+                type="button"
+                className={`label ${styles.tileLabel}`}
+                aria-pressed={showing === which}
+                onClick={() => setOf(which)}
+              >
+                {t.distributions[which]}
+              </button>
+            ))}
+          </span>
+        ) : (
+          <span className={`label ${styles.tileLabel}`}>{t.degreeDistribution}</span>
+        )}
+        <span className={styles.tileHint}>{t.distributionUnit[showing]}</span>
       </div>
       <div className={styles.bars}>
-        {bars.map((b) => (
+        {bars.map((b, i) => (
           <span
-            key={b.from}
+            key={i}
             style={{ height: `${Math.max(b.count > 0 ? 3 : 0, (b.count / peak) * 100)}%` }}
-            title={t.degreeBucket(
-              b.from === b.to ? String(b.from) : `${b.from}–${b.to}`,
-              formatInt(b.count),
-            )}
+            title={t.distributionBucket[showing](b.range, formatInt(b.count))}
           />
         ))}
       </div>
       <div className={styles.axis}>
-        <span>0</span>
-        <span>{max}</span>
+        <span>{axis[0]}</span>
+        <span>{axis[1]}</span>
       </div>
     </div>
   );
+}
+
+interface Bar {
+  range: string;
+  count: number;
+}
+
+/** Vertices per degree, wide ranges bucketed to at most 48 bars. */
+function degreeHistogram(degrees: Uint32Array, max: number): Bar[] {
+  const counts = new Uint32Array(max + 1);
+  for (let v = 1; v < degrees.length; v++) counts[degrees[v]] += 1;
+  const buckets = Math.min(48, max + 1);
+  const per = (max + 1) / buckets;
+  const out: Bar[] = [];
+  for (let b = 0; b < buckets; b++) {
+    const from = Math.floor(b * per);
+    const to = Math.max(from, Math.floor((b + 1) * per) - 1);
+    let count = 0;
+    for (let d = from; d <= to; d++) count += counts[d];
+    out.push({ range: from === to ? String(from) : `${from}–${to}`, count });
+  }
+  return out;
+}
+
+/** Edges per weight, in at most 24 equal ranges from the lightest to the
+    heaviest (one bar when every weight is the same). */
+function weightHistogram(weights: Float64Array, { min, max }: { min: number; max: number }): Bar[] {
+  const buckets = max > min ? Math.min(24, weights.length) : 1;
+  const width = (max - min) / buckets;
+  const counts = new Uint32Array(buckets);
+  for (const w of weights) {
+    counts[width > 0 ? Math.min(buckets - 1, Math.floor((w - min) / width)) : 0] += 1;
+  }
+  return Array.from(counts, (count, b) => ({
+    range:
+      buckets === 1
+        ? formatWeight(min)
+        : `${formatWeight(min + b * width)}–${formatWeight(min + (b + 1) * width)}`,
+    count,
+  }));
 }
 
 /** The components as proportional segments, largest first. */

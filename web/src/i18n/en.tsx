@@ -279,7 +279,6 @@ export const en = {
       choose: 'How should it be stored?',
       parsed: (vertices: string, edges: string) => `${vertices} vertices, ${edges} edges`,
       names: { list: 'Adjacency list', matrix: 'Bit matrix', csr: 'CSR' },
-      short: { list: 'List', matrix: 'Matrix', csr: 'CSR' },
       hints: {
         list: 'one neighbour vector per vertex',
         matrix: 'n² bits, an edge test in one step',
@@ -305,7 +304,6 @@ export const en = {
       vector: 'a vector of estimates scanned for the minimum: O(n²)',
       heap: 'a binary heap with decrease-key: O((n + m) log n)',
     },
-    weightsRange: (min: string, max: string) => `weights ${min} to ${max}`,
     negativeWeights: (n: number) => (n === 1 ? '1 negative weight' : `${n} negative weights`),
     refusal: (u: number, v: number, w: string) =>
       `Dijkstra refuses this graph: the edge ${u} ${v} weighs ${w}, and shortest paths with negative weights are not implemented yet.`,
@@ -401,9 +399,15 @@ export const en = {
     couldNotLoad: (name: string, message: string) => `Could not load ${name}: ${message}`,
     tooLarge: (name: string, size: string, limit: string) =>
       `${name} is ${size}; the observatory accepts files up to ${limit}.`,
+    distribution: 'Distribution',
     degreeDistribution: 'Degree distribution',
-    verticesPerDegree: 'vertices per degree',
-    degreeBucket: (range: string, count: string) => `degree ${range}: ${count}`,
+    distributions: { degree: 'Degrees', weight: 'Weights' },
+    distributionUnit: { degree: 'vertices per degree', weight: 'edges per weight' },
+    distributionBucket: {
+      degree: (range: string, count: string) => `degree ${range}: ${count}`,
+      weight: (range: string, count: string) => `weight ${range}: ${count}`,
+    },
+    parseDetails: 'What parsing dropped',
     componentsCount: (n: string) => `Components · ${n}`,
     connected: 'connected',
     smallest: (n: string) => `smallest ${n}`,
