@@ -43,17 +43,28 @@ pub enum NamesError {
 
 /// The names of a graph's vertices: `name(v)` and its inverse, `vertex(name)`.
 ///
-/// All names live in one string; each vertex keeps the span of its own, and
-/// a list of vertices sorted by name answers exact lookups by binary search,
-/// so a network of hundreds of thousands of people costs its text plus
-/// twelve bytes per vertex and no hashing.
+/// All names live in one string; one entry per named vertex, sorted by
+/// vertex, holds the span of its name, and a second list of the entries
+/// sorted by name answers exact lookups by binary search. A network of
+/// hundreds of thousands of people costs its text plus twenty bytes per
+/// name, no hashing, and nothing for the indices nobody named (a stray huge
+/// index costs one entry, not a table that long).
 #[derive(Debug, Clone, Default)]
 pub struct VertexNames {
     text: String,
-    /// `spans[v]` is the byte range of `v`'s name in `text`; empty if unnamed.
-    spans: Vec<(u32, u32)>,
-    /// Named vertices sorted by (name, id).
-    by_name: Vec<Vertex>,
+    /// One per named vertex, sorted by vertex once parsing is done.
+    entries: Vec<Entry>,
+    /// Indices into `entries`, sorted by (name, vertex).
+    by_name: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Entry {
+    vertex: Vertex,
+    start: u32,
+    end: u32,
+    /// Where it was read, for error messages.
+    line: u32,
 }
 
 impl VertexNames {
@@ -89,7 +100,7 @@ impl VertexNames {
                 })?;
             names.insert(index + 1, vertex, rest.trim_end())?;
         }
-        names.index();
+        names.index()?;
         Ok(names)
     }
 
@@ -106,7 +117,7 @@ impl VertexNames {
         for (index, (vertex, name)) in pairs.into_iter().enumerate() {
             names.insert(index + 1, vertex, name)?;
         }
-        names.index();
+        names.index()?;
         Ok(names)
     }
 
@@ -117,30 +128,36 @@ impl VertexNames {
                 found: format!("{vertex} {name:?}"),
             });
         }
-        let v = vertex as usize;
-        if self.spans.len() <= v {
-            self.spans.resize(v + 1, (0, 0));
-        }
-        if self.spans[v] != (0, 0) {
-            return Err(NamesError::DuplicateVertex { line, vertex });
-        }
         let start = self.text.len() as u32;
         self.text.push_str(name);
-        self.spans[v] = (start, self.text.len() as u32);
+        self.entries.push(Entry {
+            vertex,
+            start,
+            end: self.text.len() as u32,
+            line: line as u32,
+        });
         Ok(())
     }
 
-    fn index(&mut self) {
-        let mut by_name: Vec<Vertex> = (1..self.spans.len() as Vertex)
-            .filter(|&v| self.spans[v as usize] != (0, 0))
-            .collect();
-        by_name.sort_by(|&a, &b| self.raw_name(a).cmp(self.raw_name(b)).then(a.cmp(&b)));
+    /// Sorts the entries by vertex (refusing a vertex named twice) and builds
+    /// the by-name index.
+    fn index(&mut self) -> Result<(), NamesError> {
+        self.entries.sort_by_key(|e| (e.vertex, e.line));
+        if let Some(pair) = self.entries.windows(2).find(|w| w[0].vertex == w[1].vertex) {
+            return Err(NamesError::DuplicateVertex {
+                line: pair[1].line as usize,
+                vertex: pair[1].vertex,
+            });
+        }
+        let mut by_name: Vec<u32> = (0..self.entries.len() as u32).collect();
+        by_name.sort_by(|&a, &b| self.entry_name(a).cmp(self.entry_name(b)).then(a.cmp(&b)));
         self.by_name = by_name;
+        Ok(())
     }
 
-    fn raw_name(&self, v: Vertex) -> &str {
-        let (start, end) = self.spans[v as usize];
-        &self.text[start as usize..end as usize]
+    fn entry_name(&self, index: u32) -> &str {
+        let entry = self.entries[index as usize];
+        &self.text[entry.start as usize..entry.end as usize]
     }
 
     /// Number of named vertices.
@@ -155,24 +172,23 @@ impl VertexNames {
 
     /// The largest named vertex (`0` when there is none).
     pub fn max_vertex(&self) -> Vertex {
-        self.spans.len().saturating_sub(1) as Vertex
+        self.entries.last().map_or(0, |e| e.vertex)
     }
 
     /// The name of `v`, if it has one.
     pub fn name(&self, v: Vertex) -> Option<&str> {
-        match self.spans.get(v as usize) {
-            Some(&(start, end)) if start != end => Some(&self.text[start as usize..end as usize]),
-            _ => None,
-        }
+        let index = self.entries.binary_search_by_key(&v, |e| e.vertex).ok()?;
+        Some(self.entry_name(index as u32))
     }
 
     /// The vertex with exactly this name (the smallest id if several share it).
     pub fn vertex(&self, name: &str) -> Option<Vertex> {
-        let first = self.by_name.partition_point(|&v| self.raw_name(v) < name);
+        let first = self.by_name.partition_point(|&i| self.entry_name(i) < name);
         self.by_name
             .get(first)
             .copied()
-            .filter(|&v| self.raw_name(v) == name)
+            .filter(|&i| self.entry_name(i) == name)
+            .map(|i| self.entries[i as usize].vertex)
     }
 
     /// Up to `limit` vertices whose names contain every word of `query`,
@@ -185,11 +201,12 @@ impl VertexNames {
         self.by_name
             .iter()
             .copied()
-            .filter(|&v| {
-                let name = fold(self.raw_name(v));
+            .filter(|&i| {
+                let name = fold(self.entry_name(i));
                 words.iter().all(|word| name.contains(word.as_str()))
             })
             .take(limit)
+            .map(|i| self.entries[i as usize].vertex)
             .collect()
     }
 }
@@ -257,6 +274,15 @@ mod tests {
             VertexNames::parse(b"1,Ada\n0,Nobody\n"),
             Err(NamesError::InvalidLine { line: 2, .. })
         ));
+    }
+
+    #[test]
+    fn a_huge_index_costs_one_entry() {
+        let names = VertexNames::parse(b"4000000000,Far Away\n2,Near\n").unwrap();
+        assert_eq!(names.max_vertex(), 4_000_000_000);
+        assert_eq!(names.name(4_000_000_000), Some("Far Away"));
+        assert_eq!(names.name(3), None);
+        assert_eq!(names.vertex("Near"), Some(2));
     }
 
     #[test]

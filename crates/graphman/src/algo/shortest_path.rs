@@ -251,6 +251,8 @@ pub fn dijkstra_into<G: Weighted, F: Frontier, V: Visitor>(
     visitor: &mut V,
 ) -> Result<(), NegativeWeight> {
     if let Some(edge) = graph.negative_edge() {
+        // A refused run leaves an empty tree, not the previous run's answers.
+        tree.reset();
         return Err(NegativeWeight { edge });
     }
     tree.begin(root);

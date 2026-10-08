@@ -331,3 +331,30 @@ fn weights_change_what_each_representation_costs() {
     );
     assert_eq!(Graph::vertex_count(&csr), 50);
 }
+
+#[test]
+fn sizes_that_do_not_fit_saturate_instead_of_wrapping() {
+    // On a 32-bit target (the browser) these products overflow; a wrapped
+    // size would slip under the budget. Saturated, it exceeds every budget.
+    let huge = usize::MAX / 4;
+    for r in Representation::ALL {
+        assert_eq!(r.required_bytes(huge, huge, true), usize::MAX, "{r}");
+    }
+    assert_eq!(
+        Representation::AdjacencyMatrix.required_bytes(1 << 34, 0, false),
+        usize::MAX
+    );
+}
+
+#[test]
+fn a_refused_run_leaves_an_empty_tree() {
+    let good = Csr::build(&EdgeList::parse(FIGURE_POSITIVE).unwrap()).unwrap();
+    let bad = Csr::build(&EdgeList::parse(FIGURE).unwrap()).unwrap();
+    let mut tree = ShortestPathTree::new(5);
+    let mut frontier = HeapFrontier::default();
+    algo::dijkstra_into(&good, 1, &mut frontier, &mut tree, &mut ()).unwrap();
+    assert!(algo::dijkstra_into(&bad, 1, &mut frontier, &mut tree, &mut ()).is_err());
+    assert_eq!(tree.reached_count(), 0);
+    assert_eq!(tree.distance(1), None);
+    assert!(tree.distances_raw().iter().all(|d| d.is_infinite()));
+}

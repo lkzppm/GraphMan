@@ -69,11 +69,18 @@ impl Build for AdjacencyMatrix {
     const REPRESENTATION: Representation = Representation::AdjacencyMatrix;
 
     fn required_bytes(vertex_count: usize, _edge_count: usize, weighted: bool) -> usize {
-        let side = vertex_count + 1;
-        let weights = if weighted { side * side } else { 0 };
-        side * Self::words_per_row(vertex_count) * size_of::<u64>()
-            + side * size_of::<u32>()
-            + weights * size_of::<Weight>()
+        // Saturating: in the browser `usize` is 32 bits, and a wrapped product
+        // would let a matrix nobody can allocate through the budget check.
+        let side = vertex_count.saturating_add(1);
+        let weights = if weighted {
+            side.saturating_mul(side)
+        } else {
+            0
+        };
+        side.saturating_mul(Self::words_per_row(vertex_count))
+            .saturating_mul(size_of::<u64>())
+            .saturating_add(side.saturating_mul(size_of::<u32>()))
+            .saturating_add(weights.saturating_mul(size_of::<Weight>()))
     }
 
     fn build_unchecked(edges: &EdgeList) -> Result<Self, BuildError> {
@@ -81,17 +88,22 @@ impl Build for AdjacencyMatrix {
         let required = Self::required_bytes(n, edges.edge_count(), edges.is_weighted());
         let fail = || allocation_failed(Self::REPRESENTATION, required);
 
+        // Checked: an unrepresentable size is an allocation failure, not a
+        // wrapped (small) table indexed past its end.
+        let too_large = || BuildError::AllocationFailed {
+            representation: Self::REPRESENTATION,
+            required_bytes: required,
+        };
         let words_per_row = Self::words_per_row(n);
-        let total_words = (n + 1) * words_per_row;
+        let total_words = (n + 1).checked_mul(words_per_row).ok_or_else(too_large)?;
         let mut bits: Vec<u64> = Vec::new();
         bits.try_reserve_exact(total_words).map_err(fail())?;
         bits.resize(total_words, 0);
         let mut weights: Vec<Weight> = Vec::new();
         if edges.is_weighted() {
-            weights
-                .try_reserve_exact((n + 1) * (n + 1))
-                .map_err(fail())?;
-            weights.resize((n + 1) * (n + 1), 0.0);
+            let cells = (n + 1).checked_mul(n + 1).ok_or_else(too_large)?;
+            weights.try_reserve_exact(cells).map_err(fail())?;
+            weights.resize(cells, 0.0);
         }
 
         let mut matrix = Self {

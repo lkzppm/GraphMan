@@ -41,11 +41,19 @@ impl Build for AdjacencyList {
     const REPRESENTATION: Representation = Representation::AdjacencyList;
 
     fn required_bytes(vertex_count: usize, edge_count: usize, weighted: bool) -> usize {
-        let rows = (vertex_count + 1) * size_of::<Vec<Vertex>>();
-        let targets = 2 * edge_count * size_of::<Vertex>();
+        // Saturating: on 32-bit targets (the browser) a product that does not
+        // fit is "more than any budget", never a small wrapped number.
+        let entries = edge_count.saturating_mul(2);
+        let rows = vertex_count
+            .saturating_add(1)
+            .saturating_mul(size_of::<Vec<Vertex>>());
+        let targets = entries.saturating_mul(size_of::<Vertex>());
         match weighted {
-            false => rows + targets,
-            true => 2 * rows + targets + 2 * edge_count * size_of::<Weight>(),
+            false => rows.saturating_add(targets),
+            true => rows
+                .saturating_mul(2)
+                .saturating_add(targets)
+                .saturating_add(entries.saturating_mul(size_of::<Weight>())),
         }
     }
 

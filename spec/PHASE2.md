@@ -90,7 +90,9 @@ Directed: Graph     out_neighbors, in_neighbors, out_degree, in_degree          
 - **The parser decides once.** The first edge line has two or three
   columns; every other line must match (`ParseError::InconsistentColumns`
   otherwise). Weights are any finite real (`5`, `-9.5`, `1e-3`); NaN and
-  infinities are `ParseError::InvalidWeight`. Normalisation is the Part 1
+  infinities are `ParseError::InvalidWeight`, and weights whose sum is not
+a finite float are `ParseError::WeightsOverflow` (so no path length can
+overflow to infinity and pass for "unreached"). Normalisation is the Part 1
   one on `(u, v, weight)` records: self-loops dropped, `[min, max]`,
   sorted, deduplicated, and **a repeated edge keeps its smallest weight**,
   the only one a shortest path would use. The records are then split into
@@ -109,8 +111,9 @@ Directed: Graph     out_neighbors, in_neighbors, out_degree, in_degree          
 - **Vertex names** live beside the graph (section 7): `io::VertexNames`
   reads `index,name` lines (comma, semicolon, tab or spaces; a first line
   that is a count or a header is skipped; Latin-1 is accepted when the file
-  is not UTF-8), keeps all names in one `String` with a span per vertex and
-  a name-sorted vertex list for exact lookup by binary search, and offers an
+  is not UTF-8), keeps all names in one `String` with one entry per named
+  vertex (sorted, so a stray huge index costs one entry, not a table that
+  long) and a name-sorted list for exact lookup by binary search, and offers an
   accent- and case-insensitive `search` for "did you mean" suggestions.
 - **`Directed`** (Part 3). `neighbors` on a directed graph means
   out-neighbours, so BFS, DFS and components (weakly connected) work
