@@ -49,6 +49,7 @@ import {
 import { formatBytes, formatCompact, formatInt, formatMs, formatWeight } from '@/lib/format';
 import {
   FIGURE_ONE,
+  WEIGHTED_SAMPLE,
   loadGraphman,
   UNREACHED,
   type Graph,
@@ -831,9 +832,18 @@ export default function Observatory() {
     [parseBytes],
   );
 
-  const loadExample = useCallback(() => {
-    void parseBytes('sample.txt', new TextEncoder().encode(FIGURE_ONE));
-  }, [parseBytes]);
+  /** Opens one of the two built-in samples: Figure 1 of the assignment, or
+      the library page's graph with weights. */
+  const loadExample = useCallback(
+    (which: 'plain' | 'weighted' = 'plain') => {
+      const [name, text] =
+        which === 'weighted'
+          ? ['sample_weighted.txt', WEIGHTED_SAMPLE]
+          : ['sample.txt', FIGURE_ONE];
+      void parseBytes(name, new TextEncoder().encode(text));
+    },
+    [parseBytes],
+  );
 
   /**
    * Rebuilds the loaded graph with another storage strategy. The graph itself
@@ -2033,16 +2043,27 @@ export default function Observatory() {
           <>
             <Panel title={t.graph}>
               <div className={styles.starters}>
-                <button
-                  type="button"
-                  className={styles.starter}
-                  onClick={loadExample}
-                  disabled={status.kind !== 'ready'}
+                <div
+                  className={`${styles.starter} ${styles.starterGroup}`}
+                  role="group"
+                  aria-label={t.sample}
+                  data-disabled={status.kind !== 'ready' || undefined}
                 >
                   <FlaskConical size={18} strokeWidth={1.75} aria-hidden="true" />
                   <span className={styles.starterTitle}>{t.sample}</span>
-                  <span className={styles.starterHint}>{t.sampleHint}</span>
-                </button>
+                  {(['plain', 'weighted'] as const).map((which) => (
+                    <button
+                      key={which}
+                      type="button"
+                      className={styles.starterChoice}
+                      onClick={() => loadExample(which)}
+                      disabled={status.kind !== 'ready'}
+                    >
+                      <span className={styles.starterChoiceLabel}>{t.samples[which].label}</span>
+                      <span className={styles.starterHint}>{t.samples[which].hint}</span>
+                    </button>
+                  ))}
+                </div>
                 <button
                   type="button"
                   className={styles.starter}
@@ -2151,10 +2172,18 @@ export default function Observatory() {
                   <button
                     type="button"
                     className="button button--secondary button--small"
-                    onClick={loadExample}
+                    onClick={() => loadExample('plain')}
                     disabled={status.kind !== 'ready'}
                   >
                     {t.trySample}
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--secondary button--small"
+                    onClick={() => loadExample('weighted')}
+                    disabled={status.kind !== 'ready'}
+                  >
+                    {t.tryWeightedSample}
                   </button>
                 </div>
               </div>
