@@ -2500,7 +2500,9 @@ function Panel({
 }
 
 /** The two built-in samples, behind one "Examples" control: a tile in the
-    empty sidebar, a button on the empty stage. Either opens a small menu. */
+    empty sidebar, a button on the empty stage. A click turns the control
+    itself into the choice (its two faces share one grid cell, so it keeps
+    its size); a click outside or Esc turns it back. */
 function ExamplesMenu({
   t,
   variant,
@@ -2514,9 +2516,11 @@ function ExamplesMenu({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const choicesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    choicesRef.current?.querySelector('button')?.focus();
     const onDown = (event: PointerEvent) => {
       if (!ref.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -2531,56 +2535,77 @@ function ExamplesMenu({
     };
   }, [open]);
 
-  const trigger = {
-    type: 'button' as const,
-    onClick: () => setOpen((o) => !o),
-    disabled,
-    'aria-haspopup': 'menu' as const,
-    'aria-expanded': open,
-  };
+  const tile = variant === 'tile';
+  const iconSize = tile ? 16 : 14;
 
   return (
-    <div ref={ref} className={styles.examples} data-variant={variant} data-open={open || undefined}>
-      {variant === 'tile' ? (
-        <button {...trigger} className={styles.starter}>
-          <FlaskConical size={18} strokeWidth={1.75} aria-hidden="true" />
-          <span className={styles.starterTitle}>{t.examples}</span>
-          <span className={styles.starterHint}>{t.examplesHint}</span>
-        </button>
-      ) : (
-        <button {...trigger} className="button button--secondary button--small">
-          {t.examples}
-          <ChevronDown size={14} className={styles.examplesChevron} aria-hidden="true" />
-        </button>
-      )}
-      {open && (
-        <div
-          className={`${styles.help} ${styles.examplesMenu}`}
-          role="menu"
-          aria-label={t.examples}
-        >
-          {(['plain', 'weighted'] as const).map((which) => (
-            <button
-              key={which}
-              type="button"
-              role="menuitem"
-              className={styles.menuItem}
-              onClick={() => {
-                setOpen(false);
-                onPick(which);
-              }}
-            >
-              <span className={styles.menuIcon}>
-                {which === 'plain' ? <Waypoints size={16} /> : <Weight size={16} />}
-              </span>
+    <div
+      ref={ref}
+      className={
+        tile
+          ? `${styles.starter} ${styles.examples}`
+          : `button button--secondary button--small ${styles.examples}`
+      }
+      data-variant={variant}
+      data-open={open || undefined}
+      data-disabled={disabled || undefined}
+    >
+      <button
+        type="button"
+        className={styles.examplesFace}
+        onClick={() => setOpen(true)}
+        disabled={disabled}
+        aria-expanded={open}
+        inert={open}
+      >
+        {tile ? (
+          <>
+            <FlaskConical size={18} strokeWidth={1.75} aria-hidden="true" />
+            <span className={styles.starterTitle}>{t.examples}</span>
+            <span className={styles.starterHint}>{t.examplesHint}</span>
+          </>
+        ) : (
+          t.examples
+        )}
+      </button>
+      <div
+        ref={choicesRef}
+        className={styles.examplesChoices}
+        role="group"
+        aria-label={t.examples}
+        inert={!open}
+      >
+        {(['plain', 'weighted'] as const).map((which) => (
+          <button
+            key={which}
+            type="button"
+            className={styles.examplesChoice}
+            onClick={() => {
+              setOpen(false);
+              onPick(which);
+            }}
+          >
+            {which === 'plain' ? (
+              <Waypoints size={iconSize} aria-hidden="true" />
+            ) : (
+              <Weight size={iconSize} aria-hidden="true" />
+            )}
+            {tile ? (
               <span className={styles.menuText}>
                 <span>{t.samples[which].label}</span>
-                <span className={styles.menuHint}>{t.samples[which].hint}</span>
+                {/* The counts on two short lines, so the tile keeps its width. */}
+                {t.samples[which].hint.split(' · ').map((part) => (
+                  <span key={part} className={styles.menuHint}>
+                    {part}
+                  </span>
+                ))}
               </span>
-            </button>
-          ))}
-        </div>
-      )}
+            ) : (
+              t.samples[which].label
+            )}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

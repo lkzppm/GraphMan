@@ -1641,7 +1641,7 @@
 /* Empty sidebar: two starter tiles and a cheat sheet. */
 .starters {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -1687,58 +1687,133 @@
   color: var(--fg-3);
 }
 
-/* "Examples": the tile (or the drop card's button) and the menu it opens,
-   one row per sample with its icon. */
+/* "Examples": the tile (or the drop card's button) turns into the choice
+   in place. Both faces share one grid cell, so the control keeps its size;
+   the face fades and shrinks a little as the two choices rise in. */
 .examples {
-  position: relative;
   display: grid;
-}
-
-/* In the sidebar the menu opens inline, under both tiles, so the panel
-   below makes room instead of covering it. */
-.examples[data-variant='tile'] {
-  display: contents;
-}
-
-.examples[data-variant='tile'] .examplesMenu {
-  position: static;
-  grid-column: 1 / -1;
-  order: 1;
-  width: auto;
+  align-items: stretch;
+  padding: 0;
 }
 
 .examples[data-variant='button'] {
   display: inline-grid;
+  align-items: stretch;
 }
 
-.examplesChevron {
-  margin-left: 6px;
-  transition: transform 0.2s var(--ease);
+.examples[data-disabled] {
+  opacity: 0.5;
+  cursor: progress;
 }
 
-.examples[data-open] .examplesChevron {
-  transform: rotate(180deg);
-}
-
-.examples[data-open] .starter {
+/* Open, the tile stops lifting: it is a picker now, not a button. */
+.examples[data-open],
+.examples[data-open]:hover {
+  transform: none;
   border-color: var(--accent);
-  color: var(--accent);
 }
 
-.examplesMenu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 20;
-  width: 212px;
-  gap: 2px;
-  padding: 6px;
+.examplesFace,
+.examplesChoices {
+  grid-area: 1 / 1;
+  transition:
+    opacity 0.22s var(--ease),
+    transform 0.28s var(--ease);
+}
+
+.examplesFace {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 12px 11px;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
   text-align: left;
 }
 
-.examples[data-variant='button'] .examplesMenu {
-  left: 50%;
-  translate: -50% 0;
+.examples[data-variant='button'] .examplesFace {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+}
+
+.examples[data-open] .examplesFace {
+  opacity: 0;
+  transform: scale(0.94);
+  pointer-events: none;
+}
+
+.examplesChoices {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px;
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+}
+
+.examples[data-variant='button'] .examplesChoices {
+  flex-direction: row;
+  gap: 0;
+  padding: 0;
+}
+
+.examples[data-open] .examplesChoices {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.examplesChoice {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-2);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+
+.examples[data-variant='tile'] .examplesChoice {
+  gap: 8px;
+  padding: 0 6px;
+}
+
+.examplesChoice:hover,
+.examplesChoice:focus-visible {
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+/* On the button the two choices are halves with a hairline between. */
+.examples[data-variant='button'] .examplesChoice {
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 0;
+  color: var(--fg);
+}
+
+.examples[data-variant='button'] .examplesChoice + .examplesChoice {
+  border-left: 1px solid var(--border-2);
+}
+
+.examples[data-variant='button'] .examplesChoice:hover,
+.examples[data-variant='button'] .examplesChoice:focus-visible {
+  background: var(--accent-muted);
+  color: var(--accent);
 }
 
 .keys {
