@@ -259,6 +259,7 @@ export const en = {
     format: {
       vertices: '// vertices',
       edge: '// one edge per line',
+      weight: '// weight, optional',
     },
     graph: 'Graph',
     loadFile: 'Load a graph file',
@@ -345,7 +346,8 @@ export const en = {
     diameterBound: 'lower bound',
     diameterHint: 'Pick a method and compute the longest of all the shortest paths.',
     showDiameterPath: (from: string, to: string) => `Draw the path from ${from} to ${to}`,
-    sample: 'Sample',
+    examples: 'Examples',
+    examplesHint: 'Weighted or not',
     samples: {
       plain: { label: 'Unweighted', hint: '5 vertices · 5 edges' },
       weighted: { label: 'Weighted', hint: '5 vertices · 6 edges' },
@@ -365,8 +367,6 @@ export const en = {
     drop: 'Drop a graph file anywhere',
     fileFormat: 'File format',
     browse: 'Browse files',
-    trySample: 'Try the sample',
-    tryWeightedSample: 'With weights',
     hideControls: 'Hide the controls',
     showControls: 'Show the controls',
     hideNumbers: 'Hide vertex numbers',
