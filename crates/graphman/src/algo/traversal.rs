@@ -3,9 +3,10 @@
 //! Both traversals share one output type, [`SearchTree`], and one extension
 //! point, [`Visitor`]. The traversal is the *template*; the tree records
 //! parents and levels; visitors add behaviour (early exit, frame capture)
-//! without the traversal knowing about them.
+//! without the traversal knowing about them. Dijkstra
+//! ([`dijkstra_into`](super::dijkstra_into)) reports to the same visitors.
 
-use crate::graph::{Graph, NO_VERTEX, Vertex};
+use crate::graph::{Graph, NO_VERTEX, Vertex, Weight};
 use std::io::{self, Write};
 
 /// Level value of a vertex that the traversal never reached.
@@ -40,6 +41,14 @@ pub trait Visitor {
     #[inline]
     fn finish(&mut self, v: Vertex) {
         let _ = v;
+    }
+
+    /// Dijkstra only: `v` left the frontier with its final `distance`,
+    /// reached from `parent` (the root has `parent == NO_VERTEX`).
+    #[inline]
+    fn settle(&mut self, v: Vertex, parent: Vertex, distance: Weight) -> Control {
+        let _ = (v, parent, distance);
+        Control::Continue
     }
 }
 
@@ -146,6 +155,22 @@ impl SearchTree {
             .map(|&v| self.level[v as usize])
             .max()
             .unwrap_or(0)
+    }
+
+    /// The tree path from the root to `v` (both included), or `None` if `v`
+    /// was not reached. After a BFS it is a shortest path in edges.
+    pub fn path_to(&self, v: Vertex) -> Option<Vec<Vertex>> {
+        if !self.is_reached(v) {
+            return None;
+        }
+        let mut path = vec![v];
+        let mut at = v;
+        while let Some(p) = self.parent(at) {
+            path.push(p);
+            at = p;
+        }
+        path.reverse();
+        Some(path)
     }
 
     /// Raw parent array indexed by vertex (`NO_VERTEX` = none).

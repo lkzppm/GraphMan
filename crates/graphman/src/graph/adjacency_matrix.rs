@@ -1,6 +1,9 @@
 //! Adjacency matrix packed as a bitset: one bit per vertex pair.
 
-use super::{Build, BuildError, Graph, Representation, Vertex, allocation_failed};
+use super::{
+    Build, BuildError, Graph, Representation, UNIT_WEIGHT, Vertex, Weight, Weighted, WeightedEdge,
+    allocation_failed,
+};
 use crate::io::EdgeList;
 use core::mem::size_of;
 
@@ -14,13 +17,21 @@ use core::mem::size_of;
 /// It is still `Θ(n²)`: 12.5 MB for 10 000 vertices, 312 MB for 50 000 and
 /// 17.6 GB for 375 000, which is why builders check a
 /// [`MemoryBudget`](super::MemoryBudget) first.
+///
+/// A weighted graph adds the textbook weight matrix beside the bits: an
+/// `(n + 1) × (n + 1)` table of [`Weight`]s, 64 times the size of the
+/// bitset (800 MB for 10 000 vertices). The bits still answer every
+/// adjacency question; the table is read only for weights, in `O(1)`.
 #[derive(Debug, Clone)]
 pub struct AdjacencyMatrix {
     vertex_count: usize,
     words_per_row: usize,
     bits: Vec<u64>,
+    /// `(n + 1)²` weights, row-major; empty when the graph is unweighted.
+    weights: Vec<Weight>,
     degrees: Vec<u32>,
     edge_count: usize,
+    negative_edge: Option<WeightedEdge>,
 }
 
 impl AdjacencyMatrix {
@@ -37,6 +48,16 @@ impl AdjacencyMatrix {
         &self.bits[start..start + self.words_per_row]
     }
 
+    /// The weights of row `v`, indexed by vertex; empty when unweighted.
+    #[inline]
+    fn weight_row(&self, v: Vertex) -> &[Weight] {
+        if self.weights.is_empty() {
+            return &[];
+        }
+        let stride = self.vertex_count + 1;
+        &self.weights[v as usize * stride..][..stride]
+    }
+
     #[inline]
     fn set(&mut self, u: Vertex, v: Vertex) {
         let index = u as usize * self.words_per_row + v as usize / Self::WORD_BITS;
@@ -47,14 +68,17 @@ impl AdjacencyMatrix {
 impl Build for AdjacencyMatrix {
     const REPRESENTATION: Representation = Representation::AdjacencyMatrix;
 
-    fn required_bytes(vertex_count: usize, _edge_count: usize) -> usize {
-        (vertex_count + 1) * Self::words_per_row(vertex_count) * size_of::<u64>()
-            + (vertex_count + 1) * size_of::<u32>()
+    fn required_bytes(vertex_count: usize, _edge_count: usize, weighted: bool) -> usize {
+        let side = vertex_count + 1;
+        let weights = if weighted { side * side } else { 0 };
+        side * Self::words_per_row(vertex_count) * size_of::<u64>()
+            + side * size_of::<u32>()
+            + weights * size_of::<Weight>()
     }
 
     fn build_unchecked(edges: &EdgeList) -> Result<Self, BuildError> {
         let n = edges.vertex_count();
-        let required = Self::required_bytes(n, edges.edge_count());
+        let required = Self::required_bytes(n, edges.edge_count(), edges.is_weighted());
         let fail = || allocation_failed(Self::REPRESENTATION, required);
 
         let words_per_row = Self::words_per_row(n);
@@ -62,17 +86,34 @@ impl Build for AdjacencyMatrix {
         let mut bits: Vec<u64> = Vec::new();
         bits.try_reserve_exact(total_words).map_err(fail())?;
         bits.resize(total_words, 0);
+        let mut weights: Vec<Weight> = Vec::new();
+        if edges.is_weighted() {
+            weights
+                .try_reserve_exact((n + 1) * (n + 1))
+                .map_err(fail())?;
+            weights.resize((n + 1) * (n + 1), 0.0);
+        }
 
         let mut matrix = Self {
             vertex_count: n,
             words_per_row,
             bits,
+            weights,
             degrees: edges.degrees(),
             edge_count: edges.edge_count(),
+            negative_edge: edges.negative_edge(),
         };
         for &[u, v] in edges.edges() {
             matrix.set(u, v);
             matrix.set(v, u);
+        }
+        if let Some(edge_weights) = edges.weights() {
+            let stride = n + 1;
+            for (&[u, v], &weight) in edges.edges().iter().zip(edge_weights) {
+                let (u, v) = (u as usize, v as usize);
+                matrix.weights[u * stride + v] = weight;
+                matrix.weights[v * stride + u] = weight;
+            }
         }
         Ok(matrix)
     }
@@ -111,11 +152,70 @@ impl Graph for AdjacencyMatrix {
     }
 
     fn heap_bytes(&self) -> usize {
-        self.bits.capacity() * size_of::<u64>() + self.degrees.capacity() * size_of::<u32>()
+        self.bits.capacity() * size_of::<u64>()
+            + self.weights.capacity() * size_of::<Weight>()
+            + self.degrees.capacity() * size_of::<u32>()
     }
 
     fn representation(&self) -> Representation {
         Representation::AdjacencyMatrix
+    }
+}
+
+impl Weighted for AdjacencyMatrix {
+    type WeightedNeighbors<'a>
+        = WeightedBitRow<'a>
+    where
+        Self: 'a;
+
+    #[inline]
+    fn weighted_neighbors(&self, v: Vertex) -> Self::WeightedNeighbors<'_> {
+        WeightedBitRow {
+            bits: BitRow::new(self.row(v)),
+            weights: self.weight_row(v),
+        }
+    }
+
+    fn is_weighted(&self) -> bool {
+        !self.weights.is_empty()
+    }
+
+    #[inline]
+    fn weight(&self, u: Vertex, v: Vertex) -> Option<Weight> {
+        if !self.has_edge(u, v) {
+            return None;
+        }
+        Some(
+            self.weight_row(u)
+                .get(v as usize)
+                .copied()
+                .unwrap_or(UNIT_WEIGHT),
+        )
+    }
+
+    fn negative_edge(&self) -> Option<WeightedEdge> {
+        self.negative_edge
+    }
+}
+
+/// Iterates a matrix row's set bits with the weights of those edges.
+#[derive(Debug, Clone)]
+pub struct WeightedBitRow<'a> {
+    bits: BitRow<'a>,
+    /// The row of the weight matrix; empty when unweighted.
+    weights: &'a [Weight],
+}
+
+impl Iterator for WeightedBitRow<'_> {
+    type Item = (Vertex, Weight);
+
+    #[inline]
+    fn next(&mut self) -> Option<(Vertex, Weight)> {
+        let v = self.bits.next()?;
+        Some((
+            v,
+            self.weights.get(v as usize).copied().unwrap_or(UNIT_WEIGHT),
+        ))
     }
 }
 

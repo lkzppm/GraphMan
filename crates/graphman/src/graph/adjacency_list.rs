@@ -1,17 +1,26 @@
 //! Adjacency list: one heap-allocated `Vec<Vertex>` per vertex.
 
-use super::{Build, BuildError, Graph, Representation, Vertex, allocation_failed};
+use super::{
+    Build, BuildError, Graph, Representation, UNIT_WEIGHT, Vertex, Weight, Weighted, WeightedEdge,
+    WeightedRow, allocation_failed,
+};
 use crate::io::EdgeList;
 use core::mem::size_of;
 
 /// The textbook adjacency list.
 ///
 /// `adj[v]` holds the neighbours of `v` in ascending order. Row `0` is unused
-/// so that vertices can index the table directly.
+/// so that vertices can index the table directly. A weighted graph keeps a
+/// second table of the same shape, `weights[v][i]` being the weight of the
+/// edge to `adj[v][i]`, so the neighbour rows read by BFS stay as compact as
+/// in an unweighted graph.
 #[derive(Debug, Clone)]
 pub struct AdjacencyList {
     adj: Vec<Vec<Vertex>>,
+    /// Empty when the graph is unweighted.
+    weights: Vec<Vec<Weight>>,
     edge_count: usize,
+    negative_edge: Option<WeightedEdge>,
 }
 
 impl AdjacencyList {
@@ -20,18 +29,29 @@ impl AdjacencyList {
     pub fn row(&self, v: Vertex) -> &[Vertex] {
         &self.adj[v as usize]
     }
+
+    /// The weights of the edges in [`row`](Self::row)`(v)`; empty when unweighted.
+    #[inline]
+    pub fn row_weights(&self, v: Vertex) -> &[Weight] {
+        self.weights.get(v as usize).map_or(&[], Vec::as_slice)
+    }
 }
 
 impl Build for AdjacencyList {
     const REPRESENTATION: Representation = Representation::AdjacencyList;
 
-    fn required_bytes(vertex_count: usize, edge_count: usize) -> usize {
-        (vertex_count + 1) * size_of::<Vec<Vertex>>() + 2 * edge_count * size_of::<Vertex>()
+    fn required_bytes(vertex_count: usize, edge_count: usize, weighted: bool) -> usize {
+        let rows = (vertex_count + 1) * size_of::<Vec<Vertex>>();
+        let targets = 2 * edge_count * size_of::<Vertex>();
+        match weighted {
+            false => rows + targets,
+            true => 2 * rows + targets + 2 * edge_count * size_of::<Weight>(),
+        }
     }
 
     fn build_unchecked(edges: &EdgeList) -> Result<Self, BuildError> {
         let n = edges.vertex_count();
-        let required = Self::required_bytes(n, edges.edge_count());
+        let required = Self::required_bytes(n, edges.edge_count(), edges.is_weighted());
         let fail = || allocation_failed(Self::REPRESENTATION, required);
 
         let degrees = edges.degrees();
@@ -42,6 +62,15 @@ impl Build for AdjacencyList {
             row.try_reserve_exact(degree as usize).map_err(fail())?;
             adj.push(row);
         }
+        let mut weights: Vec<Vec<Weight>> = Vec::new();
+        if edges.is_weighted() {
+            weights.try_reserve_exact(n + 1).map_err(fail())?;
+            for &degree in &degrees {
+                let mut row = Vec::new();
+                row.try_reserve_exact(degree as usize).map_err(fail())?;
+                weights.push(row);
+            }
+        }
         // `edges` is sorted by (min, max), which makes every row ascending:
         // all smaller neighbours of `v` are pushed (in order) while the outer
         // endpoint is < v, and all larger ones while it is == v.
@@ -49,9 +78,17 @@ impl Build for AdjacencyList {
             adj[u as usize].push(v);
             adj[v as usize].push(u);
         }
+        if let Some(edge_weights) = edges.weights() {
+            for (&[u, v], &weight) in edges.edges().iter().zip(edge_weights) {
+                weights[u as usize].push(weight);
+                weights[v as usize].push(weight);
+            }
+        }
         Ok(Self {
             adj,
+            weights,
             edge_count: edges.edge_count(),
+            negative_edge: edges.negative_edge(),
         })
     }
 }
@@ -94,9 +131,45 @@ impl Graph for AdjacencyList {
                 .iter()
                 .map(|row| row.capacity() * size_of::<Vertex>())
                 .sum::<usize>()
+            + self.weights.capacity() * size_of::<Vec<Weight>>()
+            + self
+                .weights
+                .iter()
+                .map(|row| row.capacity() * size_of::<Weight>())
+                .sum::<usize>()
     }
 
     fn representation(&self) -> Representation {
         Representation::AdjacencyList
+    }
+}
+
+impl Weighted for AdjacencyList {
+    type WeightedNeighbors<'a>
+        = WeightedRow<'a>
+    where
+        Self: 'a;
+
+    #[inline]
+    fn weighted_neighbors(&self, v: Vertex) -> Self::WeightedNeighbors<'_> {
+        WeightedRow::new(self.row(v), self.row_weights(v))
+    }
+
+    fn is_weighted(&self) -> bool {
+        !self.weights.is_empty()
+    }
+
+    fn weight(&self, u: Vertex, v: Vertex) -> Option<Weight> {
+        let index = self.row(u).binary_search(&v).ok()?;
+        Some(
+            self.row_weights(u)
+                .get(index)
+                .copied()
+                .unwrap_or(UNIT_WEIGHT),
+        )
+    }
+
+    fn negative_edge(&self) -> Option<WeightedEdge> {
+        self.negative_edge
     }
 }

@@ -193,7 +193,7 @@ fn matrix_respects_the_memory_budget() {
     assert!(matches!(err, graphman::BuildError::OverBudget { .. }));
     assert!(AdjacencyMatrix::build_within(&edges, MemoryBudget::Unlimited).is_ok());
     assert_eq!(
-        Representation::AdjacencyMatrix.required_bytes(375_000, 0) / 1_000_000_000,
+        Representation::AdjacencyMatrix.required_bytes(375_000, 0, false) / 1_000_000_000,
         17
     );
 }

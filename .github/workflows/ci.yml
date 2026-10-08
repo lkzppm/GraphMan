@@ -35,6 +35,13 @@ jobs:
           ./target/release/graphman -q info figure1.txt -o figure1.summary.txt
           ./target/release/graphman -q diameter figure1.txt -m exact | grep -q '^diameter 2 '
           cat figure1.summary.txt
+          # Part 2: weights, both frontiers, the negative-weight refusal, names.
+          ./target/release/graphman -q dijkstra samples/weighted_100.txt --from 10 --to 20 -f vector -o v.txt
+          ./target/release/graphman -q dijkstra samples/weighted_100.txt --from 10 --to 20 -f heap -o h.txt
+          cmp v.txt h.txt
+          if ./target/release/graphman -q dijkstra samples/figure1_weighted.txt -o n.txt; then exit 1; fi
+          ./target/release/graphman -q dijkstra samples/collaboration.txt --names samples/collaboration_names.txt \
+            --from "Edsger W. Dijkstra" --to "Éva Tardos" -o c.txt | grep -q '^1 5 1.75 '
 
   web:
     name: Web · typecheck, lint, build

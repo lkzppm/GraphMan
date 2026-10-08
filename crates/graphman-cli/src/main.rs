@@ -37,14 +37,18 @@ enum Command {
     Bfs(commands::search::Args),
     /// Depth-first search tree (parent and level of every vertex).
     Dfs(commands::search::Args),
-    /// Distance between pairs of vertices.
+    /// Shortest-path tree (Dijkstra) from one vertex, and paths to targets.
+    Dijkstra(commands::dijkstra::Args),
+    /// Distance between pairs of vertices (weighted when the graph is).
     Distance(commands::distance::Args),
     /// Diameter: exact (brute force or iFUB) or a 4-sweep lower bound.
     Diameter(commands::diameter::Args),
     /// Connected components, largest first.
     Components(commands::components::Args),
-    /// Time BFS or DFS from many distinct start vertices.
+    /// Time BFS, DFS or Dijkstra from many distinct start vertices.
     Bench(commands::bench::Args),
+    /// Write a random graph (optionally weighted) in the course format.
+    Generate(commands::generate::Args),
     /// Resident memory of the process after loading the graph.
     Memory(commands::memory::Args),
     /// Run the whole case study and write JSON + Markdown results.
@@ -63,10 +67,12 @@ fn main() -> Result<()> {
         Command::Info(args) => commands::info::run(args, &ui),
         Command::Bfs(args) => commands::search::run(args, commands::search::Algorithm::Bfs, &ui),
         Command::Dfs(args) => commands::search::run(args, commands::search::Algorithm::Dfs, &ui),
+        Command::Dijkstra(args) => commands::dijkstra::run(args, &ui),
         Command::Distance(args) => commands::distance::run(args, &ui),
         Command::Diameter(args) => commands::diameter::run(args, &ui),
         Command::Components(args) => commands::components::run(args, &ui),
         Command::Bench(args) => commands::bench::run(args, &ui),
+        Command::Generate(args) => commands::generate::run(args, &ui),
         Command::Memory(args) => commands::memory::run(args, &ui),
         Command::Study(args) => commands::study::run(args, &ui),
     }

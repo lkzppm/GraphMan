@@ -1,9 +1,10 @@
 //! WebAssembly bindings of GraphMan for the web observatory.
 //!
-//! One [`WasmGraph`] per uploaded file: it parses the course format once,
-//! builds the representation the visitor picked and answers everything the
-//! observatory asks (searches, distances,
-//! components, degree statistics, a diameter, an initial layout). Vertices
+//! One [`WasmGraph`] per uploaded file: it parses the course format once
+//! (with or without a weight column), builds the representation the visitor
+//! picked and answers everything the observatory asks (searches, Dijkstra,
+//! distances, components, degree and weight statistics, a diameter, an
+//! initial layout, vertex names). Vertices
 //! stay 1-based and every per-vertex array is indexed by vertex with index 0
 //! unused, exactly like the library's raw arrays, so the GPU buffers on the
 //! other side can be indexed by vertex id directly.
@@ -13,13 +14,14 @@
 #![warn(missing_docs, clippy::all)]
 
 use graphman::algo::{
-    self, Components, Control, DegreeStats, DiameterMethod, SearchTree, UNREACHED, bfs_into,
-    dfs_into, radial_layout,
+    self, Components, Control, DegreeStats, DiameterMethod, FrontierKind, HeapFrontier,
+    LazyHeapFrontier, SearchTree, ShortestPathTree, UNREACHED, VectorFrontier, WeightStats,
+    bfs_into, dfs_into, dijkstra_into, radial_layout,
 };
 use graphman::io::write_summary;
 use graphman::{
     AdjacencyList, AdjacencyMatrix, AnyGraph, Build, BuildError, Csr, EdgeList, Graph,
-    MemoryBudget, NO_VERTEX, Representation, Vertex, dispatch,
+    MemoryBudget, NO_VERTEX, Representation, Vertex, VertexNames, Weighted, dispatch,
 };
 use std::f64::consts::TAU;
 use wasm_bindgen::prelude::*;
@@ -76,6 +78,28 @@ impl From<DiameterKind> for DiameterMethod {
             DiameterKind::IFub => DiameterMethod::IFub,
             DiameterKind::Bounds => DiameterMethod::Bounds,
             DiameterKind::Sweep => DiameterMethod::Sweep,
+        }
+    }
+}
+
+/// How Dijkstra keeps its distance estimates (the library's `FrontierKind`).
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrontierType {
+    /// A vector of estimates scanned for the minimum: `O(n²)`.
+    Vector = 0,
+    /// An indexed binary heap with decrease-key: `O((n + m) log n)`.
+    Heap = 1,
+    /// A binary heap without decrease-key (stale entries skipped).
+    LazyHeap = 2,
+}
+
+impl From<FrontierType> for FrontierKind {
+    fn from(kind: FrontierType) -> Self {
+        match kind {
+            FrontierType::Vector => FrontierKind::Vector,
+            FrontierType::Heap => FrontierKind::Heap,
+            FrontierType::LazyHeap => FrontierKind::LazyHeap,
         }
     }
 }
@@ -157,11 +181,15 @@ pub struct MemoryReport {
 impl MemoryReport {
     /// What a graph of this size costs in each representation.
     fn of(edges: &EdgeList) -> Self {
-        let (n, m) = (edges.vertex_count(), edges.edge_count());
+        let (n, m, w) = (
+            edges.vertex_count(),
+            edges.edge_count(),
+            edges.is_weighted(),
+        );
         Self {
-            list: AdjacencyList::required_bytes(n, m) as f64,
-            matrix: AdjacencyMatrix::required_bytes(n, m) as f64,
-            csr: Csr::required_bytes(n, m) as f64,
+            list: AdjacencyList::required_bytes(n, m, w) as f64,
+            matrix: AdjacencyMatrix::required_bytes(n, m, w) as f64,
+            csr: Csr::required_bytes(n, m, w) as f64,
             budget: BUDGET_BYTES as f64,
         }
     }
@@ -179,9 +207,9 @@ pub struct WasmEdges {
 
 #[wasm_bindgen(js_class = Parsed)]
 impl WasmEdges {
-    /// Parses the text format (`n`, then one `u v` edge per line), dropping
-    /// self-loops and duplicates. Throws with the parser's message (line
-    /// number included) on malformed input.
+    /// Parses the text format (`n`, then one `u v` or `u v weight` edge per
+    /// line), dropping self-loops and duplicates. Throws with the parser's
+    /// message (line number included) on malformed input.
     #[wasm_bindgen(constructor)]
     pub fn new(bytes: &[u8]) -> Result<WasmEdges, JsError> {
         let edges = EdgeList::parse(bytes).map_err(|e| JsError::new(&e.to_string()))?;
@@ -198,6 +226,12 @@ impl WasmEdges {
     #[wasm_bindgen(getter, js_name = edgeCount)]
     pub fn edge_count(&self) -> u32 {
         self.edges.edge_count() as u32
+    }
+
+    /// Whether the file had a weight column.
+    #[wasm_bindgen(getter)]
+    pub fn weighted(&self) -> bool {
+        self.edges.is_weighted()
     }
 
     /// What every representation of this graph would cost, and the cap.
@@ -359,6 +393,129 @@ impl SearchResult {
     }
 }
 
+/// Min, max and mean weight and the number of negative edges.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy)]
+pub struct WeightSummary {
+    /// Smallest weight.
+    pub min: f64,
+    /// Largest weight.
+    pub max: f64,
+    /// Average weight.
+    pub mean: f64,
+    /// Edges with a negative weight (Dijkstra refuses the graph if any).
+    pub negative: u32,
+}
+
+impl From<WeightStats> for WeightSummary {
+    fn from(stats: WeightStats) -> Self {
+        Self {
+            min: stats.min,
+            max: stats.max,
+            mean: stats.mean,
+            negative: stats.negative as u32,
+        }
+    }
+}
+
+/// A Dijkstra run: distance and parent of every settled vertex, and the
+/// settle order (which animates it the way discovery ranks animate a BFS).
+#[wasm_bindgen]
+pub struct ShortestPathResult {
+    frontier: FrontierType,
+    tree: ShortestPathTree,
+    elapsed_ms: f64,
+}
+
+#[wasm_bindgen]
+impl ShortestPathResult {
+    /// Which frontier ran.
+    #[wasm_bindgen(getter)]
+    pub fn frontier(&self) -> FrontierType {
+        self.frontier
+    }
+
+    /// The source vertex.
+    #[wasm_bindgen(getter)]
+    pub fn root(&self) -> u32 {
+        self.tree.root()
+    }
+
+    /// How many vertices were settled (the root included).
+    #[wasm_bindgen(getter)]
+    pub fn reached(&self) -> u32 {
+        self.tree.reached_count() as u32
+    }
+
+    /// The last settled vertex, the farthest from the root.
+    #[wasm_bindgen(getter)]
+    pub fn farthest(&self) -> u32 {
+        self.tree.last_settled().0
+    }
+
+    /// Distance to [`farthest`](Self::farthest): the root's weighted eccentricity.
+    #[wasm_bindgen(getter)]
+    pub fn eccentricity(&self) -> f64 {
+        self.tree.last_settled().1
+    }
+
+    /// Milliseconds spent in the algorithm itself.
+    #[wasm_bindgen(getter, js_name = elapsedMs)]
+    pub fn elapsed_ms(&self) -> f64 {
+        self.elapsed_ms
+    }
+
+    /// Parent of every vertex, indexed by vertex (`0` = none).
+    pub fn parents(&self) -> Vec<u32> {
+        self.tree.parents_raw().to_vec()
+    }
+
+    /// Distance of every vertex, indexed by vertex (`Infinity` = unreached).
+    pub fn distances(&self) -> Vec<f64> {
+        self.tree.distances_raw().to_vec()
+    }
+
+    /// Settled vertices in settle order (non-decreasing distance).
+    pub fn order(&self) -> Vec<u32> {
+        self.tree.order().to_vec()
+    }
+
+    /// Settle index of every vertex, indexed by vertex (`0xFFFFFFFF` = unreached).
+    pub fn ranks(&self) -> Vec<u32> {
+        let mut ranks = vec![UNREACHED; self.tree.vertex_count() + 1];
+        for (rank, &v) in self.tree.order().iter().enumerate() {
+            ranks[v as usize] = rank as u32;
+        }
+        ranks
+    }
+
+    /// Distance to `v`; `undefined` if unreached.
+    pub fn distance(&self, v: u32) -> Option<f64> {
+        self.tree.distance(v)
+    }
+
+    /// Parent of `v`; `undefined` for the root and for unreached vertices.
+    pub fn parent(&self, v: u32) -> Option<u32> {
+        self.tree.parent(v)
+    }
+
+    /// The shortest path from the root to `v`, both included; empty if unreached.
+    #[wasm_bindgen(js_name = pathTo)]
+    pub fn path_to(&self, v: u32) -> Vec<u32> {
+        self.tree.path_to(v).unwrap_or_default()
+    }
+
+    /// The tree as `vertex parent distance` per line, unreached as `- -`.
+    #[wasm_bindgen(js_name = toText)]
+    pub fn to_text(&self) -> String {
+        let mut out = Vec::new();
+        self.tree
+            .write_to(&mut out)
+            .expect("writing to a Vec never fails");
+        String::from_utf8(out).expect("the tree is written as ASCII")
+    }
+}
+
 /// An undirected graph loaded from the course's text format.
 ///
 /// The normalised [`EdgeList`] is kept next to the representation so the
@@ -372,6 +529,7 @@ pub struct WasmGraph {
     graph: AnyGraph,
     tree: SearchTree,
     components: Option<Components>,
+    names: Option<VertexNames>,
 }
 
 #[wasm_bindgen(js_class = Graph)]
@@ -394,6 +552,7 @@ impl WasmGraph {
             edges,
             graph,
             components: None,
+            names: None,
         })
     }
 
@@ -464,6 +623,21 @@ impl WasmGraph {
         self.edges.duplicates_dropped() as u32
     }
 
+    /// Whether the file had a weight column (otherwise every edge weighs 1).
+    #[wasm_bindgen(getter)]
+    pub fn weighted(&self) -> bool {
+        self.graph.is_weighted()
+    }
+
+    /// Why Dijkstra would refuse this graph (its first negative edge), or
+    /// `undefined` when every weight is non-negative.
+    #[wasm_bindgen(getter, js_name = negativeEdge)]
+    pub fn negative_edge(&self) -> Option<String> {
+        self.graph
+            .negative_edge()
+            .map(|edge| graphman::NegativeWeight { edge }.to_string())
+    }
+
     /// Heap bytes owned by the representation.
     #[wasm_bindgen(getter, js_name = heapBytes)]
     pub fn heap_bytes(&self) -> u32 {
@@ -506,6 +680,18 @@ impl WasmGraph {
         })
     }
 
+    /// The weight of every edge, parallel to [`edges`](Self::edges) (all `1`
+    /// when the graph is unweighted).
+    pub fn weights(&self) -> Vec<f64> {
+        dispatch!(&self.graph, g => {
+            let mut weights = Vec::with_capacity(g.edge_count());
+            for v in g.vertices() {
+                weights.extend(g.weighted_neighbors(v).filter(|&(w, _)| w > v).map(|(_, x)| x));
+            }
+            weights
+        })
+    }
+
     /// Row offsets of the neighbour rows (`n + 2` entries, index 0 unused):
     /// `offsets[v]..offsets[v + 1]` indexes the neighbours of `v` in
     /// [`adjacencyTargets`](Self::adjacency_targets). Read off the degrees, so
@@ -539,6 +725,12 @@ impl WasmGraph {
     #[wasm_bindgen(js_name = degreeStats)]
     pub fn degree_stats(&self) -> DegreeSummary {
         dispatch!(&self.graph, g => algo::degree_stats(g)).into()
+    }
+
+    /// Min, max and mean weight; `undefined` for an unweighted graph.
+    #[wasm_bindgen(js_name = weightStats)]
+    pub fn weight_stats(&self) -> Option<WeightSummary> {
+        dispatch!(&self.graph, g => algo::weight_stats(g)).map(Into::into)
     }
 
     /// Number of connected components.
@@ -579,6 +771,72 @@ impl WasmGraph {
             tree: self.tree.clone(),
             elapsed_ms,
         })
+    }
+
+    /// Runs Dijkstra from `root` with the chosen frontier and returns the
+    /// tree, timed with `performance.now()`. Throws the library's refusal on
+    /// a graph with a negative weight. An unweighted graph counts every edge
+    /// as 1, so its distances are the BFS levels.
+    pub fn dijkstra(
+        &mut self,
+        root: u32,
+        frontier: FrontierType,
+    ) -> Result<ShortestPathResult, JsError> {
+        self.check(root)?;
+        let n = self.graph.vertex_count();
+        let mut tree = ShortestPathTree::new(n);
+        let start = now();
+        let run = dispatch!(&self.graph, g => match frontier {
+            FrontierType::Vector => {
+                dijkstra_into(g, root, &mut VectorFrontier::new(n), &mut tree, &mut ())
+            }
+            FrontierType::Heap => {
+                dijkstra_into(g, root, &mut HeapFrontier::new(n), &mut tree, &mut ())
+            }
+            FrontierType::LazyHeap => {
+                dijkstra_into(g, root, &mut LazyHeapFrontier::new(n), &mut tree, &mut ())
+            }
+        });
+        let elapsed_ms = now() - start;
+        run.map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(ShortestPathResult {
+            frontier,
+            tree,
+            elapsed_ms,
+        })
+    }
+
+    /// Reads a names file (`index,name` per line) for this graph's vertices.
+    /// Throws with the parser's message on malformed input.
+    #[wasm_bindgen(js_name = setNames)]
+    pub fn set_names(&mut self, bytes: &[u8]) -> Result<u32, JsError> {
+        let names = VertexNames::parse(bytes).map_err(|e| JsError::new(&e.to_string()))?;
+        let count = names.len() as u32;
+        self.names = Some(names);
+        Ok(count)
+    }
+
+    /// The name of `v`, if a names file was given and names it.
+    pub fn name(&self, v: u32) -> Option<String> {
+        self.names.as_ref()?.name(v).map(str::to_owned)
+    }
+
+    /// The vertex with exactly this name, if any.
+    #[wasm_bindgen(js_name = vertexNamed)]
+    pub fn vertex_named(&self, name: &str) -> Option<u32> {
+        self.names
+            .as_ref()?
+            .vertex(name)
+            .filter(|&v| v as usize <= self.graph.vertex_count())
+    }
+
+    /// Up to `limit` vertices whose names contain every word of `query`,
+    /// ignoring case and accents.
+    #[wasm_bindgen(js_name = searchNames)]
+    pub fn search_names(&self, query: &str, limit: u32) -> Vec<u32> {
+        self.names
+            .as_ref()
+            .map_or_else(Vec::new, |names| names.search(query, limit as usize))
     }
 
     /// Distance between `a` and `b`; `undefined` when they are in different components.
@@ -966,5 +1224,56 @@ mod tests {
         assert!(report.csr < report.list);
         assert!(g.heap_bytes() > 0);
         assert_eq!(report.budget, BUDGET_BYTES as f64);
+    }
+
+    /// The Part 2 handout's figure, with its negative edge.
+    const WEIGHTED: &[u8] = b"5\n1 2 0.1\n2 5 0.2\n5 3 5\n3 4 -9.5\n4 5 2.3\n1 5 1\n";
+
+    #[test]
+    fn weights_travel_with_the_edges_in_every_representation() {
+        let csr = WasmGraph::new(WEIGHTED, RepresentationKind::Csr).expect("fits");
+        assert!(csr.weighted());
+        assert_eq!(csr.edges(), vec![1, 2, 1, 5, 2, 5, 3, 4, 3, 5, 4, 5]);
+        assert_eq!(csr.weights(), vec![0.1, 1.0, 0.2, -9.5, 5.0, 2.3]);
+        for kind in [RepresentationKind::List, RepresentationKind::Matrix] {
+            let other = WasmGraph::new(WEIGHTED, kind).expect("fits");
+            assert_eq!(other.weights(), csr.weights());
+        }
+        let stats = csr.weight_stats().expect("weighted");
+        assert_eq!((stats.min, stats.max, stats.negative), (-9.5, 5.0, 1));
+        assert!(
+            csr.negative_edge()
+                .expect("3-4 is negative")
+                .contains("not implemented yet")
+        );
+        // An unweighted file weighs 1 per edge and has nothing to refuse.
+        let plain = graph(RepresentationKind::Csr);
+        assert!(!plain.weighted() && plain.negative_edge().is_none());
+        assert_eq!(plain.weights(), vec![1.0; 3]);
+        assert!(plain.weight_stats().is_none());
+    }
+
+    #[test]
+    fn weighted_memory_reports_count_the_weights() {
+        let weighted = WasmEdges::new(WEIGHTED).expect("parses");
+        let plain = WasmEdges::new(b"5\n1 2\n2 5\n5 3\n3 4\n4 5\n1 5\n").expect("parses");
+        assert!(weighted.weighted() && !plain.weighted());
+        let (w, p) = (weighted.memory_report(), plain.memory_report());
+        assert_eq!(w.csr - p.csr, (2 * 6 * 8) as f64);
+        assert!(w.matrix > p.matrix && w.list > p.list);
+    }
+
+    #[test]
+    fn names_resolve_both_ways() {
+        let mut g = graph(RepresentationKind::List);
+        let count = g
+            .set_names("1,Edsger W. Dijkstra\n3,Éva Tardos\n9,Out of range\n".as_bytes())
+            .expect("parses");
+        assert_eq!(count, 3);
+        assert_eq!(g.name(3).as_deref(), Some("Éva Tardos"));
+        assert_eq!(g.name(2), None);
+        assert_eq!(g.vertex_named("Edsger W. Dijkstra"), Some(1));
+        assert_eq!(g.vertex_named("Out of range"), None);
+        assert_eq!(g.search_names("eva", 5), vec![3]);
     }
 }

@@ -3,10 +3,11 @@
 Part 1 delivered undirected, unweighted graphs with three representations
 and a diameter study. Part 2 (`docs/trabalho-P2.pdf`, summarised in
 `spec/ASSIGNMENT.md`) is now out and is narrower than first guessed:
-**undirected graphs with real weights, and Dijkstra written once over two
+**undirected graphs with real weights, and Dijkstra written once over
 interchangeable stores of distance estimates** (a vector and a heap with
 decrease-key). Direction and flows are left for Part 3. This document
-records how the core grows without breaking Part 1, how Part 2 is
+records how the core grew without breaking Part 1 (sections 3 and 4 are
+implemented; the case-study runner and the web are next), how Part 2 is
 answered, and how the library relates to `petgraph`, the Rust graph
 library everybody already uses.
 
@@ -55,174 +56,186 @@ next to GraphMan. Being within a few percent of `petgraph` at half the
 memory is a stronger claim than any "better than" and is one a reader can
 check.
 
-## 3. Core growth: the traits
+## 3. Core growth: weights (implemented)
 
-`Graph` stays exactly as it is: undirected, unweighted, ascending neighbour
-rows, a GAT iterator. Everything from Part 1 keeps compiling and every
-Part 1 test keeps passing. New capabilities are new traits, and every
-algorithm bounds on the least it needs, so BFS keeps running on a weighted
-graph without knowing it is one.
+Part 1 and Part 2 are one library, not two layers: the same `EdgeList`, the
+same three representations, the same `AnyGraph`/`dispatch!`, the same
+`Visitor`. A weighted file is just a file with a third column.
 
 ```
-Graph               vertex_count, edge_count, degree, neighbors, has_edge
-Weighted: Graph     type Weight; weighted_neighbors -> (Vertex, Weight)   Part 2
-Directed: Graph     out_neighbors, in_neighbors, out_degree, in_degree     Part 3
+Graph               vertex_count, edge_count, degree, neighbors, has_edge     (unchanged)
+Weighted: Graph     weighted_neighbors -> (Vertex, Weight), weight(u, v),
+                    is_weighted, negative_edge                                  (Part 2)
+Directed: Graph     out_neighbors, in_neighbors, out_degree, in_degree          (Part 3)
 ```
 
-- **`Weighted`.** The weight type is generic with a small `Measure` trait:
-  zero, addition, a total order (`f64::total_cmp`, NaN is rejected by the
-  parser) and an infinity for "unreached". Course graphs use `f64`, since
-  the handout says weights are arbitrary floats; `u32` weights make the
-  hop-count algorithms the special case where every weight is one, which
-  gives a free test: Dijkstra with unit weights must reproduce BFS levels.
-- **Negative weights** are found at load time (`EdgeList::min_weight`, one
-  pass, kept on the edge list and the representation), so the check costs
-  nothing per call. Dijkstra returns a typed
-  `Error::NegativeWeight { u, v, weight }` naming the first offending edge,
-  which is the handout's "inform that it is not implemented yet". Worth a
-  sentence in the report: in an *undirected* graph a single negative edge
-  `{u, v}` already makes `u v u v ...` a negative closed walk, so shortest
-  walks are unbounded and even Bellman-Ford can only report the cycle.
-  Zero weights are allowed; the handout's "positive" is read as
-  "non-negative", which is all Dijkstra needs.
-- **Representations.** CSR gains a `weights: Vec<W>` parallel to `targets`
-  (row `v` keeps ascending neighbour ids, the weights follow their
-  targets). The adjacency list gains `Vec<Vec<(Vertex, W)>>`. The bit
-  matrix stays unweighted; Part 2 does not ask for two representations,
-  and a dense weighted matrix would be refused by the memory budget on
-  every course graph anyway. Cost to report: `f64` weights add 8 bytes per
-  directed arc, about 740 MB on grafo_6's 93M arcs if the weighted graphs
-  share its size; `f32` would halve that and is a one-line type change if
-  memory becomes the problem.
-- **`EdgeList`** learns an optional third column. A file with two columns
-  everywhere is unweighted exactly as before; three everywhere is weighted;
-  a mix is a parse error with the line number. Normalisation keeps
-  sorting and deduplicating so rows stay ascending, with two rules for the
-  weights: a **self-loop** is dropped (a non-negative loop is never on a
-  shortest path) but its weight still counts for the negative check; a
-  **duplicate** edge keeps its **smallest** weight (the only one a shortest
-  path could use) and is counted in `duplicates_dropped`, with the number
-  whose weights disagreed reported beside it.
-- **Vertex names.** The collaboration network comes with a file mapping
-  indices to researcher names. Names live beside the graph, never in it
-  (section 7): `io::VertexNames` parses the file once, keeps the names in
-  one `String` arena with offsets, and answers `name(v)` and
-  `index_of("Éva Tardos")` (exact, UTF-8, as the handout requires; a near
-  miss suggests the closest names instead of failing silently).
+- **One weight type.** `graphman::Weight = f64`. The plan was a generic
+  `Measure` weight; it was dropped because the course's weights are
+  arbitrary reals, a type parameter would multiply `AnyGraph` variants and
+  monomorphisations for no case study, and Part 3's capacities fit in
+  `f64` too. `Build::required_bytes(n, m, weighted)` prices the weights.
+- **Every representation is `Weighted`.** An unweighted graph answers
+  `UNIT_WEIGHT` (1) for every edge, so `dijkstra` runs on any graph and
+  hop counts are the unit-weight special case: Dijkstra on an unweighted
+  graph returns the BFS levels (a test checks it). `Build` requires
+  `Weighted`, so `dispatch!` reaches Dijkstra like it reaches BFS.
+- **Weights are a column beside the adjacency, never inside it.** CSR keeps
+  `weights: Vec<f64>` parallel to `targets`; the list keeps a parallel row
+  per vertex (`Vec<Vec<f64>>`) rather than `Vec<Vec<(u32, f64)>>`; the
+  matrix keeps an `(n+1)²` table beside its bitset (the textbook weight
+  matrix, 64 times the bitset: 800 MB at 10 000 vertices, refused by the
+  budget beyond). `Graph::neighbors` never reads the column, so BFS, DFS,
+  components and the diameter cost exactly what they cost in Part 1, and
+  an unweighted graph stores no weights at all.
+- **The parser decides once.** The first edge line has two or three
+  columns; every other line must match (`ParseError::InconsistentColumns`
+  otherwise). Weights are any finite real (`5`, `-9.5`, `1e-3`); NaN and
+  infinities are `ParseError::InvalidWeight`. Normalisation is the Part 1
+  one on `(u, v, weight)` records: self-loops dropped, `[min, max]`,
+  sorted, deduplicated, and **a repeated edge keeps its smallest weight**,
+  the only one a shortest path would use. The records are then split into
+  the edge array and a parallel weight array (both in anonymous mappings
+  when large, like Part 1's edges).
+- **Negative weights** are found during normalisation:
+  `EdgeList::negative_edge` is the first negative edge in sorted order, and
+  every representation keeps it, so the refusal is `O(1)`. A dropped
+  self-loop is not part of the graph and does not count. Dijkstra returns
+  `NegativeWeight { edge }`, whose message ends "shortest paths with
+  negative weights are not implemented yet", as the handout requires. In an
+  undirected graph one negative edge `{u, v}` already makes `u v u v ...` a
+  walk as short as one likes, so there is no answer to give; worth a line in
+  the report. Zero weights are allowed (the handout's "positive" read as
+  "non-negative", which is all Dijkstra needs).
+- **Vertex names** live beside the graph (section 7): `io::VertexNames`
+  reads `index,name` lines (comma, semicolon, tab or spaces; a first line
+  that is a count or a header is skipped; Latin-1 is accepted when the file
+  is not UTF-8), keeps all names in one `String` with a span per vertex and
+  a name-sorted vertex list for exact lookup by binary search, and offers an
+  accent- and case-insensitive `search` for "did you mean" suggestions.
 - **`Directed`** (Part 3). `neighbors` on a directed graph means
   out-neighbours, so BFS, DFS and components (weakly connected) work
   unchanged. `in_neighbors` comes from a reverse CSR built on demand and
   cached, since only a few algorithms (reverse search, residual graphs)
   need it.
 
-## 4. Dijkstra for Part 2
+## 4. Dijkstra for Part 2 (implemented)
 
-### One algorithm, two stores
+### One algorithm, three frontiers
 
-The handout asks for Dijkstra with a vector and with a heap, and
-explicitly asks for the storage to be abstracted instead of writing the
-algorithm twice. That is the Part 1 story again ("storage is a strategy")
-one level down, so it is also the slide:
+The handout asks for Dijkstra with a vector and with a heap, and asks for
+the storage to be abstracted instead of the algorithm written twice. That is
+the Part 1 story ("storage is a strategy") one level down, and the slide:
 
 ```rust
-/// Where Dijkstra keeps its tentative distances.
-pub trait Frontier<W: Measure> {
+pub trait Frontier {
     fn reset(&mut self, vertex_count: usize);
-    /// Lower the estimate of `v` to `dist` (insert if new).
-    fn decrease(&mut self, v: Vertex, dist: W);
-    /// Remove and return the open vertex with the smallest estimate.
-    fn pop_min(&mut self) -> Option<(Vertex, W)>;
+    fn decrease(&mut self, v: Vertex, distance: Weight); // insert or lower
+    fn pop_min(&mut self) -> Option<(Vertex, Weight)>;   // smallest, then smaller id
+    fn kind(&self) -> FrontierKind;
 }
 
-pub fn dijkstra_into<G: Weighted, F: Frontier<G::Weight>>(
-    graph: &G, root: Vertex, frontier: &mut F, tree: &mut ShortestPathTree<G::Weight>,
-) -> Result<(), Error>;
+pub fn dijkstra_into<G: Weighted, F: Frontier, V: Visitor>(
+    graph: &G, root: Vertex, frontier: &mut F, tree: &mut ShortestPathTree, visitor: &mut V,
+) -> Result<(), NegativeWeight>;
 ```
 
-- **`VecFrontier`**: the course's vector: one estimate per vertex plus
-  the `seen`/settled bits; `pop_min` scans every vertex, so a run is
-  `O(n² + m)`. The scan stops early when the minimum is infinity (the
-  rest of the graph is another component).
-- **`HeapFrontier`**: an indexed binary heap written here, no crate: a
-  `heap: Vec<Vertex>` plus a `position: Vec<u32>` per vertex, so
-  `decrease` sifts the vertex up from where it is, `O(log n)`, and a run is
+- **`VectorFrontier`**: the course's vector, `estimate[v]` per vertex
+  (`+∞` outside the frontier); `pop_min` scans all `n` entries, so a run is
+  `O(n² + m)`. The scan keeps eight independent running minima that the
+  compiler turns into SIMD compares (5× faster than one dependent chain on
+  grafo_1, still the full linear scan), merged on `(distance, vertex)`.
+- **`HeapFrontier`**: an indexed binary heap written here (no crate):
+  `heap: Vec<(Weight, Vertex)>` plus `position: Vec<u32>` per vertex, so
+  `decrease` sifts the vertex up from where it is, `O(log n)`; a run is
   `O((n + m) log n)`. This is the "efficient key modification" the handout
-  warns about; `std::collections::BinaryHeap` has no decrease-key.
-- Optional third column, cheap to add and good for the talk:
-  **`LazyHeapFrontier`**, `BinaryHeap` with duplicate entries skipped when
-  popped (what `petgraph::algo::dijkstra` does). It shows what the
-  decrease-key buys, or does not, on the course graphs.
+  warns about.
+- **`LazyHeapFrontier`**: `std::collections::BinaryHeap` without
+  decrease-key; lowering pushes a duplicate and stale entries are skipped
+  when popped (what `petgraph` does). The yardstick for what decrease-key
+  buys.
+- `FrontierKind` (`vector`, `heap`, `lazy-heap`) picks one at runtime, like
+  `Representation`; `algo::dijkstra(&g, root, kind)` is the one-call form.
+
+First numbers (the Part 1 graphs' edges with uniform weights in `[0, 1]`
+from `graphman generate --like`, CSR, release, M5, mean per source):
+
+| Graph | BFS | heap | lazy heap | vector |
+|---|---:|---:|---:|---:|
+| grafo_1 (10 000) | 0.21 ms | 1.24 ms | 1.85 ms | 18.6 ms |
+| grafo_4 (375 000) | 19 ms | 61 ms | 95 ms | 15.9 s |
+
+BFS on the weighted grafo_4 takes the same 19 ms as on the unweighted one
+(the weights are a column it never reads). The vector run is `n` scans of
+`n` floats, so it grows with `n²`: at 4.8M vertices it would be hours per
+source, which is why the study runner needs a budget (below).
 
 ### Determinism
 
-Both frontiers break ties on `(distance, vertex id)` and relaxation uses a
-strict `<`, so the vector and the heap settle vertices in the same order
-and produce **the same tree**, not just the same distances. Tests enforce
-it, exactly as Part 1 enforces identical BFS trees across representations.
+Relaxation is strict (`<`) and every frontier breaks ties on the smaller
+vertex, so all three settle in the same order and build **the same tree**,
+not just the same distances, on every representation. Tests enforce it on
+random graphs with small integer weights (many ties), and check every
+distance against a Bellman-Ford oracle written in the test.
 
 ### Output
 
-`ShortestPathTree<W>` mirrors `SearchTree`: `root`, `parent`, `dist: Vec<W>`
-(infinity when unreached), the settle `order`, `path_to(v)` walking the
-parents, and a `reset` that only touches the vertices the previous run
-reached, so `k = 100` runs on a 4.8M-vertex graph allocate nothing. The
-settle order doubles as the observatory's discovery ranks.
+`ShortestPathTree` mirrors `SearchTree`: `root`, `distance(v)`,
+`parent(v)`, the settle `order` (by distance), `last_settled()` (the
+farthest vertex: the weighted eccentricity), `path_to(v)`, raw arrays for
+the wasm side, `write_to` (`vertex parent distance` per line, like the
+search trees), and a `reset` that only touches what the previous run
+touched, so `k` runs from different roots allocate nothing. Settled
+vertices are a bitset; a run stopped early by its visitor discards the
+tentative estimates, so the tree only ever holds answers.
 
-### Case-study runner
+`Visitor` gained `settle(v, parent, distance) -> Control`;
+`shortest_path(g, s, t)` is Dijkstra with a visitor that breaks at `t`.
+`SearchTree::path_to` gives BFS paths too.
 
-`graphman study` detects a weighted file and runs:
+### CLI (implemented)
 
-- distances and paths from 10 to 20, 30, 40, 50, 60 (one table per graph);
-- the mean of `k` single-source runs (`--runs 100`, same SplitMix64 roots
-  as Part 1) for each frontier, parsing excluded. The vector variant is
-  `O(n²)`, so it gets a `--dijkstra-budget <seconds>`: when it runs out
-  the table records how many runs finished and their mean, flagged, the
-  same honest-cell treatment as the Part 1 matrix refusals;
-- for the collaboration network (`--names <file>`), the paths from
-  "Edsger W. Dijkstra" to the five researchers, printed with names.
+```
+graphman dijkstra G --from 10 --to 20 30 40 50 60 [--frontier vector|heap|lazy-heap] [--names F] [--json]
+graphman distance G --pair 10 20 [--path] [--hops] [--names F]   # weights when the file has them
+graphman bench    G --algo dijkstra --frontier vector -n 100
+graphman generate --like graphs/grafo_1.txt --weights 0:1 -o grafo_W_1.txt
+graphman info     G                                              # + weight_min/max/mean/negative
+```
 
-`petgraph::algo::dijkstra` runs as a baseline column in the timing table
-(a dev/bench-only dependency, never in the library).
+`dijkstra` writes the tree file (`<graph>.dijkstra-<root>.txt`), the
+handout's "spanning tree induced by the search", and prints `from to
+distance path...` per target on stdout (names on stderr with `--names`).
+Vertices are ids or exact names; a near miss lists the closest names.
 
-### Tests
+### Still to do
 
-- `proptest` random weighted graphs: vector, heap and lazy heap agree on
-  every distance and every parent; distances equal `petgraph`'s.
-- Unit weights reproduce BFS levels.
-- The handout's Figure 1 graph is refused for its `-9.5` edge, and accepted
-  once that weight is made positive (a hand-checked distance table).
-- Wiki examples in `tests/wiki.rs` for weighted loading, Dijkstra, the
-  refusal and name lookup, so the Library page documents only what ran.
+- **Case-study runner.** `graphman study` on a weighted file: the 10 →
+  20..60 table, the `k = 100` mean per frontier (same SplitMix64 roots as
+  Part 1) with a `--dijkstra-budget <seconds>` for the vector (when it runs
+  out, the cell records how many runs finished and their mean, flagged, the
+  honest-cell treatment of the Part 1 matrix refusals), and the
+  collaboration-network table with names. `petgraph::algo::dijkstra` as a
+  baseline column (dev/bench-only dependency).
+- **Web.** The observatory: Dijkstra as a third search (the `reveal`
+  sweep over settle ranks, `setPath` for the path, weights tinting edges,
+  the refusal in the sidebar, names on hover and in a search box). The
+  wasm glue for all of it is in place. The Library page: chapters for the
+  `weights`, `dijkstra`, `frontiers` and `names` blocks already proved in
+  `tests/wiki.rs`. Studies and presentation: the Part 2 tables and the
+  "one Dijkstra, three frontiers" slide.
 
 ### The rest of the plan (beyond what Part 2 grades)
 
 | Algorithm | Notes |
 |---|---|
 | A* / best-first | the same driver, the frontier keyed by distance plus a heuristic |
-| Bellman-Ford | negative weights; on undirected graphs it can only report the negative cycle (see section 3) |
+| Bellman-Ford | negative weights; on undirected graphs it can only report the negative cycle (section 3) |
 | Minimum spanning tree | Prim over `HeapFrontier`; Kruskal with a union-find |
 | Weighted eccentricity, diameter | iFUB and Takes-Kosters hold for any non-negative metric with Dijkstra in place of BFS |
 
 Part 3 adds `Directed`, then `Flow` (Ford-Fulkerson with BFS augmenting
 paths, then Dinic) on top of `Directed + Weighted`, using the cached
 reverse CSR for the residual graph.
-
-### Web
-
-- **wasm**: `Graph` accepts weighted files and gains `dijkstra(root,
-  frontier)` returning parents, distances and settle ranks as typed arrays,
-  plus `withNames(file)` for the collaboration network. Glue only, as
-  always; no rayon is needed.
-- **Observatory**: Dijkstra joins BFS/DFS as a search; the existing
-  `reveal` sweep animates the settle order and `setPath` draws the
-  shortest path, with the distance shown as a sum of weights. Edge
-  weights can tint the edges. Dropping the names file next to the
-  collaboration network turns vertex ids into names (hover, search box,
-  "Dijkstra to Turing"). A negative-weight file shows the refusal in the
-  sidebar instead of a search.
-- **Studies tab** and **Presentation** gain the Part 2 tables (paths,
-  vector vs heap vs lazy heap vs `petgraph`) and the "one Dijkstra, two
-  frontiers" slide. All new strings go through `src/i18n/`.
 
 ## 5. `feat/petgraph`: the bridge
 

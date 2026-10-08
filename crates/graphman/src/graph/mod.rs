@@ -8,13 +8,21 @@
 //!
 //! All three keep neighbours in ascending order, so every algorithm produces
 //! bit-for-bit identical results regardless of the representation chosen.
+//!
+//! Weights are a column beside the adjacency, never inside it: a weighted
+//! [`Csr`] or [`AdjacencyList`] keeps one [`Weight`] per neighbour in a
+//! parallel array, a weighted [`AdjacencyMatrix`] keeps an `n × n` table
+//! beside its bitset. [`Graph`] never reads that column, so BFS and DFS run
+//! on a weighted graph exactly as fast as on the same graph without weights,
+//! and [`Weighted`] reads it, answering `1` for every edge of an unweighted
+//! graph: hop counts are the special case where every weight is one.
 
 mod adjacency_list;
 mod adjacency_matrix;
 mod csr;
 
 pub use adjacency_list::AdjacencyList;
-pub use adjacency_matrix::AdjacencyMatrix;
+pub use adjacency_matrix::{AdjacencyMatrix, BitRow, WeightedBitRow};
 pub use csr::Csr;
 
 use crate::io::EdgeList;
@@ -28,6 +36,24 @@ pub type Vertex = u32;
 
 /// Sentinel meaning "no vertex" (e.g. the parent of a search-tree root).
 pub const NO_VERTEX: Vertex = 0;
+
+/// An edge weight: any finite real number, as in the course's weighted files.
+pub type Weight = f64;
+
+/// The weight every edge of an unweighted graph has.
+pub const UNIT_WEIGHT: Weight = 1.0;
+
+/// An undirected edge `{u, v}` and its weight.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct WeightedEdge {
+    /// The smaller endpoint.
+    pub u: Vertex,
+    /// The larger endpoint.
+    pub v: Vertex,
+    /// The weight of the edge.
+    pub weight: Weight,
+}
 
 /// Read-only view of an undirected graph.
 ///
@@ -71,6 +97,74 @@ pub trait Graph {
     fn representation(&self) -> Representation;
 }
 
+/// Edge weights, read beside the adjacency.
+///
+/// Every representation implements it. A graph built from a file without a
+/// weight column answers [`UNIT_WEIGHT`] for every edge, so a weighted
+/// algorithm (Dijkstra) run on it computes hop counts, the same distances
+/// as BFS.
+pub trait Weighted: Graph {
+    /// Iterator over `(neighbour, weight)` pairs, neighbours ascending.
+    type WeightedNeighbors<'a>: Iterator<Item = (Vertex, Weight)>
+    where
+        Self: 'a;
+
+    /// The neighbours of `v` with the weights of the edges to them, in the
+    /// same ascending order as [`Graph::neighbors`].
+    fn weighted_neighbors(&self, v: Vertex) -> Self::WeightedNeighbors<'_>;
+
+    /// Whether the weights came from the input (`false`: every edge weighs 1).
+    fn is_weighted(&self) -> bool;
+
+    /// The weight of the edge `{u, v}`, if it exists.
+    fn weight(&self, u: Vertex, v: Vertex) -> Option<Weight> {
+        self.weighted_neighbors(u)
+            .find(|&(w, _)| w == v)
+            .map(|(_, weight)| weight)
+    }
+
+    /// The first edge (in `[min, max]` order) with a negative weight, found
+    /// once when the graph was parsed. Algorithms that need non-negative
+    /// weights (Dijkstra) check it in `O(1)` and refuse the graph.
+    fn negative_edge(&self) -> Option<WeightedEdge>;
+}
+
+/// Iterator over a row of targets and the parallel row of weights (empty
+/// when the graph is unweighted, in which case every weight is one).
+#[derive(Debug, Clone)]
+pub struct WeightedRow<'a> {
+    targets: core::slice::Iter<'a, Vertex>,
+    weights: core::slice::Iter<'a, Weight>,
+}
+
+impl<'a> WeightedRow<'a> {
+    pub(crate) fn new(targets: &'a [Vertex], weights: &'a [Weight]) -> Self {
+        debug_assert!(weights.is_empty() || weights.len() == targets.len());
+        Self {
+            targets: targets.iter(),
+            weights: weights.iter(),
+        }
+    }
+}
+
+impl Iterator for WeightedRow<'_> {
+    type Item = (Vertex, Weight);
+
+    #[inline]
+    fn next(&mut self) -> Option<(Vertex, Weight)> {
+        let target = *self.targets.next()?;
+        let weight = self.weights.next().copied().unwrap_or(UNIT_WEIGHT);
+        Some((target, weight))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.targets.size_hint()
+    }
+}
+
+impl ExactSizeIterator for WeightedRow<'_> {}
+
 /// The storage strategies offered by the library.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -111,16 +205,17 @@ impl Representation {
     }
 
     /// Heap bytes this representation needs for a graph with `vertex_count`
-    /// vertices and `edge_count` edges, before building anything.
-    pub fn required_bytes(self, vertex_count: usize, edge_count: usize) -> usize {
+    /// vertices and `edge_count` edges, with or without a weight per edge,
+    /// before building anything.
+    pub fn required_bytes(self, vertex_count: usize, edge_count: usize, weighted: bool) -> usize {
         match self {
             Representation::AdjacencyList => {
-                AdjacencyList::required_bytes(vertex_count, edge_count)
+                AdjacencyList::required_bytes(vertex_count, edge_count, weighted)
             }
             Representation::AdjacencyMatrix => {
-                AdjacencyMatrix::required_bytes(vertex_count, edge_count)
+                AdjacencyMatrix::required_bytes(vertex_count, edge_count, weighted)
             }
-            Representation::Csr => Csr::required_bytes(vertex_count, edge_count),
+            Representation::Csr => Csr::required_bytes(vertex_count, edge_count, weighted),
         }
     }
 
@@ -225,13 +320,13 @@ pub enum BuildError {
     },
 }
 
-/// A representation that can be built from an [`EdgeList`].
-pub trait Build: Graph + Sized {
+/// A representation that can be built from an [`EdgeList`], weighted or not.
+pub trait Build: Weighted + Sized {
     /// The strategy implemented by this type.
     const REPRESENTATION: Representation;
 
-    /// Heap bytes needed for a graph of this size.
-    fn required_bytes(vertex_count: usize, edge_count: usize) -> usize;
+    /// Heap bytes needed for a graph of this size, with or without weights.
+    fn required_bytes(vertex_count: usize, edge_count: usize, weighted: bool) -> usize;
 
     /// Build without checking any memory budget. Allocation failures are
     /// still reported as [`BuildError::AllocationFailed`] instead of aborting.
@@ -245,7 +340,8 @@ pub trait Build: Graph + Sized {
     /// Build within an explicit budget.
     fn build_within(edges: &EdgeList, budget: MemoryBudget) -> Result<Self, BuildError> {
         let vertex_count = edges.vertex_count();
-        let required_bytes = Self::required_bytes(vertex_count, edges.edge_count());
+        let required_bytes =
+            Self::required_bytes(vertex_count, edges.edge_count(), edges.is_weighted());
         if let Some(limit_bytes) = budget.limit_bytes()
             && required_bytes > limit_bytes
         {
@@ -327,6 +423,21 @@ impl AnyGraph {
     /// Whether the edge `{u, v}` exists.
     pub fn has_edge(&self, u: Vertex, v: Vertex) -> bool {
         dispatch!(self, g => g.has_edge(u, v))
+    }
+
+    /// Whether the edges carry weights from the input.
+    pub fn is_weighted(&self) -> bool {
+        dispatch!(self, g => g.is_weighted())
+    }
+
+    /// The weight of the edge `{u, v}`, if it exists (`1` when unweighted).
+    pub fn weight(&self, u: Vertex, v: Vertex) -> Option<Weight> {
+        dispatch!(self, g => g.weight(u, v))
+    }
+
+    /// The first edge with a negative weight, if any.
+    pub fn negative_edge(&self) -> Option<WeightedEdge> {
+        dispatch!(self, g => g.negative_edge())
     }
 
     /// Accounted heap bytes.

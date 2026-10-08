@@ -1,6 +1,9 @@
 //! Compressed sparse row: the cache-friendly adjacency list.
 
-use super::{Build, BuildError, Graph, Representation, Vertex, allocation_failed};
+use super::{
+    Build, BuildError, Graph, Representation, UNIT_WEIGHT, Vertex, Weight, Weighted, WeightedEdge,
+    WeightedRow, allocation_failed,
+};
 use crate::io::EdgeList;
 use core::mem::size_of;
 
@@ -11,11 +14,19 @@ use core::mem::size_of;
 /// [`AdjacencyList`](super::AdjacencyList) this removes one pointer chase and
 /// one heap block per vertex, which is what makes traversals of graphs with
 /// millions of vertices bandwidth-bound rather than latency-bound.
+///
+/// A weighted graph adds one more array, `weights`, parallel to `targets`:
+/// `weights[i]` is the weight of the edge to `targets[i]`. Traversals that
+/// ignore weights never touch it.
 #[derive(Debug, Clone)]
 pub struct Csr {
     offsets: Vec<u32>,
     targets: Vec<Vertex>,
+    /// Empty when the graph is unweighted.
+    weights: Vec<Weight>,
+    weighted: bool,
     edge_count: usize,
+    negative_edge: Option<WeightedEdge>,
 }
 
 impl Csr {
@@ -30,19 +41,40 @@ impl Csr {
         &self.targets
     }
 
+    /// Every weight, parallel to [`targets`](Self::targets); empty when the
+    /// graph is unweighted.
+    pub fn weights(&self) -> &[Weight] {
+        &self.weights
+    }
+
     /// The neighbour row of `v` as a slice.
     #[inline]
     pub fn row(&self, v: Vertex) -> &[Vertex] {
+        &self.targets[self.span(v)]
+    }
+
+    /// The weights of the edges in [`row`](Self::row)`(v)`; empty when unweighted.
+    #[inline]
+    pub fn row_weights(&self, v: Vertex) -> &[Weight] {
+        match self.weights.is_empty() {
+            true => &[],
+            false => &self.weights[self.span(v)],
+        }
+    }
+
+    #[inline]
+    fn span(&self, v: Vertex) -> core::ops::Range<usize> {
         let v = v as usize;
-        &self.targets[self.offsets[v] as usize..self.offsets[v + 1] as usize]
+        self.offsets[v] as usize..self.offsets[v + 1] as usize
     }
 }
 
 impl Build for Csr {
     const REPRESENTATION: Representation = Representation::Csr;
 
-    fn required_bytes(vertex_count: usize, edge_count: usize) -> usize {
-        (vertex_count + 2) * size_of::<u32>() + 2 * edge_count * size_of::<Vertex>()
+    fn required_bytes(vertex_count: usize, edge_count: usize, weighted: bool) -> usize {
+        let weights = if weighted { size_of::<Weight>() } else { 0 };
+        (vertex_count + 2) * size_of::<u32>() + 2 * edge_count * (size_of::<Vertex>() + weights)
     }
 
     fn build_unchecked(edges: &EdgeList) -> Result<Self, BuildError> {
@@ -52,7 +84,7 @@ impl Build for Csr {
             2 * m < u32::MAX as usize,
             "CSR offsets are 32-bit: at most 2^31 edges"
         );
-        let required = Self::required_bytes(n, m);
+        let required = Self::required_bytes(n, m, edges.is_weighted());
         let fail = || allocation_failed(Self::REPRESENTATION, required);
 
         let degrees = edges.degrees();
@@ -71,16 +103,36 @@ impl Build for Csr {
         // Same ordering argument as the adjacency list: a sorted edge list
         // fills every row in ascending order.
         let mut cursor: Vec<u32> = offsets[..=n].to_vec();
-        for &[u, v] in edges.edges() {
-            targets[cursor[u as usize] as usize] = v;
-            cursor[u as usize] += 1;
-            targets[cursor[v as usize] as usize] = u;
-            cursor[v as usize] += 1;
+        let mut weights: Vec<Weight> = Vec::new();
+        match edges.weights() {
+            None => {
+                for &[u, v] in edges.edges() {
+                    targets[cursor[u as usize] as usize] = v;
+                    cursor[u as usize] += 1;
+                    targets[cursor[v as usize] as usize] = u;
+                    cursor[v as usize] += 1;
+                }
+            }
+            Some(edge_weights) => {
+                weights.try_reserve_exact(2 * m).map_err(fail())?;
+                weights.resize(2 * m, 0.0);
+                for (&[u, v], &weight) in edges.edges().iter().zip(edge_weights) {
+                    let slot = cursor[u as usize] as usize;
+                    (targets[slot], weights[slot]) = (v, weight);
+                    cursor[u as usize] += 1;
+                    let slot = cursor[v as usize] as usize;
+                    (targets[slot], weights[slot]) = (u, weight);
+                    cursor[v as usize] += 1;
+                }
+            }
         }
         Ok(Self {
             offsets,
             targets,
+            weights,
+            weighted: edges.is_weighted(),
             edge_count: m,
+            negative_edge: edges.negative_edge(),
         })
     }
 }
@@ -118,10 +170,42 @@ impl Graph for Csr {
     }
 
     fn heap_bytes(&self) -> usize {
-        self.offsets.capacity() * size_of::<u32>() + self.targets.capacity() * size_of::<Vertex>()
+        self.offsets.capacity() * size_of::<u32>()
+            + self.targets.capacity() * size_of::<Vertex>()
+            + self.weights.capacity() * size_of::<Weight>()
     }
 
     fn representation(&self) -> Representation {
         Representation::Csr
+    }
+}
+
+impl Weighted for Csr {
+    type WeightedNeighbors<'a>
+        = WeightedRow<'a>
+    where
+        Self: 'a;
+
+    #[inline]
+    fn weighted_neighbors(&self, v: Vertex) -> Self::WeightedNeighbors<'_> {
+        WeightedRow::new(self.row(v), self.row_weights(v))
+    }
+
+    fn is_weighted(&self) -> bool {
+        self.weighted
+    }
+
+    fn weight(&self, u: Vertex, v: Vertex) -> Option<Weight> {
+        let index = self.row(u).binary_search(&v).ok()?;
+        Some(
+            self.row_weights(u)
+                .get(index)
+                .copied()
+                .unwrap_or(UNIT_WEIGHT),
+        )
+    }
+
+    fn negative_edge(&self) -> Option<WeightedEdge> {
+        self.negative_edge
     }
 }
