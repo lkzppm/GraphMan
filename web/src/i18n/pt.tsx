@@ -281,7 +281,6 @@ export const pt: Dictionary = {
       choose: 'Como guardar o grafo?',
       parsed: (vertices: string, edges: string) => `${vertices} vértices, ${edges} arestas`,
       names: { list: 'Lista de adjacência', matrix: 'Matriz de bits', csr: 'CSR' },
-      short: { list: 'Lista', matrix: 'Matriz', csr: 'CSR' },
       hints: {
         list: 'um vetor de vizinhos por vértice',
         matrix: 'n² bits, teste de aresta em um passo',
@@ -308,7 +307,6 @@ export const pt: Dictionary = {
       vector: 'um vetor de estimativas varrido em busca do mínimo: O(n²)',
       heap: 'um heap binário com decrease-key: O((n + m) log n)',
     },
-    weightsRange: (min: string, max: string) => `pesos de ${min} a ${max}`,
     negativeWeights: (n: number) => (n === 1 ? '1 peso negativo' : `${n} pesos negativos`),
     refusal: (u: number, v: number, w: string) =>
       `O Dijkstra recusa este grafo: a aresta ${u} ${v} pesa ${w}, e caminhos mínimos com pesos negativos ainda não foram implementados.`,
@@ -405,9 +403,15 @@ export const pt: Dictionary = {
       `Não foi possível carregar ${name}: ${message}`,
     tooLarge: (name: string, size: string, limit: string) =>
       `${name} tem ${size}; o observatório aceita arquivos de até ${limit}.`,
+    distribution: 'Distribuição',
     degreeDistribution: 'Distribuição de graus',
-    verticesPerDegree: 'vértices por grau',
-    degreeBucket: (range: string, count: string) => `grau ${range}: ${count}`,
+    distributions: { degree: 'Graus', weight: 'Pesos' },
+    distributionUnit: { degree: 'vértices por grau', weight: 'arestas por peso' },
+    distributionBucket: {
+      degree: (range: string, count: string) => `grau ${range}: ${count}`,
+      weight: (range: string, count: string) => `peso ${range}: ${count}`,
+    },
+    parseDetails: 'O que a leitura descartou',
     componentsCount: (n: string) => `Componentes · ${n}`,
     connected: 'conexo',
     smallest: (n: string) => `menor ${n}`,

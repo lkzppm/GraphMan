@@ -247,9 +247,12 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
 
 The observatory renders under the nav (`calc(100dvh - var(--nav-height))`)
 with no header of its own: a 340 px sidebar and the stage. The sidebar never
-scrolls; it is a column of panels (Graph: file, 2 × 2 tiles, degree
-histogram, component bar, chips (a weighted file adds `weights MIN to
-MAX` and, when there are any, the negative count); Search: the algorithm
+scrolls; it is a column of panels (Graph: file name with an info button
+whose tooltip lists what parsing dropped (loops, repeats and, when there
+are any, the negative weights), 2 × 2 tiles, the distribution chart (on a
+weighted file two tracked labels, Degrees / Weights, switch it between
+vertices per degree and edges per weight range, so the weight range reads
+off its axis), component bar); Search: the algorithm
 as a full-width three-way segmented control (BFS / DFS / Dijkstra), under
 it mode (Max, the whole traversal / Distance) and, for Dijkstra only, the
 frontier (Vector / Heap, the course's two versions, so their times can be
@@ -297,7 +300,7 @@ fills the room between the stats and the playback row, which is pinned to
 the bottom of the panel. Arrow keys work anywhere on the page (Safari does
 not focus clicked buttons): ↑/↓ a level, ←/→ a vertex. On short viewports
 the sidebar sheds
-pieces instead of scrolling — chips (≤ 880 px), component bar (≤ 820),
+pieces instead of scrolling — component bar (≤ 820 px),
 histogram (≤ 740), level profile (≤ 660) — and only scrolls below 580 px.
 The stage carries floating clusters: a help button top left that opens a
 controls popover (the same `kbd` cheat sheet as the empty sidebar, plus the
@@ -352,7 +355,7 @@ tint, accent text), drawn last so they sit on top.
 - **Panel** (observatory sidebar): tracked uppercase title with icon
   actions on the right, hairline bottom; panels rise in with a stagger.
   Inside: stat tiles (2 × 2 bordered grid, blue mono values), tiny bar
-  charts (32 px, blue bars on a hairline axis), mono chips.
+  charts (32 px, blue bars on a hairline axis).
 - **Icon button**: 30 px bordered square; hover turns it blue with a glow;
   `aria-pressed` fills it blue-muted. In a floating **cluster** (blurred,
   bordered pill on the stage) the borders drop and hover tints grey.
