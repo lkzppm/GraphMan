@@ -304,14 +304,18 @@ controls popover (the same `kbd` cheat sheet as the empty sidebar, plus the
 stage gestures; closes on Esc, outside click or the button), layout tools
 top right (simulation on/off, reheat, vertex numbers, follow), view tools
 bottom right (zoom in/out, fit, full screen), the legend bottom left. Vertex numbers are a 2D canvas over
-the WebGPU one, drawn only when discs are at least 5 px.
+the WebGPU one, drawn only when discs are at least 5 px. On a weighted
+graph the same canvas draws each edge's weight at its middle, in a small
+pill (background fill, grey hairline, 10 px mono grey text), under the
+vertex numbers and only where the edge on screen is long enough to hold it.
 
 ## Icons
 
 - UI icons come from `lucide-react` (14–24 px, `strokeWidth` 1.5–2):
   upload, flask (sample, only while no graph is loaded), x (close the
   graph), play/pause/replay, download, trash, ruler, magnet (force simulation),
-  refresh, hash, plus/minus, maximise, expand/minimise, arrow-right,
+  refresh, hash, weight (edge weights, and the weighted example),
+  waypoints (the unweighted example), plus/minus, maximise, expand/minimise, arrow-right,
   chevron-down, plus one per decision card and pipeline step.
 - Brand glyphs come from `simple-icons` through `components/BrandIcon.tsx`,
   drawn in the current text colour.
@@ -477,7 +481,8 @@ the WebGPU one, drawn only when discs are at least 5 px.
   in the Radial levels layout instead, rooted in the largest component
   (the force placement is only a seed for a simulation they will not run).
 - **The top-right cluster** is split by a hairline: on the left the view
-  toggles (vertex numbers `#`, follow), on the right the layout menu
+  toggles (edge weights, a weight icon, only on a weighted graph; vertex
+  numbers `#`; follow), on the right the layout menu
   (`Shapes`). The menu is a popover like the help one, hung under the
   cluster: Force (springs and repulsion), Radial levels (BFS rings around
   the origin), Layered (levels as rows, subtrees together), Degree circle

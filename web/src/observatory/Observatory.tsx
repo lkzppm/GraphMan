@@ -146,6 +146,10 @@ interface GraphMeta {
   weights: { min: number; max: number; negative: number } | null;
   /** The edge Dijkstra refuses the graph for, if any. */
   negativeEdge: { u: number; v: number; weight: number } | null;
+  /** Every edge once as `[u, v, u, v, ...]`, and its weight parallel to it
+      (`null` without a weight column), for the weight labels. */
+  edgeList: Uint32Array;
+  edgeWeights: Float64Array | null;
   componentSizes: Uint32Array;
   /** Component id per vertex (1 = largest, ranked by size). */
   componentLabels: Uint32Array;
@@ -323,6 +327,8 @@ export default function Observatory() {
   const keysTarget = useRef<'search' | 'components'>('search');
   const helpRef = useRef<HTMLDivElement>(null);
   const [showLabels, setShowLabels] = useState(true);
+  /** Weight labels on the edges; the toggle only exists on weighted graphs. */
+  const [showWeights, setShowWeights] = useState(true);
   /** Keep the discovered part of the tree in view while the search plays or is
       scrubbed. Off by default; running a search leaves it as it is. */
   const [follow, setFollow] = useState(false);
@@ -751,6 +757,8 @@ export default function Observatory() {
           degrees,
           weights,
           negativeEdge,
+          edgeList: edges,
+          edgeWeights: weights ? graph.weights() : null,
           componentSizes: sizes,
           componentLabels: labels,
           componentEdges,
@@ -1459,17 +1467,22 @@ export default function Observatory() {
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
-  // Vertex indices: a 2D canvas over the WebGPU one, redrawn every frame
-  // from the position mirror. Skipped when the discs are too small to read.
+  // Vertex indices and edge weights: a 2D canvas over the WebGPU one,
+  // redrawn every frame from the position mirror. Each is skipped when it
+  // would be too small to read.
   useEffect(() => {
     const canvas = labelCanvasRef.current;
     const stage = stageRef.current;
-    if (!canvas || !stage || !meta || !showLabels) {
+    const weights = showWeights ? (meta?.edgeWeights ?? null) : null;
+    if (!canvas || !stage || !meta || (!showLabels && !weights)) {
       if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
       return;
     }
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    const edges = meta.edgeList;
+    // The weights as text once, not every frame.
+    const weightText = weights ? Array.from(weights, formatWeight) : [];
     let frame = 0;
     const draw = () => {
       frame = requestAnimationFrame(draw);
@@ -1486,20 +1499,60 @@ export default function Observatory() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, rect.width, rect.height);
       const camera = cameraRef.current;
-      const radius = Math.min(12, Math.max(1.5, 3.5 * Math.sqrt(camera.zoom)));
-      if (radius < 5) return;
       const positions = renderer.positionsMirror;
-      const fontSize = Math.min(11, Math.round(radius * 1.05));
-      ctx.font = `500 ${fontSize}px ${getComputedStyle(document.documentElement).getPropertyValue('--font-mono')}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#ffffff';
+      const style = getComputedStyle(document.documentElement);
+      const mono = style.getPropertyValue('--font-mono');
       const cx = rect.width / 2;
       const cy = rect.height / 2;
+      const sx = (v: number) => (positions[2 * v] - camera.x) * camera.zoom + cx;
+      const sy = (v: number) => (positions[2 * v + 1] - camera.y) * camera.zoom + cy;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Weights first, so a vertex number is never covered: a small pill at
+      // the middle of each edge long enough on screen to hold one.
+      if (weights) {
+        ctx.font = `500 10px ${mono}`;
+        const pillFill = style.getPropertyValue('--bg');
+        const pillStroke = style.getPropertyValue('--border-2');
+        const text = style.getPropertyValue('--fg-2');
+        let drawn = 0;
+        for (let e = 0; e < weights.length && drawn < 1500; e++) {
+          const u = edges[2 * e];
+          const v = edges[2 * e + 1];
+          const x1 = sx(u);
+          const y1 = sy(u);
+          const x2 = sx(v);
+          const y2 = sy(v);
+          const x = (x1 + x2) / 2;
+          const y = (y1 + y2) / 2;
+          if (x < -30 || y < -30 || x > rect.width + 30 || y > rect.height + 30) continue;
+          const label = weightText[e];
+          const width = ctx.measureText(label).width + 8;
+          // Room for the pill between the two discs, or no label.
+          if (Math.hypot(x2 - x1, y2 - y1) < width + 28) continue;
+          ctx.beginPath();
+          ctx.roundRect(x - width / 2, y - 7.5, width, 15, 4);
+          ctx.fillStyle = pillFill;
+          ctx.fill();
+          ctx.strokeStyle = pillStroke;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.fillStyle = text;
+          ctx.fillText(label, x, y + 0.5);
+          drawn += 1;
+        }
+      }
+
+      const radius = Math.min(12, Math.max(1.5, 3.5 * Math.sqrt(camera.zoom)));
+      if (!showLabels || radius < 5) return;
+      const fontSize = Math.min(11, Math.round(radius * 1.05));
+      ctx.font = `500 ${fontSize}px ${mono}`;
+      ctx.fillStyle = '#ffffff';
       let drawn = 0;
       for (let v = 1, i = 2; i < positions.length && drawn < 3000; v++, i += 2) {
-        const x = (positions[i] - camera.x) * camera.zoom + cx;
-        const y = (positions[i + 1] - camera.y) * camera.zoom + cy;
+        const x = sx(v);
+        const y = sy(v);
         if (x < -20 || y < -20 || x > rect.width + 20 || y > rect.height + 20) continue;
         ctx.fillText(String(v), x, y + 0.5);
         drawn += 1;
@@ -1507,7 +1560,7 @@ export default function Observatory() {
     };
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
-  }, [meta, showLabels]);
+  }, [meta, showLabels, showWeights]);
 
   // ---- derived -----------------------------------------------------------
 
@@ -2266,6 +2319,15 @@ export default function Observatory() {
             {/* Layout tools, top right */}
             <div ref={layoutMenuRef} className={`${styles.floating} ${styles.floatingTopRight}`}>
               <div className={styles.cluster}>
+                {meta.edgeWeights && (
+                  <IconButton
+                    label={showWeights ? t.hideWeights : t.showWeights}
+                    pressed={showWeights}
+                    onClick={() => setShowWeights((on) => !on)}
+                  >
+                    <Weight size={15} />
+                  </IconButton>
+                )}
                 <IconButton
                   label={showLabels ? t.hideNumbers : t.showNumbers}
                   pressed={showLabels}

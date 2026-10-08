@@ -372,6 +372,8 @@ export const pt: Dictionary = {
     browse: 'Procurar arquivos',
     hideControls: 'Esconder os controles',
     showControls: 'Mostrar os controles',
+    hideWeights: 'Esconder os pesos das arestas',
+    showWeights: 'Mostrar os pesos das arestas',
     hideNumbers: 'Esconder os números dos vértices',
     showNumbers: 'Mostrar os números dos vértices',
     stopFollowing: 'Parar de seguir a busca',
