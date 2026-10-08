@@ -1,11 +1,13 @@
 # GraphMan — guide for coding agents
 
 GraphMan is a graph library + CLI in Rust and a web "observatory" in Next.js,
-built for the COS 242 (Graph Theory, UFRJ) course project. Part 1 (this
-repo's current scope) covers undirected graphs: two representations,
-BFS/DFS, distances, diameter, connected components and a benchmark study.
-Parts 2 and 3 will add weighted/directed graphs and flows on top of the same
-core, so keep the `Graph` trait small and the algorithms generic.
+built for the COS 242 (Graph Theory, UFRJ) course project. Part 1 (done)
+covers undirected graphs: two representations, BFS/DFS, distances,
+diameter, connected components and a benchmark study. Part 2 (current
+scope) adds real edge weights and Dijkstra over two interchangeable
+frontiers (vector and decrease-key heap); Part 3 will add direction and
+flows on top of the same core, so keep the `Graph` trait small and the
+algorithms generic.
 
 Everything in the repo is in English. The presentation and report are in
 Portuguese (the course language), but code, comments, docs and commits are
@@ -17,8 +19,8 @@ or slides: a comma, a colon or a full stop takes its place.
 
 ## Read these first
 
-- `spec/ASSIGNMENT.md` — what the course requires (translated summary of
-  `docs/trabalho-P1.pdf`) and the case-study questions.
+- `spec/ASSIGNMENT.md` — what the course requires (translated summaries of
+  `docs/trabalho-P1.pdf` and `docs/trabalho-P2.pdf`) and the case-study questions.
 - `spec/ARCHITECTURE.md` — how the Rust crates and the web app are organised,
   the design decisions worth presenting, and the data formats.
 - `spec/WORKFLOW.md` — git flow, commit style, CI, how to run studies and
@@ -26,6 +28,9 @@ or slides: a comma, a colon or a full stop takes its place.
 - `spec/DESIGN.md` — the design system: white + greys + one blue, tracked
   capitals, mono numbers, accent-edged surfaces, the shakable mark (a
   Golem-inspired voice), canvas colours.
+- `spec/PHASE2.md` — the Part 2 design (weights, the `Frontier` trait behind
+  both Dijkstras, vertex names, the study runner), direction for Part 3, and
+  the planned `petgraph` bridge (test oracle now, shared traits later).
 
 ## Layout
 
