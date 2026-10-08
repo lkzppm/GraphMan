@@ -308,6 +308,8 @@ the WebGPU one, drawn only when discs are at least 5 px. On a weighted
 graph the same canvas draws each edge's weight at its middle, in a small
 pill (background fill, grey hairline, 10 px mono grey text), under the
 vertex numbers and only where the edge on screen is long enough to hold it.
+The selected vertex's edges turn their pills blue (accent hairline,
+accent-muted tint, accent text), drawn last so they sit on top.
 
 ## Icons
 
