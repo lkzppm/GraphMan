@@ -356,6 +356,13 @@ the WebGPU one, drawn only when discs are at least 5 px.
   pushed away by the pointer; decoration only) under a compact dashed card:
   icon, "Drop a graph file anywhere", the sample file as the format
   explanation (a tiny file card with `// comments`), and two buttons.
+- **Storage picker** (a parsed file waiting for a representation): a card
+  in place of the drop card, the file name and counts over three cards
+  (pictogram, name, hint, the cost in mono with a bar). It never pops: the
+  card rises in, its header and question follow, the three cards land
+  70 ms apart and the cost bars fill once they have; picking one eases the
+  card out (200 ms) before the build takes the main thread, and the graph
+  fades in under it.
 - **Nav**: sticky, blurred; links are tracked capitals that get a grey pill
   and a blue underline on hover; the bar slides in on load.
 - **Notice**: floating bar bottom-centre, rises in.
