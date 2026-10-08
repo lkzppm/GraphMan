@@ -873,6 +873,11 @@
   align-items: end;
 }
 
+/* A control that takes the whole row (the three algorithms). */
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
 /* The play button: a square the height of the inputs beside it. */
 .run {
   display: inline-grid;
@@ -981,6 +986,19 @@
 
 .segmented[data-active='second'] .thumb {
   transform: translateX(100%);
+}
+
+/* Three segments (BFS, DFS, Dijkstra): the same track cut in thirds. */
+.segmented[data-count='3'] {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.segmented[data-count='3'] .thumb {
+  width: calc((100% - 4px) / 3);
+}
+
+.segmented[data-active='third'] .thumb {
+  transform: translateX(200%);
 }
 
 /* The path of a distance query, floating over the canvas: one ball per

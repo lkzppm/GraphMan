@@ -253,6 +253,15 @@ With this grafo_2 loads in a quarter of a second and pans, zooms and plays
 a search at 60 fps; grafo_4 (105 MB) the same; grafo_5 (4.8M vertices,
 205 MB) is usable.
 
+Dijkstra is the third search (`graph.dijkstra(root, frontier)`, vector or
+heap). The renderer needs no new path: the TS side turns the distances into
+`levels` (distance bands, the origin at 0, then twelve equal slices up to
+the farthest settled vertex) and uploads them with the settle ranks and
+parents exactly like a BFS tree, so the colour ramp, the reveal sweep, the
+level chart and the distance query (the path comes from `pathTo`) are the
+BFS ones. A negative-weight graph is refused before calling wasm, with a
+localised notice built from `graph.negativeEdge`.
+
 The CPU keeps a mirror of the positions (one `read()` in flight at a time
 while they change) for picking: hover and click scan for the nearest
 vertex within 10 px, drags write the pointer's world position into the

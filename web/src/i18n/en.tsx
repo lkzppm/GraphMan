@@ -297,6 +297,19 @@ export const en = {
     traversal: 'Traversal',
     theOrigin: 'the origin',
     runFrom: (kind: string, root: string) => `Run ${kind} from ${root}`,
+    dijkstra: 'Dijkstra',
+    frontier: 'Frontier',
+    frontiers: { vector: 'Vector', heap: 'Heap' },
+    frontierHints: {
+      vector: 'a vector of estimates scanned for the minimum: O(n²)',
+      heap: 'a binary heap with decrease-key: O((n + m) log n)',
+    },
+    weightsRange: (min: string, max: string) => `weights ${min} to ${max}`,
+    negativeWeights: (n: number) => (n === 1 ? '1 negative weight' : `${n} negative weights`),
+    refusal: (u: number, v: number, w: string) =>
+      `Dijkstra refuses this graph: the edge ${u} ${v} weighs ${w}, and shortest paths with negative weights are not implemented yet.`,
+    distanceNoun: 'distance',
+    distanceAt: (d: string) => `distance ${d}`,
     mode: 'Mode',
     modeSearch: 'Max',
     modeDistance: 'Distance',
@@ -407,7 +420,7 @@ export const en = {
     levelNoun: 'level',
     depthNoun: 'depth',
     verticesPer: (noun: string) => `Vertices per ${noun}`,
-    goTo: (noun: string, n: number) => `Go to ${noun} ${n}`,
+    goTo: (noun: string, n: number | string) => `Go to ${noun} ${n}`,
     depthTrace: 'Depth over the traversal',
   },
 
