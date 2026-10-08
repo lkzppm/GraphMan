@@ -349,7 +349,7 @@ export const en = {
     examples: 'Examples',
     examplesHint: 'Weighted or not',
     samples: {
-      plain: { label: 'Unweighted', hint: '5 vertices · 5 edges' },
+      plain: { label: 'Unweighted', hint: '10 vertices · 15 edges' },
       weighted: { label: 'Weighted', hint: '10 vertices · 15 edges' },
     },
     openFile: 'Open a file',
