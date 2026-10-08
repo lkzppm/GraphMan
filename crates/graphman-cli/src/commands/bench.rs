@@ -1,12 +1,13 @@
-//! `graphman bench`: mean running time of BFS/DFS over many start vertices.
+//! `graphman bench`: mean running time of BFS, DFS or Dijkstra over many
+//! start vertices.
 
 use crate::load::GraphArgs;
 use crate::report::Timing;
 use crate::rng::SplitMix64;
 use crate::ui::Ui;
 use anyhow::Result;
-use graphman::algo::{bfs, dfs};
-use graphman::{AnyGraph, Graph, Vertex, dispatch};
+use graphman::algo::{FrontierKind, bfs, dfs, dijkstra};
+use graphman::{AnyGraph, Vertex, Weighted, dispatch};
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
@@ -15,9 +16,13 @@ pub struct Args {
     #[command(flatten)]
     graph: GraphArgs,
 
-    /// Algorithm to time: bfs or dfs.
+    /// Algorithm to time: bfs, dfs or dijkstra.
     #[arg(short, long, default_value = "bfs")]
     algo: String,
+
+    /// Dijkstra's frontier: vector, heap or lazy-heap.
+    #[arg(short, long, default_value = "heap")]
+    frontier: FrontierKind,
 
     /// Number of searches, each from a distinct random start vertex.
     #[arg(short = 'n', long, default_value_t = 100)]
@@ -36,11 +41,16 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
     ui.title("bench");
     let graph = args.graph.load(ui)?;
     let roots = SplitMix64::new(args.seed).distinct_vertices(graph.vertex_count(), args.runs);
-    let timing = match args.algo.as_str() {
-        "bfs" => time_searches(&graph, &roots, Search::Bfs, ui),
-        "dfs" => time_searches(&graph, &roots, Search::Dfs, ui),
-        other => anyhow::bail!("unknown algorithm {other:?} (expected bfs or dfs)"),
+    let search = match args.algo.as_str() {
+        "bfs" => Search::Bfs,
+        "dfs" => Search::Dfs,
+        "dijkstra" => Search::Dijkstra(args.frontier),
+        other => anyhow::bail!("unknown algorithm {other:?} (expected bfs, dfs or dijkstra)"),
     };
+    if let (Search::Dijkstra(_), Some(edge)) = (search, graph.negative_edge()) {
+        return Err(graphman::NegativeWeight { edge }.into());
+    }
+    let timing = time_searches(&graph, &roots, search, ui);
     ui.kv("runs", timing.runs);
     ui.kv("mean", format!("{:.3} ms", timing.mean_ms));
     ui.kv("median", format!("{:.3} ms", timing.median_ms));
@@ -53,7 +63,7 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
     } else {
         println!(
             "{} {} runs {} mean_ms {:.4} median_ms {:.4} min_ms {:.4} max_ms {:.4}",
-            args.algo,
+            search.id(),
             args.graph.repr.label(),
             timing.runs,
             timing.mean_ms,
@@ -69,13 +79,24 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
 pub enum Search {
     Bfs,
     Dfs,
+    Dijkstra(FrontierKind),
 }
 
 impl Search {
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Search::Bfs => "BFS",
-            Search::Dfs => "DFS",
+            Search::Bfs => "BFS".into(),
+            Search::Dfs => "DFS".into(),
+            Search::Dijkstra(frontier) => format!("Dijkstra ({})", frontier.label()),
+        }
+    }
+
+    /// The command-line spelling (`bfs`, `dfs`, `dijkstra-heap`...).
+    pub fn id(self) -> String {
+        match self {
+            Search::Bfs => "bfs".into(),
+            Search::Dfs => "dfs".into(),
+            Search::Dijkstra(frontier) => format!("dijkstra-{}", frontier.label()),
         }
     }
 }
@@ -97,13 +118,16 @@ pub fn time_searches(graph: &AnyGraph, roots: &[Vertex], search: Search, ui: &Ui
     Timing::from_samples(samples)
 }
 
-fn time_one<G: Graph>(graph: &G, root: Vertex, search: Search) -> Duration {
+fn time_one<G: Weighted>(graph: &G, root: Vertex, search: Search) -> Duration {
     let start = Instant::now();
-    let tree = match search {
-        Search::Bfs => bfs(graph, root),
-        Search::Dfs => dfs(graph, root),
+    let reached = match search {
+        Search::Bfs => bfs(graph, root).reached_count(),
+        Search::Dfs => dfs(graph, root).reached_count(),
+        Search::Dijkstra(frontier) => dijkstra(graph, root, frontier)
+            .expect("negative weights are refused before timing")
+            .reached_count(),
     };
     let elapsed = start.elapsed();
-    black_box(tree.reached_count());
+    black_box(reached);
     elapsed
 }
