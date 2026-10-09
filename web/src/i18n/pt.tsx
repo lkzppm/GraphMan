@@ -301,11 +301,11 @@ export const pt: Dictionary = {
     theOrigin: 'a origem',
     runFrom: (kind: string, root: string) => `Rodar ${kind} a partir de ${root}`,
     dijkstra: 'Dijkstra',
-    frontier: 'Fronteira',
+    frontier: 'Fila de prioridade',
     frontiers: { vector: 'Vetor', heap: 'Heap' },
     frontierHints: {
-      vector: 'um vetor de estimativas varrido em busca do mínimo: O(n²)',
-      heap: 'um heap binário com decrease-key: O((n + m) log n)',
+      vector: 'as estimativas de distância num vetor, varrido em busca da menor: O(n²)',
+      heap: 'as estimativas de distância num heap binário com decrease-key: O((n + m) log n)',
     },
     negativeWeights: (n: number) => (n === 1 ? '1 peso negativo' : `${n} pesos negativos`),
     refusal: (u: number, v: number, w: string) =>

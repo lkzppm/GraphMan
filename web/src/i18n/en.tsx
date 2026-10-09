@@ -298,11 +298,11 @@ export const en = {
     theOrigin: 'the origin',
     runFrom: (kind: string, root: string) => `Run ${kind} from ${root}`,
     dijkstra: 'Dijkstra',
-    frontier: 'Frontier',
+    frontier: 'Priority queue',
     frontiers: { vector: 'Vector', heap: 'Heap' },
     frontierHints: {
-      vector: 'a vector of estimates scanned for the minimum: O(n²)',
-      heap: 'a binary heap with decrease-key: O((n + m) log n)',
+      vector: 'the distance estimates in a vector, scanned for the smallest: O(n²)',
+      heap: 'the distance estimates in a binary heap with decrease-key: O((n + m) log n)',
     },
     negativeWeights: (n: number) => (n === 1 ? '1 negative weight' : `${n} negative weights`),
     refusal: (u: number, v: number, w: string) =>
