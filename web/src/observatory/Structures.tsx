@@ -324,18 +324,19 @@ function bfsQueue(search: StructureSearch, step: number, max = MAX_CHIPS): Queue
   return { current, length, items };
 }
 
-/** One queue cell: 34 px and the 1 px seam between cells. */
-const CELL = 35;
-/** Room the queue's two end labels take beside the cells. */
-const LABELS = 120;
+/** Queue cells grow with the strip, between these sizes (px). */
+const CELL_MIN = 34;
+const CELL_MAX = 64;
+/** Room the queue's two end labels and the gaps around it take. */
+const LABELS = 150;
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
-/** BFS's queue as an array of glued cells, centred, and the vertex being
-    analysed in its own cell on the left. Every cell is keyed by vertex and
-    animated from where it was (FLIP): when a vertex leaves the front it
-    slides into the analysing cell, the queue closes up behind it, new
-    vertices come in at the back, and the vertex analysed before leaves to
-    the left. */
+/** BFS's queue as an array of glued cells, centred in the strip, and the
+    vertex being analysed in its own cell on the left. Every cell is keyed
+    by vertex and slides from where it was (FLIP) when the step changes:
+    the front cell glides into the analysing cell, the queue closes up
+    behind it, new vertices come in at the back, and the vertex analysed
+    before leaves to the left. */
 function QueueView({
   t,
   search,
@@ -349,62 +350,77 @@ function QueueView({
 }) {
   const s = t.structures;
   const boxRef = useRef<HTMLDivElement>(null);
-  const laneRef = useRef<HTMLDivElement>(null);
-  const [room, setRoom] = useState(MAX_CHIPS);
+  const [box, setBox] = useState({ width: 0, height: 0 });
   useLayoutEffect(() => {
-    const lane = laneRef.current;
-    if (!lane) return;
-    const measure = () =>
-      setRoom(Math.max(5, Math.min(MAX_CHIPS, Math.floor((lane.clientWidth - LABELS) / CELL))));
+    const el = boxRef.current;
+    if (!el) return;
+    const measure = () => setBox({ width: el.clientWidth, height: el.clientHeight });
     measure();
     const observer = new ResizeObserver(measure);
-    observer.observe(lane);
+    observer.observe(el);
     return () => observer.disconnect();
   }, []);
+  // The cells take the strip's height (the label over the analysing cell
+  // and some air above and below), and as many fit as the width allows
+  // once the analysing column is mirrored on the right to keep the queue
+  // centred.
+  const size = Math.round(Math.max(CELL_MIN, Math.min(CELL_MAX, (box.height - 40) * 0.62)));
+  const side = size + 40;
+  const room = Math.max(
+    5,
+    Math.min(MAX_CHIPS, Math.floor((box.width - 2 * side - LABELS) / (size + 1))),
+  );
   const queue = bfsQueue(search, step, room);
   const just = search.order[step];
   const colour = (v: number) => rampColour(search.levels[v], search.depth);
 
-  // Where every cell was at the previous step, to slide it from there.
+  // Where every cell sat at the previous step (layout positions, which
+  // offsetLeft/Top give without the slides' transforms), to slide it from
+  // there. Only a new step or a new size moves anything; a hover or a
+  // replay frame that stays on the same step does not.
   const last = useRef<{ of: StructureSearch | null; at: Map<string, Place> }>({
     of: null,
     at: new Map(),
   });
   useLayoutEffect(() => {
-    const box = boxRef.current;
-    if (!box) return;
+    const frame = boxRef.current;
+    if (!frame) return;
     const motion = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const fresh = last.current.of !== search;
-    const origin = box.getBoundingClientRect();
+    const origin = frame.getBoundingClientRect();
     const at = new Map<string, Place>();
     let slot: Place | null = null;
-    for (const el of box.querySelectorAll<HTMLElement>('[data-flip]')) {
-      const r = el.getBoundingClientRect();
-      const place = {
-        x: r.left - origin.left,
-        y: r.top - origin.top,
-        el,
-        role: el.dataset.role ?? '',
-      };
+    for (const el of frame.querySelectorAll<HTMLElement>('[data-flip]')) {
+      const place = { x: el.offsetLeft, y: el.offsetTop, el, role: el.dataset.role ?? '' };
       if (place.role === 'current') slot = place;
       at.set(el.dataset.flip ?? '', place);
     }
     if (motion && !fresh) {
       for (const [key, place] of at) {
         const before = last.current.at.get(key);
+        const el = place.el;
         if (before) {
-          const dx = before.x - place.x;
-          const dy = before.y - place.y;
-          if (dx || dy) {
-            place.el.animate(
-              [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
-              { duration: 460, easing: EASE },
-            );
+          // A cell still sliding keeps going from where it shows now.
+          let rx = 0;
+          let ry = 0;
+          if (before.el === el && el.getAnimations().length) {
+            const r = el.getBoundingClientRect();
+            rx = r.left - origin.left - place.x;
+            ry = r.top - origin.top - place.y;
+          }
+          const dx = before.x - place.x + rx;
+          const dy = before.y - place.y + ry;
+          el.getAnimations().forEach((a) => a.cancel());
+          if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+            el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
+              duration: 460,
+              easing: EASE,
+            });
           }
         } else {
-          place.el.animate(
+          el.animate(
             [
-              { opacity: 0, transform: 'translateX(16px)' },
+              { opacity: 0, transform: `translateX(${size / 2}px)` },
               { opacity: 1, transform: 'none' },
             ],
             { duration: 360, easing: EASE },
@@ -417,14 +433,15 @@ function QueueView({
       for (const [key, before] of last.current.at) {
         if (at.has(key) || before.el.isConnected) continue;
         const ghost = before.el;
+        ghost.getAnimations().forEach((a) => a.cancel());
         ghost.removeAttribute('data-flip');
         ghost.style.position = 'absolute';
         ghost.style.left = `${before.x}px`;
         ghost.style.top = `${before.y}px`;
         ghost.style.pointerEvents = 'none';
-        box.appendChild(ghost);
+        frame.appendChild(ghost);
         const to: Place | null = before.role === 'current' ? null : slot;
-        const dx = to ? to.x - before.x : -28;
+        const dx = to ? to.x - before.x : -size;
         const dy = to ? to.y - before.y : 0;
         ghost.animate(
           [
@@ -436,61 +453,61 @@ function QueueView({
       }
     }
     last.current = { of: search, at };
-  });
+  }, [search, step, size, room]);
 
   return (
-    <div ref={boxRef} className={styles.queue}>
-      <div className={styles.slot}>
-        <span className={`label ${styles.slotLabel}`}>{s.analysing}</span>
-        <div className={styles.slotCell}>
-          {queue.current ? (
-            <QueueCell
-              key={queue.current}
-              v={queue.current}
-              link={link}
-              colour={colour(queue.current)}
-              role="current"
-            />
-          ) : (
-            <span className={styles.slotEmpty} />
-          )}
-        </div>
+    <div
+      ref={boxRef}
+      className={styles.queue}
+      style={{ '--cell': `${size}px`, '--side': `${side}px` } as CSSProperties}
+    >
+      <span className={`label ${styles.slotLabel} ${styles.queueLabel}`}>{s.analysing}</span>
+      <div className={styles.slotCell}>
+        {queue.current ? (
+          <QueueCell
+            key={queue.current}
+            v={queue.current}
+            link={link}
+            colour={colour(queue.current)}
+            role="current"
+          />
+        ) : (
+          <span className={styles.slotEmpty} />
+        )}
       </div>
-      <div ref={laneRef} className={styles.lane}>
-        <div className={styles.queueGroup}>
-          <span className={`label ${styles.end}`}>{s.front}</span>
-          <ol className={styles.queueCells}>
-            {queue.items.map((item, i) => {
-              if (isGap(item)) {
-                return (
-                  <li key="gap" className={`mono ${styles.queueGap}`}>
-                    +{formatInt(item.gap)}
-                  </li>
-                );
-              }
-              const before = queue.items[i - 1];
-              const level = search.levels[item];
+      <div className={styles.queueGroup}>
+        <span className={`label ${styles.end}`}>{s.front}</span>
+        <ol className={styles.queueCells}>
+          {queue.items.map((item, i) => {
+            if (isGap(item)) {
               return (
-                <li
-                  key={item}
-                  data-level-break={
-                    (before !== undefined && !isGap(before) && search.levels[before] !== level) ||
-                    undefined
-                  }
-                >
-                  <QueueCell
-                    v={item}
-                    link={link}
-                    colour={colour(item)}
-                    role="queue"
-                    state={item === just ? 'just' : undefined}
-                  />
+                <li key="gap" className={`mono ${styles.queueGap}`}>
+                  +{formatInt(item.gap)}
                 </li>
               );
-            })}
-          </ol>
-          <span className={`label ${styles.end}`}>{s.back}</span>
-        </div>
+            }
+            const before = queue.items[i - 1];
+            const level = search.levels[item];
+            return (
+              <li
+                key={item}
+                data-level-break={
+                  (before !== undefined && !isGap(before) && search.levels[before] !== level) ||
+                  undefined
+                }
+              >
+                <QueueCell
+                  v={item}
+                  link={link}
+                  colour={colour(item)}
+                  role="queue"
+                  state={item === just ? 'just' : undefined}
+                />
+              </li>
+            );
+          })}
+        </ol>
+        <span className={`label ${styles.end}`}>{s.back}</span>
       </div>
     </div>
   );
