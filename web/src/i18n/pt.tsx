@@ -134,9 +134,57 @@ export const pt: Dictionary = {
         legend:
           'as pontas 1 e 5 em destaque, um caminho mais curto mais longo em azul: o diâmetro é 2',
       },
+      weights: {
+        title: 'Pesos',
+        body: 'Uma terceira coluna torna o grafo ponderado: o parser decide na primeira linha de aresta e exige o mesmo de todas as outras. Um peso é qualquer real finito, negativos inclusive. Os pesos ficam numa coluna ao lado da adjacência, nunca dentro dela: a CSR guarda um vetor paralelo aos alvos, a lista uma linha paralela por vértice, a matriz uma tabela de pesos ao lado do bitset. Graph::neighbors nunca lê a coluna, então BFS, DFS, componentes e diâmetro custam o mesmo de antes, e um arquivo sem pesos não guarda nenhum e responde 1 por aresta. Uma aresta repetida fica com o menor peso, o único que um caminho mínimo usaria.',
+        file: 'o arquivo, com pesos',
+        graph: 'o grafo, cada aresta com seu peso',
+      },
+      dijkstra: {
+        title: 'Dijkstra',
+        body: 'dijkstra devolve uma ShortestPathTree: a distância e o pai de cada vértice alcançado, a ordem em que foram fixados (por distância) e path_to. O algoritmo é escrito uma vez, como dijkstra_into sobre uma Frontier, a estrutura que guarda as estimativas de distância, escolhida em tempo de execução como a representação. O relaxamento é estrito e toda fila desempata pelo menor vértice, então todas constroem a mesma árvore. Um grafo com aresta negativa é recusado com NegativeWeight, cuja mensagem termina em "shortest paths with negative weights are not implemented yet": num grafo não direcionado, ir e voltar por uma aresta negativa deixa um caminho tão curto quanto se queira, então não há resposta a dar.',
+        bfs: 'BFS a partir de 1: o menor número de arestas, 1 → 3 → 5 pesa 3',
+        dijkstra: 'Dijkstra a partir de 1: o caminho mais leve, 1 → 2 → 3 → 5 pesa 2,5',
+      },
+      frontiers: {
+        title: 'Filas de prioridade',
+        body: 'Uma Frontier guarda as estimativas dos vértices alcançados e ainda não fixados: decrease insere um vértice ou baixa sua estimativa, pop_min devolve o mais próximo, o menor vértice primeiro num empate. A disciplina pede duas, um vetor e um heap cujas chaves mudam de forma eficiente, sem escrever o Dijkstra duas vezes; a biblioteca tem três, e um novo jeito de guardar estimativas é uma nova Frontier, nunca um segundo Dijkstra. Para k execuções, como no estudo de caso, dijkstra_into reaproveita uma fila e uma árvore, e cada execução limpa só o que a anterior tocou.',
+        table: [
+          ['Fila', 'Como guarda as estimativas', 'pop_min', 'decrease', 'Uma execução'],
+          [
+            'VectorFrontier',
+            'uma posição por vértice, o mínimo achado por varredura',
+            'O(n)',
+            'O(1)',
+            'O(n² + m)',
+          ],
+          [
+            'HeapFrontier',
+            'um heap binário com a posição de cada vértice: decrease-key',
+            'O(log n)',
+            'O(log n)',
+            'O((n + m) log n)',
+          ],
+          [
+            'LazyHeapFrontier',
+            'um heap binário que insere uma cópia e pula as velhas',
+            'O(log m)',
+            'O(log m)',
+            'O((n + m) log m)',
+          ],
+        ],
+        state: 'Dijkstra a partir de 1, o vértice mais distante em destaque',
+        sequence: 'O que toda fila fixa, em ordem',
+      },
+      names: {
+        title: 'Nomes',
+        body: 'A rede de colaboração dá nome aos vértices num segundo arquivo, um índice e um nome por linha (vírgula, ponto e vírgula, tab ou espaços; uma linha de contagem ou cabeçalho é pulada, e Latin-1 é lido quando o arquivo não é UTF-8). VertexNames guarda todos os nomes numa só string com um índice ordenado por nome: vertex acha a grafia exata que o enunciado pede por busca binária, name volta de um índice para o nome, e search ignora maiúsculas e acentos para o "você quis dizer" que a linha de comando mostra quando quase acerta.',
+        file: 'o arquivo de nomes',
+        answers: 'o que ele responde',
+      },
       cli: {
         title: 'A linha de comando',
-        body: 'O binário graphman embrulha a biblioteca: todo comando recebe um arquivo de grafo, um --repr (list, matrix ou csr) e escreve os arquivos de saída da disciplina. study roda o estudo de caso inteiro e escreve JSON mais o RESULTS.md.',
+        body: 'O binário graphman embrulha a biblioteca: todo comando recebe um arquivo de grafo, um --repr (list, matrix ou csr) e escreve os arquivos de saída da disciplina. dijkstra escreve a árvore de caminhos mínimos e mostra os caminhos até os alvos. study roda o estudo de caso inteiro, das duas partes, e escreve JSON mais o RESULTS.md.',
         flow: [
           'um grafo no formato da disciplina',
           'um comando',
@@ -147,6 +195,7 @@ export const pt: Dictionary = {
           'uma árvore de busca a partir do vértice 1, guardada como CSR',
           'distâncias entre pares de vértices',
           'o diâmetro pelos limites de Takes-Kosters, desistindo após 60 s',
+          'uma árvore de caminhos mínimos a partir de 10 com o heap, e os caminhos até 20 e 30',
           'o estudo de caso de um grafo, em studies/',
         ],
       },

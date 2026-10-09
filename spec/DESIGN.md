@@ -165,9 +165,16 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   `Until(4)` breaks beside its `discover` calls as balls on one vertical
   edge in the same level colours (visitors), two components in fading
   blues with the shortest path from 4 to 3 (distance), the endpoints 1 and
-  5 ringed in navy with a longest shortest path (diameter), and the sample
-  file, the `graphman bfs` command and the file it writes, arrows between
-  (CLI). The memory budget is a paragraph
+  5 ringed in navy with a longest shortest path (diameter), the weighted
+  sample's file beside the graph with each weight written on its edge in
+  10 px mono over a white halo, blue on tree and path edges (weights), BFS's
+  path from 1 to 5 beside Dijkstra's lighter, longer one (Dijkstra), the
+  frontiers' cost table over the tree shaded by distance, each distance
+  written just outside its vertex, beside the `settle` calls as balls
+  (priority queues), the names file with what `VertexNames` answers in blue
+  (names), and the sample file, the `graphman bfs` command and the file it
+  writes, arrows between (CLI). The contents rail sizes its edge from the
+  chapter count (`--stops`). The memory budget is a paragraph
   and three lines of the representations chapter, not a chapter of its
   own, and the design decisions belong to the presentation.
 - **Case studies** (`components/Studies.tsx`, `/studies`): the seven

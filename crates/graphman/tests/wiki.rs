@@ -338,5 +338,7 @@ fn names() -> Result<(), Box<dyn std::error::Error>> {
     // wiki:end
     assert_eq!((dijkstra, third), (Some(1), Some("Éva Tardos")));
     assert_eq!(near_miss, vec![3]);
+    // The library page shows these answers beside the block.
+    assert_eq!(names.vertex("Eva Tardos"), None);
     Ok(())
 }
