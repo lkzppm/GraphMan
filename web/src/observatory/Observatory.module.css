@@ -1751,14 +1751,6 @@
   opacity: 0.6;
 }
 
-.dropActions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 2px;
-}
-
 /* Empty sidebar: two starter tiles and a cheat sheet. */
 .starters {
   display: grid;
@@ -1808,18 +1800,12 @@
   color: var(--fg-3);
 }
 
-/* "Examples": the tile (or the drop card's button) turns into the choice
-   in place. Both faces share one grid cell, so the control keeps its size;
+/* "Examples": the tile turns into the choice in place. Both faces share one grid cell, so the control keeps its size;
    the face fades and shrinks a little as the two choices rise in. */
 .examples {
   display: grid;
   align-items: stretch;
   padding: 0;
-}
-
-.examples[data-variant='button'] {
-  display: inline-grid;
-  align-items: stretch;
 }
 
 .examples[data-disabled] {
@@ -1855,13 +1841,6 @@
   text-align: left;
 }
 
-.examples[data-variant='button'] .examplesFace {
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  padding: 0 12px;
-}
-
 .examples[data-open] .examplesFace {
   opacity: 0;
   transform: scale(0.94);
@@ -1878,12 +1857,6 @@
   pointer-events: none;
 }
 
-.examples[data-variant='button'] .examplesChoices {
-  flex-direction: row;
-  gap: 0;
-  padding: 0;
-}
-
 .examples[data-open] .examplesChoices {
   opacity: 1;
   transform: none;
@@ -1894,8 +1867,8 @@
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 8px;
+  gap: 8px;
+  padding: 0 6px;
   border-radius: var(--radius-sm);
   color: var(--fg-2);
   font: inherit;
@@ -1907,32 +1880,8 @@
     color 0.15s var(--ease);
 }
 
-.examples[data-variant='tile'] .examplesChoice {
-  gap: 8px;
-  padding: 0 6px;
-}
-
 .examplesChoice:hover,
 .examplesChoice:focus-visible {
-  background: var(--accent-muted);
-  color: var(--accent);
-}
-
-/* On the button the two choices are halves with a hairline between. */
-.examples[data-variant='button'] .examplesChoice {
-  justify-content: center;
-  gap: 6px;
-  padding: 0 10px;
-  border-radius: 0;
-  color: var(--fg);
-}
-
-.examples[data-variant='button'] .examplesChoice + .examplesChoice {
-  border-left: 1px solid var(--border-2);
-}
-
-.examples[data-variant='button'] .examplesChoice:hover,
-.examples[data-variant='button'] .examplesChoice:focus-visible {
   background: var(--accent-muted);
   color: var(--accent);
 }
@@ -2294,10 +2243,9 @@
   }
 
   /* A phone cannot drop a file, and the sheet below already offers the
-     example and the file picker: the card keeps only the format sample. */
+     examples and the file picker: the card keeps only the format sample. */
   .dropTitle[data-drop],
-  .dropIcon,
-  .dropActions {
+  .dropIcon {
     display: none;
   }
 

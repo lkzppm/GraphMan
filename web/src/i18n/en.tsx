@@ -364,7 +364,6 @@ export const en = {
     parsing: (name: string) => `Parsing ${name}…`,
     drop: 'Drop a graph file anywhere',
     fileFormat: 'File format',
-    browse: 'Browse files',
     hideControls: 'Hide the controls',
     showControls: 'Show the controls',
     hideWeights: 'Hide edge weights',

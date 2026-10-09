@@ -2177,12 +2177,7 @@ export default function Observatory() {
           <>
             <Panel title={t.graph}>
               <div className={styles.starters}>
-                <ExamplesMenu
-                  t={t}
-                  variant="tile"
-                  disabled={status.kind !== 'ready'}
-                  onPick={loadExample}
-                />
+                <ExamplesMenu t={t} disabled={status.kind !== 'ready'} onPick={loadExample} />
                 <button
                   type="button"
                   className={styles.starter}
@@ -2278,22 +2273,6 @@ export default function Observatory() {
                       </span>
                     </Fragment>
                   ))}
-                </div>
-                <div className={styles.dropActions}>
-                  <button
-                    type="button"
-                    className="button button--primary button--small"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={status.kind !== 'ready'}
-                  >
-                    {t.browse}
-                  </button>
-                  <ExamplesMenu
-                    t={t}
-                    variant="button"
-                    disabled={status.kind !== 'ready'}
-                    onPick={loadExample}
-                  />
                 </div>
               </div>
             )}
@@ -2631,18 +2610,16 @@ function Panel({
   );
 }
 
-/** The two built-in samples, behind one "Examples" control: a tile in the
-    empty sidebar, a button on the empty stage. A click turns the control
-    itself into the choice (its two faces share one grid cell, so it keeps
-    its size); a click outside or Esc turns it back. */
+/** The two built-in samples, behind the "Examples" tile of the empty
+    sidebar. A click turns the tile itself into the choice (its two faces
+    share one grid cell, so it keeps its size); a click outside or Esc turns
+    it back. */
 function ExamplesMenu({
   t,
-  variant,
   disabled,
   onPick,
 }: {
   t: ReturnType<typeof useT>['observatory'];
-  variant: 'tile' | 'button';
   disabled: boolean;
   onPick: (which: 'plain' | 'weighted') => void;
 }) {
@@ -2667,18 +2644,10 @@ function ExamplesMenu({
     };
   }, [open]);
 
-  const tile = variant === 'tile';
-  const iconSize = tile ? 16 : 14;
-
   return (
     <div
       ref={ref}
-      className={
-        tile
-          ? `${styles.starter} ${styles.examples}`
-          : `button button--secondary button--small ${styles.examples}`
-      }
-      data-variant={variant}
+      className={`${styles.starter} ${styles.examples}`}
       data-open={open || undefined}
       data-disabled={disabled || undefined}
     >
@@ -2690,15 +2659,9 @@ function ExamplesMenu({
         aria-expanded={open}
         inert={open}
       >
-        {tile ? (
-          <>
-            <FlaskConical size={18} strokeWidth={1.75} aria-hidden="true" />
-            <span className={styles.starterTitle}>{t.examples}</span>
-            <span className={styles.starterHint}>{t.examplesHint}</span>
-          </>
-        ) : (
-          t.examples
-        )}
+        <FlaskConical size={18} strokeWidth={1.75} aria-hidden="true" />
+        <span className={styles.starterTitle}>{t.examples}</span>
+        <span className={styles.starterHint}>{t.examplesHint}</span>
       </button>
       <div
         ref={choicesRef}
@@ -2718,23 +2681,19 @@ function ExamplesMenu({
             }}
           >
             {which === 'plain' ? (
-              <Waypoints size={iconSize} aria-hidden="true" />
+              <Waypoints size={16} aria-hidden="true" />
             ) : (
-              <Weight size={iconSize} aria-hidden="true" />
+              <Weight size={16} aria-hidden="true" />
             )}
-            {tile ? (
-              <span className={styles.menuText}>
-                <span>{t.samples[which].label}</span>
-                {/* The counts on two short lines, so the tile keeps its width. */}
-                {t.samples[which].hint.split(' · ').map((part) => (
-                  <span key={part} className={styles.menuHint}>
-                    {part}
-                  </span>
-                ))}
-              </span>
-            ) : (
-              t.samples[which].label
-            )}
+            <span className={styles.menuText}>
+              <span>{t.samples[which].label}</span>
+              {/* The counts on two short lines, so the tile keeps its width. */}
+              {t.samples[which].hint.split(' · ').map((part) => (
+                <span key={part} className={styles.menuHint}>
+                  {part}
+                </span>
+              ))}
+            </span>
           </button>
         ))}
       </div>
