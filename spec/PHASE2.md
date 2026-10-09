@@ -210,15 +210,31 @@ handout's "spanning tree induced by the search", and prints `from to
 distance path...` per target on stdout (names on stderr with `--names`).
 Vertices are ids or exact names; a near miss lists the closest names.
 
+### Case-study runner (implemented)
+
+`graphman study` on a weighted file runs the two Part 2 sections
+(`crates/graphman-cli/src/commands/study/weighted.rs`): `paths`, one heap
+Dijkstra from `--from` (10, or a name with `--names`) and the distance and
+path to each `--to` (20..60, or the five researchers); and `frontiers`, the
+`k = 100` mean per frontier on CSR, from the same SplitMix64 roots as Part 1,
+the frontier and the tree allocated once and reset by each run. Each
+frontier has a `--dijkstra-budget` (seconds, checked every 256 settles by a
+visitor, the same cost for every frontier): when it runs out the cell keeps
+the runs that finished, flagged, the honest-cell treatment of the Part 1
+matrix refusals; when no run finished, the cut run's time is scaled to its
+root's component, which is close to exact for the vector since every one
+of its steps scans all `n` estimates. On grafo_4's edges with weights in
+`[0, 1]`, a 5 s budget gave ≈ 16 s per vector run, against a 12 s mean
+measured over two whole runs. The results go to
+`studies/weighted/` and to a "Part 2" block of `RESULTS.md`; a negative
+weight records the refusal. `--only` (also for the Part 1 sections) reruns
+some sections and keeps the rest of the previous JSON.
+
 ### Still to do
 
-- **Case-study runner.** `graphman study` on a weighted file: the 10 →
-  20..60 table, the `k = 100` mean per frontier (same SplitMix64 roots as
-  Part 1) with a `--dijkstra-budget <seconds>` for the vector (when it runs
-  out, the cell records how many runs finished and their mean, flagged, the
-  honest-cell treatment of the Part 1 matrix refusals), and the
-  collaboration-network table with names. `petgraph::algo::dijkstra` as a
-  baseline column (dev/bench-only dependency).
+- **Run the studies** on the weighted course graphs and the collaboration
+  network once they are published.
+- `petgraph::algo::dijkstra` as a baseline column (dev/bench-only dependency).
 - **Web.** Done in the observatory: Dijkstra as a third search with a
   vector/heap switch, distance bands for colour and chart, the refusal as a
   notice, weight chips. Still open there: edges tinted by weight, and the

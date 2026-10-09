@@ -47,11 +47,13 @@ cargo build --release
 ./target/release/graphman diameter graphs/grafo_1.txt -m bounds
 ./target/release/graphman components graphs/grafo_1.txt
 ./target/release/graphman study graphs/grafo_1.txt --out studies   # JSON + RESULTS.md
+./target/release/graphman study graphs/grafo_1.txt --only searches  # refresh one table, keep the rest
 
 # Weighted graphs (Part 2): a third column `u v weight`
 ./target/release/graphman dijkstra samples/weighted_100.txt --from 10 --to 20 30 40 50 60
 ./target/release/graphman dijkstra samples/weighted_100.txt --from 10 --frontier vector
 ./target/release/graphman bench samples/weighted_100.txt --algo dijkstra --frontier heap -n 100
+./target/release/graphman study samples/weighted_100.txt --out studies   # Part 2: paths from 10, mean per frontier
 ./target/release/graphman dijkstra samples/collaboration.txt --names samples/collaboration_names.txt \
     --from "Edsger W. Dijkstra" --to "Alan M. Turing" "Éva Tardos" "Daniel R. Figueiredo"
 ./target/release/graphman generate --like graphs/grafo_1.txt --weights 0:1 -o grafo_W_1.txt

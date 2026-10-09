@@ -203,7 +203,11 @@ export const en = {
         needs: (bytes: string) => `would need ${bytes}`,
       },
       bfs: { title: 'Mean time of one BFS' },
-      dfs: { title: 'Mean time of one DFS' },
+      dfs: {
+        title: 'Mean time of one DFS',
+        way: 'Implementation',
+        ways: { iterative: 'Iterative', recursive: 'Recursive' },
+      },
       parents: {
         title: 'Parents of 10, 20 and 30',
         root: (r: string) => `root ${r}`,

@@ -58,7 +58,14 @@ function memoryBytes(
     : { bytes: m.required_bytes, feasible: false };
 }
 
-function timing(s: GraphStudy, r: Representation, algo: 'bfs' | 'dfs'): number | null {
+type DfsWay = 'iterative' | 'recursive';
+const DFS_WAYS: DfsWay[] = ['iterative', 'recursive'];
+
+function timing(
+  s: GraphStudy,
+  r: Representation,
+  algo: 'bfs' | 'dfs' | 'dfs_recursive',
+): number | null {
   return s.representations.find((x) => x.representation === r)?.[algo]?.mean_ms ?? null;
 }
 
@@ -91,7 +98,8 @@ interface Sheet {
   };
   memory: Bar[];
   bfs: Bar[];
-  dfs: Bar[];
+  /** One set of bars per DFS implementation. */
+  dfs: Record<DfsWay, Bar[]>;
   parents: {
     roots: number[];
     vertices: number[];
@@ -166,7 +174,10 @@ function graphSheet(s: GraphStudy, t: T, scales: Scales): Sheet {
       };
     }),
     bfs: REPRESENTATIONS.map((r) => timeBar(t, r, timing(s, r, 'bfs'), scales)),
-    dfs: REPRESENTATIONS.map((r) => timeBar(t, r, timing(s, r, 'dfs'), scales)),
+    dfs: {
+      iterative: REPRESENTATIONS.map((r) => timeBar(t, r, timing(s, r, 'dfs'), scales)),
+      recursive: REPRESENTATIONS.map((r) => timeBar(t, r, timing(s, r, 'dfs_recursive'), scales)),
+    },
     parents: {
       roots: [...new Set(s.parents.map((p) => p.root))],
       vertices: [...new Set(s.parents.map((p) => p.vertex))],
@@ -231,7 +242,7 @@ function meanSheet(studies: GraphStudy[], t: T, scales: Scales): Sheet {
   const avg = (pick: (s: GraphStudy) => number) => mean(studies.map(pick)) ?? 0;
   const some = (pick: (s: GraphStudy) => number | null) =>
     studies.map(pick).filter((v): v is number => v !== null);
-  const timeBars = (algo: 'bfs' | 'dfs') =>
+  const timeBars = (algo: 'bfs' | 'dfs' | 'dfs_recursive') =>
     REPRESENTATIONS.map((r) => {
       const values = some((s) => timing(s, r, algo));
       const bar = timeBar(t, r, mean(values), scales);
@@ -279,7 +290,7 @@ function meanSheet(studies: GraphStudy[], t: T, scales: Scales): Sheet {
       };
     }),
     bfs: timeBars('bfs'),
-    dfs: timeBars('dfs'),
+    dfs: { iterative: timeBars('dfs'), recursive: timeBars('dfs_recursive') },
     parents: {
       roots: [...new Set(studies.flatMap((s) => s.parents.map((p) => p.root)))],
       vertices: [...new Set(studies.flatMap((s) => s.parents.map((p) => p.vertex)))],
@@ -431,7 +442,11 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
       0.1,
       Math.max(
         ...studies.flatMap((s) =>
-          REPRESENTATIONS.flatMap((r) => [timing(s, r, 'bfs') ?? 0, timing(s, r, 'dfs') ?? 0]),
+          REPRESENTATIONS.flatMap((r) => [
+            timing(s, r, 'bfs') ?? 0,
+            timing(s, r, 'dfs') ?? 0,
+            timing(s, r, 'dfs_recursive') ?? 0,
+          ]),
         ),
       ),
     ),
@@ -500,6 +515,11 @@ function SheetView({ sheet }: { sheet: Sheet }) {
   const q = t.studies.questions;
   const f = sheet.facts;
   const view = sheet.id;
+  /** Which DFS the third chapter shows; the switch appears once a study
+      has timed the recursive one. */
+  const [way, setWay] = useState<DfsWay>('iterative');
+  const bothWays = sheet.dfs.recursive.some((bar) => bar.width !== null);
+  const shownWay = bothWays ? way : 'iterative';
   return (
     <div className={`container ${styles.content}`}>
       <Reveal className={styles.head}>
@@ -542,8 +562,29 @@ function SheetView({ sheet }: { sheet: Sheet }) {
         <Chapter index={2} title={q.bfs.title} delay={0.1}>
           <Bars bars={sheet.bfs} view={view} />
         </Chapter>
-        <Chapter index={3} title={q.dfs.title} delay={0.15}>
-          <Bars bars={sheet.dfs} view={view} />
+        <Chapter
+          index={3}
+          title={q.dfs.title}
+          delay={0.15}
+          tools={
+            bothWays && (
+              <span className={styles.waySwitch} role="group" aria-label={q.dfs.way}>
+                {DFS_WAYS.map((which) => (
+                  <button
+                    key={which}
+                    type="button"
+                    className="label"
+                    aria-pressed={shownWay === which}
+                    onClick={() => setWay(which)}
+                  >
+                    {q.dfs.ways[which]}
+                  </button>
+                ))}
+              </span>
+            )
+          }
+        >
+          <Bars bars={sheet.dfs[shownWay]} view={view} />
         </Chapter>
       </div>
 
@@ -614,11 +655,14 @@ function Chapter({
   index,
   title,
   delay,
+  tools,
   children,
 }: {
   index: number;
   title: string;
   delay: number;
+  /** Controls at the right end of the heading. */
+  tools?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -626,6 +670,7 @@ function Chapter({
       <header className={styles.chapterHead}>
         <span className={`mono ${styles.chapterIndex}`}>{String(index).padStart(2, '0')}</span>
         <h2 className={styles.chapterTitle}>{title}</h2>
+        {tools}
       </header>
       {children}
     </Reveal>
