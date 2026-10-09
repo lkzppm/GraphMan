@@ -261,8 +261,11 @@ least 400, is remembered per browser, resets on a double click and moves
 with the arrow keys (Shift for bigger steps). Phones keep the bottom sheet.
 
 Under the canvas, the **structure strip** shows the data structure of the
-search on it at the replay's step, toggled by a panel icon in the
-top-right cluster (open by default, remembered; not on phones). Its top
+search on it at the replay's step. It exists only once a search has run:
+a pill at the bottom centre of the canvas (a chevron and the structure's
+name, Fila / Pilha / Fila de prioridade; blue and the chevron turned down
+while open) opens and closes it. Closed by default, the choice remembered;
+not on phones. Its top
 edge resizes it like the sidebar's (a horizontal grip pill in the middle,
 `row-resize`, 120–560 px and at least 220 px of canvas left, remembered,
 double click resets, arrow keys nudge). A header line names the structure
