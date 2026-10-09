@@ -234,7 +234,52 @@ interface Search {
   frontier: FrontierName | null;
   /** DFS only: the way it was written. */
   dfs: DfsName | null;
+  /** Steps of the replay's timeline: one per discovery (`span`), or for a
+      DFS one per push and one per pop. */
+  steps: number;
+  /** DFS only: the stack's moves, step by step (`v` pushes v, `-v` pops it). */
+  trail: Int32Array | null;
+  /** DFS only: the discovery rank each step stands at. */
+  rankAt: Uint32Array | null;
+  /** DFS only: the step that pushes each discovery rank. */
+  stepOf: Uint32Array | null;
   result: SearchResult | ShortestPathResult;
+}
+
+/** DFS's timeline, read off its tree: between two discoveries the stack
+    pops back to the new vertex's parent, then pushes it; a whole search
+    ends by popping everything, one stopped at a target does not. */
+function dfsTrail(order: Uint32Array, parents: Uint32Array, span: number, unwind: boolean) {
+  const trail: number[] = [];
+  const rankAt: number[] = [];
+  const stepOf = new Uint32Array(span);
+  const stack: number[] = [];
+  for (let r = 0; r < span; r++) {
+    const v = order[r];
+    while (r > 0 && stack.length && stack[stack.length - 1] !== parents[v]) {
+      trail.push(-stack.pop()!);
+      rankAt.push(r - 1);
+    }
+    stack.push(v);
+    stepOf[r] = trail.length;
+    trail.push(v);
+    rankAt.push(r);
+  }
+  while (unwind && stack.length) {
+    trail.push(-stack.pop()!);
+    rankAt.push(span - 1);
+  }
+  return { trail: Int32Array.from(trail), rankAt: Uint32Array.from(rankAt), stepOf };
+}
+
+/** The discovery rank a timeline position stands at: the position itself,
+    or for a DFS the rank of its last push, gliding on to the next one
+    while the next step is a push. */
+function rankOf(search: Search, position: number): number {
+  if (!search.trail || !search.rankAt) return position;
+  const i = Math.max(0, Math.min(search.steps - 1, Math.floor(position)));
+  const next = i + 1 < search.steps && search.trail[i + 1] > 0;
+  return search.rankAt[i] + (next ? Math.min(1, position - i) : 0);
 }
 
 interface DiameterInfo {
@@ -1110,6 +1155,7 @@ export default function Observatory() {
           levelSizes = new Uint32Array(depth + 1);
           for (let r = 0; r < span; r++) levelSizes[levels[order[r]]] += 1;
         }
+        const moves = which === 'dfs' ? dfsTrail(order, parents, span, !(target && path)) : null;
         renderer.setSearch({ kind: which, levels, ranks, parents, depth });
         renderer.setPath(target, path);
         renderer.setPathOnly(pathOnly);
@@ -1132,6 +1178,10 @@ export default function Observatory() {
           bandWidth,
           frontier: which === 'dijkstra' ? frontier : null,
           dfs: which === 'dfs' ? dfsWay : null,
+          steps: moves ? moves.trail.length : span,
+          trail: moves?.trail ?? null,
+          rankAt: moves?.rankAt ?? null,
+          stepOf: moves?.stepOf ?? null,
           result,
         });
         // A search that ran supersedes an earlier refusal.
@@ -1155,18 +1205,19 @@ export default function Observatory() {
   // ones finish within seconds.
   useEffect(() => {
     if (!playing || !search) return;
-    const total = search.span;
+    const total = search.steps;
     const duration = Math.min(8000, Math.max(1600, total * 6));
-    rendererRef.current?.setRevealRate((Math.max(total - 1, 1) / duration) * 1000);
+    rendererRef.current?.setRevealRate((Math.max(search.span - 1, 1) / duration) * 1000);
     let frame = 0;
     let start: number | null = null;
     const from = revealRef.current >= total - 1 ? 0 : revealRef.current;
     const tick = (now: number) => {
       if (start === null) start = now - (from / Math.max(total - 1, 1)) * duration;
       const t = Math.min(1, (now - start) / duration);
-      const rank = t * (total - 1);
-      revealRef.current = rank;
-      setReveal(rank);
+      const position = t * (total - 1);
+      const rank = rankOf(search, position);
+      revealRef.current = position;
+      setReveal(position);
       rendererRef.current?.setReveal(rank);
       if (followRef.current) fitDiscovered(search.ranks, rank);
       if (t < 1) {
@@ -1179,9 +1230,8 @@ export default function Observatory() {
     return () => cancelAnimationFrame(frame);
   }, [playing, search, fitDiscovered]);
 
-  // The structure strip reads the graph through these: a vertex's
-  // neighbours (for the DFS frames' cursors) and Dijkstra's frontier
-  // replayed to a step by the library.
+  // The structure strip reads Dijkstra's frontier through this, replayed
+  // to a step by the library.
   const frontierAt = useCallback(
     (step: number, limit: number): FrontierView | null => {
       const graph = graphRef.current;
@@ -1212,14 +1262,20 @@ export default function Observatory() {
     [search],
   );
 
-  const scrub = (rank: number) => {
+  /** Moves the timeline to a step (a discovery rank, but for a DFS). */
+  const scrub = (position: number) => {
     keysTarget.current = 'search';
     setPlaying(false);
-    revealRef.current = rank;
-    setReveal(rank);
+    revealRef.current = position;
+    setReveal(position);
+    const rank = search ? rankOf(search, position) : position;
     rendererRef.current?.setReveal(rank);
     if (follow && search) fitDiscovered(search.ranks, rank);
   };
+
+  /** Moves the timeline to the discovery of a rank. */
+  const scrubToRank = (rank: number) =>
+    scrub(search?.stepOf ? search.stepOf[Math.max(0, Math.min(rank, search.span - 1))] : rank);
 
   /** Moves the timeline to a level: a BFS shows the whole level, a DFS jumps
       to the first vertex discovered at that depth. */
@@ -1232,11 +1288,12 @@ export default function Observatory() {
     } else {
       while (rank < search.order.length - 1 && search.levels[search.order[rank]] !== level) rank++;
     }
-    scrub(Math.max(0, Math.min(rank, search.span - 1)));
+    scrubToRank(Math.max(0, Math.min(rank, search.span - 1)));
   };
 
-  /** The level of the vertex the timeline is at. */
-  const revealLevel = search ? search.levels[search.order[Math.round(reveal)]] : 0;
+  /** The discovery rank the timeline is at, and the level of its vertex. */
+  const revealRank = search ? rankOf(search, reveal) : 0;
+  const revealLevel = search ? search.levels[search.order[Math.round(revealRank)]] : 0;
 
   const downloadTree = () => {
     if (!search || !meta) return;
@@ -1551,7 +1608,7 @@ export default function Observatory() {
           k.scrubToLevel(Math.max(0, Math.min(k.search.depth, k.revealLevel + dir)));
         } else {
           k.scrub(
-            Math.max(0, Math.min(k.search.span - 1, Math.round(revealRef.current) + dir * 10)),
+            Math.max(0, Math.min(k.search.steps - 1, Math.round(revealRef.current) + dir * 10)),
           );
         }
         return;
@@ -1559,7 +1616,7 @@ export default function Observatory() {
       if (k.search && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
         event.preventDefault();
         const step = (event.shiftKey ? 10 : 1) * (event.key === 'ArrowRight' ? 1 : -1);
-        k.scrub(Math.max(0, Math.min(k.search.span - 1, Math.round(revealRef.current) + step)));
+        k.scrub(Math.max(0, Math.min(k.search.steps - 1, Math.round(revealRef.current) + step)));
         return;
       }
       if (event.key === 'Escape') {
@@ -2189,19 +2246,19 @@ export default function Observatory() {
                       order={search.order}
                       values={search.levels}
                       format={String}
-                      reveal={reveal}
-                      onScrub={scrub}
+                      reveal={revealRank}
+                      onScrub={scrubToRank}
                     />
                   )}
                   <div className={styles.playback}>
                     <IconButton
-                      label={playing ? t.pause : reveal >= search.span - 1 ? t.replay : t.play}
+                      label={playing ? t.pause : reveal >= search.steps - 1 ? t.replay : t.play}
                       onClick={() => setPlaying((p) => !p)}
                       accent
                     >
                       {playing ? (
                         <Pause size={14} />
-                      ) : reveal >= search.span - 1 ? (
+                      ) : reveal >= search.steps - 1 ? (
                         <RotateCcw size={14} />
                       ) : (
                         <Play size={14} />
@@ -2210,14 +2267,14 @@ export default function Observatory() {
                     <input
                       type="range"
                       min={0}
-                      max={Math.max(search.span - 1, 0)}
+                      max={Math.max(search.steps - 1, 0)}
                       step={1}
                       value={Math.round(reveal)}
                       onChange={(event) => scrub(Number(event.target.value))}
                       aria-label={t.progress}
                     />
                     <span className={`mono ${styles.hint}`}>
-                      {formatInt(Math.min(Math.round(reveal) + 1, search.span))}
+                      {formatInt(Math.min(Math.round(reveal) + 1, search.steps))}
                     </span>
                   </div>
                 </div>
@@ -2569,7 +2626,8 @@ export default function Observatory() {
                     onClick={() => {
                       const next = !follow;
                       setFollow(next);
-                      if (next && search) fitDiscovered(search.ranks, revealRef.current);
+                      if (next && search)
+                        fitDiscovered(search.ranks, rankOf(search, revealRef.current));
                     }}
                   >
                     <Focus size={15} />
