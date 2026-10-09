@@ -218,6 +218,17 @@
   margin-bottom: 10px;
 }
 
+/* The structure's name over the queue, on the analysing label's line. */
+.queueTitle {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
+  justify-self: center;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: var(--accent);
+}
+
 .slotCell {
   grid-column: 1;
   grid-row: 2;

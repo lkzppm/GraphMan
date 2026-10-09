@@ -275,7 +275,8 @@ double click resets, arrow keys nudge). A header line names the structure
 (tracked blue label: Fila, Pilha, Fila de prioridade · vetor / heap
 binário), says what the step did in mono ("desempilha 8, 4 · empilha 6",
 "fixa 5 em 1,5 · baixa 8: 4 → 3,25") and, in grey, the size and the step;
-BFS has no header: the queue's size is written under the queue,
+BFS has no header: the structure's name ("Fila", tracked, blue) sits over
+the queue on the analysing label's line, and its size is written under it,
 "Tamanho da fila: N" in grey with N in blue mono. BFS's queue is an array:
 square cells in the level colours, sized from the strip's height (the
 analysing circle 34 to 64 px, the queue's squares 72 % of it), glued by a 1 px seam (rounded only at its two ends, a wider seam
