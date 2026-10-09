@@ -438,7 +438,10 @@ export const en = {
     verticesPer: (noun: string) => `Vertices per ${noun}`,
     goTo: (noun: string, n: number | string) => `Go to ${noun} ${n}`,
     depthTrace: 'Depth over the traversal',
-    distanceTrace: 'Distance over the search',
+    distancesFrom: (root: string) => `Distances from ${root}`,
+    nearestFirst: 'nearest first',
+    unreachedCount: (n: string) => `${n} unreachable`,
+    drawPathTo: (v: string) => `Draw the shortest path to ${v}`,
   },
 
   presentation: {

@@ -442,7 +442,10 @@ export const pt: Dictionary = {
     verticesPer: (noun: string) => `Vértices por ${noun}`,
     goTo: (noun: string, n: number | string) => `Ir para ${noun} ${n}`,
     depthTrace: 'Profundidade ao longo da busca',
-    distanceTrace: 'Distância ao longo da busca',
+    distancesFrom: (root: string) => `Distâncias a partir de ${root}`,
+    nearestFirst: 'mais perto primeiro',
+    unreachedCount: (n: string) => `${n} inalcançáveis`,
+    drawPathTo: (v: string) => `Desenhar o caminho mais curto até ${v}`,
   },
 
   presentation: {

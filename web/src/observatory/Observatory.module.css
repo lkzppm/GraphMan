@@ -776,8 +776,67 @@
   opacity: 1;
 }
 
-/* A search over its visit order (DFS depth, Dijkstra distance): an SVG
-   area, blue up to the timeline cursor. */
+/* Dijkstra's answer: one row per settled vertex, closest first, only the
+   rows in view rendered (each placed at its own offset). They reuse the
+   level rows' index, track and bar, lit as the replay settles them. */
+.distList {
+  position: relative;
+  /* Takes the room the panel has left and scrolls the rest. */
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.distList > div {
+  position: relative;
+}
+
+.distRow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 20px;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 0 0;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s var(--ease);
+}
+
+.distRow:hover {
+  background: var(--bg-3);
+}
+
+.distRow .levelIndex {
+  text-align: right;
+}
+
+.distRow:hover .levelIndex,
+.distRow[data-target] .levelIndex {
+  color: var(--accent);
+}
+
+.distRow[data-target] {
+  background: var(--accent-muted);
+}
+
+.distValue {
+  font-size: 10.5px;
+  color: var(--fg-3);
+  text-align: right;
+}
+
+.levelLit .distValue {
+  color: var(--fg);
+}
+
+/* DFS depth over its visit order: an SVG area, blue up to the timeline
+   cursor. */
 .trace:focus-visible {
   outline-offset: 4px;
 }
@@ -808,14 +867,6 @@
   fill: none;
   stroke: var(--accent);
   stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
-}
-
-/* Where a distance query stops: the target's distance, dashed. */
-.traceGoal {
-  stroke: var(--fg-3);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
   vector-effect: non-scaling-stroke;
 }
 
@@ -2100,6 +2151,14 @@
    important pieces one by one (component bar, histogram, level profile)
    and only scrolls as a last resort. The component bar and the histogram
    only go once a search result needs the room. */
+/* Dijkstra's answer is a list to read, row by row: below 900 px the degree
+   chart makes room for it sooner than for the other searches. */
+@media (max-height: 900px) {
+  .sidebar[data-search='dijkstra'] .shedThird {
+    display: none;
+  }
+}
+
 @media (max-height: 820px) {
   .sidebar[data-search] .shedSecond {
     display: none;

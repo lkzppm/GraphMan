@@ -288,12 +288,15 @@ click on the canvas picks the target once the origin is set;
 **Dijkstra** reads like a BFS whose levels are distance bands: the origin
 alone at 0, then twelve equal slices up to the farthest settled vertex.
 Vertices settle by distance, so each band is a contiguous stretch of the
-timeline and the ↑/↓ keys and the colour ramp work unchanged. The chart
-is not banded, though: "distance over the search" is the DFS trace's
-twin, the distance of each vertex in settle order, a curve that only
-climbs (exact, no slices to choose), filled blue up to the timeline's
-cursor and scrubbable; in Distance it ends at the target, with a dashed
-line at the target's distance; the legend reads `distance 0 →
+timeline and the ↑/↓ keys and the colour ramp work unchanged. The chart is
+what Dijkstra answers, "distances from <origin>": one row per settled
+vertex, closest first (the vertex, a bar to scale, the distance in mono),
+lit as the replay settles it and kept in view; hovering a row marks the
+vertex on the canvas, clicking it runs the distance query to it (the row
+stays highlighted, and the rows past it stay clickable). Only the rows in
+view are rendered (20 px each), so a million vertices scroll like ten;
+the header counts the unreachable vertices. Below 900 px of height the
+degree chart steps aside for it; the legend reads `distance 0 →
 distance MAX`, the hover card the vertex's distance, the tiles the
 eccentricity (or, in Distance, the path's weight) with at most three
 decimals. A graph with a negative weight is refused with a notice in the
