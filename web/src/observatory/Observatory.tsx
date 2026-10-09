@@ -2833,8 +2833,8 @@ function ExamplesMenu({
 }
 
 /**
- * The sidebar's edge, draggable on a desktop: a grip in the middle of the
- * boundary, the whole edge as its hit zone. While dragging, the width goes
+ * The sidebar's edge, resizable on a desktop by the grip in its middle (only
+ * the grip: the rest of the edge stays a plain border). While dragging, the width goes
  * straight to the app's CSS variable (no re-render per pointer move); it is
  * committed on release. Arrow keys nudge it, a double click restores the
  * default.
@@ -2863,47 +2863,46 @@ function SidebarHandle({
   };
 
   return (
-    <div
-      className={styles.sidebarHandle}
-      role="separator"
-      aria-orientation="vertical"
-      aria-label={label}
-      aria-valuemin={SIDEBAR_MIN}
-      aria-valuemax={SIDEBAR_MAX}
-      aria-valuenow={width}
-      title={label}
-      tabIndex={0}
-      data-dragging={dragging || undefined}
-      onPointerDown={(event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        event.currentTarget.setPointerCapture(event.pointerId);
-        live.current = width;
-        setDragging(true);
-      }}
-      onPointerMove={(event) => {
-        if (dragging) preview(widthAt(event.clientX));
-      }}
-      onPointerUp={() => {
-        if (!dragging) return;
-        setDragging(false);
-        onCommit(live.current);
-      }}
-      onPointerCancel={() => {
-        if (!dragging) return;
-        setDragging(false);
-        onCommit(live.current);
-      }}
-      onDoubleClick={() => onCommit(SIDEBAR_DEFAULT)}
-      onKeyDown={(event) => {
-        const step = event.shiftKey ? 64 : 16;
-        if (event.key === 'ArrowLeft') onCommit(clampSidebar(width - step));
-        else if (event.key === 'ArrowRight') onCommit(clampSidebar(width + step));
-        else return;
-        event.preventDefault();
-      }}
-    >
-      <span className={styles.sidebarGrip} aria-hidden="true" />
+    <div className={styles.sidebarHandle} data-dragging={dragging || undefined}>
+      <div
+        className={styles.sidebarGrip}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={label}
+        aria-valuemin={SIDEBAR_MIN}
+        aria-valuemax={SIDEBAR_MAX}
+        aria-valuenow={width}
+        title={label}
+        tabIndex={0}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          live.current = width;
+          setDragging(true);
+        }}
+        onPointerMove={(event) => {
+          if (dragging) preview(widthAt(event.clientX));
+        }}
+        onPointerUp={() => {
+          if (!dragging) return;
+          setDragging(false);
+          onCommit(live.current);
+        }}
+        onPointerCancel={() => {
+          if (!dragging) return;
+          setDragging(false);
+          onCommit(live.current);
+        }}
+        onDoubleClick={() => onCommit(SIDEBAR_DEFAULT)}
+        onKeyDown={(event) => {
+          const step = event.shiftKey ? 64 : 16;
+          if (event.key === 'ArrowLeft') onCommit(clampSidebar(width - step));
+          else if (event.key === 'ArrowRight') onCommit(clampSidebar(width + step));
+          else return;
+          event.preventDefault();
+        }}
+      />
     </div>
   );
 }

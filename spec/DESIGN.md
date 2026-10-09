@@ -247,9 +247,9 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
 
 The observatory renders under the nav (`calc(100dvh - var(--nav-height))`)
 with no header of its own: a sidebar (340 px by default) and the stage.
-On a desktop the boundary between them is draggable: a grip pill in its
-middle (the whole edge is the hit zone, `col-resize`), blue while hovered
-or dragged; the width stays within 280–560 px and leaves the canvas at
+On a desktop the boundary between them resizes by the grip pill in its
+middle (only the grip drags, `col-resize`; the rest of the edge stays a
+border), the boundary blue while the grip is hovered or dragged; the width stays within 280–560 px and leaves the canvas at
 least 400, is remembered per browser, resets on a double click and moves
 with the arrow keys (Shift for bigger steps). Phones keep the bottom sheet. The sidebar never
 scrolls; it is a column of panels (Graph: file name with an info button
