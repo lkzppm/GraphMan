@@ -587,9 +587,10 @@ export default function Observatory() {
   }, []);
 
   /** Frames the whole graph: gliding when asked for (button, F, double
-      click), at once while the layout settles under auto-fit. */
+      click), at once while the layout settles under auto-fit. `size` frames
+      it for a canvas about to take that size (CSS pixels). */
   const fit = useCallback(
-    (smooth = true) => {
+    (smooth = true, size?: [number, number]) => {
       const renderer = rendererRef.current;
       if (!renderer || !renderer.hasGraph) return;
       const positions = renderer.positionsMirror;
@@ -606,7 +607,7 @@ export default function Observatory() {
         if (y > maxY) maxY = y;
       }
       if (!Number.isFinite(minX)) return;
-      const [w, h] = renderer.cssSize;
+      const [w, h] = size ?? renderer.cssSize;
       const bw = Math.max(maxX - minX, 1);
       const bh = Math.max(maxY - minY, 1);
       const zoom = Math.min((w * 0.86) / bw, (h * 0.86) / bh, 40);
@@ -1232,6 +1233,19 @@ export default function Observatory() {
 
   // The structure strip reads Dijkstra's frontier through this, replayed
   // to a step by the library.
+  // Opening the structure strip takes the canvas's bottom: the graph is
+  // framed again for the room left, gliding while the strip grows.
+  const stripShown = Boolean(meta && search && structuresOpen && !phone);
+  const stripWasShown = useRef(stripShown);
+  useEffect(() => {
+    const opened = stripShown && !stripWasShown.current;
+    stripWasShown.current = stripShown;
+    const renderer = rendererRef.current;
+    const column = columnRef.current;
+    if (!opened || !renderer || !column) return;
+    fit(true, [renderer.cssSize[0], Math.max(column.clientHeight - stripHeight, 1)]);
+  }, [stripShown, stripHeight, fit]);
+
   const frontierAt = useCallback(
     (step: number, limit: number): FrontierView | null => {
       const graph = graphRef.current;
