@@ -210,6 +210,9 @@ interface Search {
   ranks: Uint32Array;
   /** Dijkstra only: the distance of every vertex (Infinity if unreached). */
   distances: Float64Array | null;
+  /** Dijkstra only: every settled vertex, closest first (the whole run,
+      even when the timeline stops at a target). */
+  settled: Uint32Array | null;
   /** Dijkstra only: the width of one distance band. */
   bandWidth: number;
   /** Dijkstra only: the frontier that ran. */
@@ -990,6 +993,7 @@ export default function Observatory() {
         let levelSizes: Uint32Array;
         let depth: number;
         let distances: Float64Array | null = null;
+        let settled: Uint32Array | null = null;
         let bandWidth = 0;
         let fullPath: Uint32Array | null = null;
         if (which === 'dijkstra') {
@@ -999,6 +1003,7 @@ export default function Observatory() {
           );
           result = run;
           distances = run.distances();
+          settled = run.order();
           const bands = distanceBands(distances, run.order());
           levels = bands.levels;
           bandWidth = bands.width;
@@ -1060,6 +1065,7 @@ export default function Observatory() {
           order,
           ranks,
           distances,
+          settled,
           bandWidth,
           frontier: which === 'dijkstra' ? frontier : null,
           dfs: which === 'dfs' ? dfsWay : null,
@@ -1719,7 +1725,7 @@ export default function Observatory() {
 
       <aside
         className={`${styles.sidebar} ${meta ? '' : styles.sidebarEmpty}`}
-        data-search={search ? '' : undefined}
+        data-search={search?.kind}
         data-sheet={meta && phone ? sheet : undefined}
       >
         {meta ? (
@@ -2028,16 +2034,21 @@ export default function Observatory() {
                       current={revealLevel}
                       onSelect={scrubToLevel}
                     />
-                  ) : search.distances ? (
-                    <Trace
+                  ) : search.distances && search.settled ? (
+                    <DistanceList
                       t={t}
-                      title={t.distanceTrace}
-                      order={search.order}
-                      values={search.distances}
-                      format={formatWeight}
-                      goal={search.target !== 0 && search.path !== null}
+                      root={search.root}
+                      settled={search.settled}
+                      distances={search.distances}
+                      unreached={(meta?.vertices ?? 0) - search.settled.length}
+                      target={search.target}
                       reveal={reveal}
-                      onScrub={scrub}
+                      onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
+                      onPick={(v) => {
+                        setMode('distance');
+                        setTargetInput(String(v));
+                        runSearch('dijkstra', search.root, v);
+                      }}
                     />
                   ) : (
                     <Trace
@@ -3374,19 +3385,129 @@ function LevelProfile({
   );
 }
 
+/** Height of one row of the distance list, in CSS pixels. */
+const DISTANCE_ROW = 20;
+
+/**
+ * What Dijkstra answers: the distance from the origin to every other
+ * vertex, one row each, closest first (the settle order), with a bar to
+ * scale. Rows light up as the replay settles them; hovering one marks the
+ * vertex on the canvas, clicking one draws the shortest path to it. Only
+ * the rows in view are rendered, so a million vertices scroll like ten.
+ */
+function DistanceList({
+  t,
+  root,
+  settled,
+  distances,
+  unreached,
+  target,
+  reveal,
+  onHover,
+  onPick,
+}: {
+  t: Strings;
+  root: number;
+  /** Settled vertices, closest first, the origin included. */
+  settled: Uint32Array;
+  distances: Float64Array;
+  unreached: number;
+  target: number;
+  reveal: number;
+  onHover: (v: number) => void;
+  onPick: (v: number) => void;
+}) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState({ top: 0, height: 0 });
+  // The origin is rank 0; the rows are everyone else.
+  const count = Math.max(0, settled.length - 1);
+  const farthest = count ? distances[settled[count]] : 0;
+  const current = Math.round(reveal);
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const measure = () => setView({ top: list.scrollTop, height: list.clientHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
+
+  // Keep the row the replay is on in view.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || current < 1) return;
+    const y = (current - 1) * DISTANCE_ROW;
+    if (y < list.scrollTop) list.scrollTop = y;
+    else if (y + DISTANCE_ROW > list.scrollTop + list.clientHeight)
+      list.scrollTop = y + DISTANCE_ROW - list.clientHeight;
+  }, [current]);
+
+  const first = Math.max(0, Math.floor(view.top / DISTANCE_ROW) - 4);
+  const last = Math.min(count, Math.ceil((view.top + view.height) / DISTANCE_ROW) + 4);
+  const rows = [];
+  for (let i = first; i < last; i++) {
+    const rank = i + 1;
+    const v = settled[rank];
+    const d = distances[v];
+    rows.push(
+      <button
+        key={v}
+        type="button"
+        className={`${styles.distRow} ${rank <= current ? styles.levelLit : ''} ${rank === current ? styles.levelCurrent : ''}`}
+        style={{ top: i * DISTANCE_ROW }}
+        data-target={v === target || undefined}
+        title={t.drawPathTo(String(v))}
+        onClick={() => onPick(v)}
+        onPointerEnter={() => onHover(v)}
+        onPointerLeave={() => onHover(0)}
+      >
+        <span className={`mono ${styles.levelIndex}`}>{v}</span>
+        <span className={styles.levelTrack}>
+          <span
+            className={styles.levelBar}
+            style={{ width: `${farthest > 0 ? Math.max(1.5, (d / farthest) * 100) : 100}%` }}
+          />
+        </span>
+        <span className={`mono ${styles.distValue}`}>{formatWeight(d)}</span>
+      </button>,
+    );
+  }
+
+  return (
+    <div
+      className={`${styles.chart} ${styles.shedFourth}`}
+      aria-label={t.distancesFrom(String(root))}
+    >
+      <div className={styles.chartHeader}>
+        <span className={`label ${styles.tileLabel}`}>{t.distancesFrom(String(root))}</span>
+        <span className={styles.tileHint}>
+          {unreached > 0 ? t.unreachedCount(formatInt(unreached)) : t.nearestFirst}
+        </span>
+      </div>
+      <div
+        ref={listRef}
+        className={styles.distList}
+        onScroll={(event) =>
+          setView({ top: event.currentTarget.scrollTop, height: event.currentTarget.clientHeight })
+        }
+      >
+        <div style={{ height: count * DISTANCE_ROW }}>{rows}</div>
+      </div>
+    </div>
+  );
+}
+
 /** A search as a value over its visit order, with the timeline's cursor on
-    it: a DFS's depth (it plunges and backtracks) or Dijkstra's distance
-    (it only climbs, since vertices settle closest first, so the curve is
-    exact, with no bands to choose). Click or drag on it to move the
-    timeline. `goal` draws a dashed line at the last value: the target's
-    distance, where a distance query stops. */
+    it: a DFS's depth, which plunges and backtracks. Click or drag on it to
+    move the timeline. */
 function Trace({
   t,
   title,
   order,
   values,
   format,
-  goal = false,
   reveal,
   onScrub,
 }: {
@@ -3397,7 +3518,6 @@ function Trace({
   /** The plotted value of each vertex, indexed by vertex. */
   values: ArrayLike<number>;
   format: (value: number) => string;
-  goal?: boolean;
   reveal: number;
   onScrub: (rank: number) => void;
 }) {
@@ -3410,7 +3530,6 @@ function Trace({
     for (let r = 0; r < total; r++) max = Math.max(max, values[order[r]]);
     return max;
   }, [order, values, total]);
-  const yOf = (value: number) => H - (value / (top > 0 ? top : 1)) * (H - 2) - 1;
   // Downsample to at most W columns, keeping the highest point of each.
   const path = useMemo(() => {
     const columns = Math.min(W, total);
@@ -3461,7 +3580,6 @@ function Trace({
         aria-valuenow={Math.round(reveal)}
         tabIndex={0}
       >
-        {goal && <line className={styles.traceGoal} x1={0} x2={W} y1={yOf(top)} y2={yOf(top)} />}
         <path className={styles.traceDim} d={`M${path}`} />
         <clipPath id={clipId}>
           <rect x={0} y={0} width={cursorX} height={H} />
