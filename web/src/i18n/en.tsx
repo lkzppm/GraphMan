@@ -316,7 +316,6 @@ export const en = {
     negativeWeights: (n: number) => (n === 1 ? '1 negative weight' : `${n} negative weights`),
     refusal: (u: number, v: number, w: string) =>
       `Dijkstra refuses this graph: the edge ${u} ${v} weighs ${w}, and shortest paths with negative weights are not implemented yet.`,
-    distanceNoun: 'distance',
     distanceAt: (d: string) => `distance ${d}`,
     mode: 'Mode',
     modeSearch: 'Max',
@@ -439,6 +438,7 @@ export const en = {
     verticesPer: (noun: string) => `Vertices per ${noun}`,
     goTo: (noun: string, n: number | string) => `Go to ${noun} ${n}`,
     depthTrace: 'Depth over the traversal',
+    distanceTrace: 'Distance over the search',
   },
 
   presentation: {

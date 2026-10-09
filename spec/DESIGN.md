@@ -272,7 +272,7 @@ segments and play button, 11 px labels. **Distance** runs the chosen
 traversal from the origin and stops it the moment the target is
 discovered: the tiles read distance (steps, for a DFS; `∞` when the
 target is in another component), reached and time, and the level profile
-or depth trace cover only what was visited until then. The path floats
+or the trace cover only what was visited until then. The path floats
 at the top centre of the canvas as a row of balls (`③ → ⑤ → ②`, coloured
 from the origin's accent to the destination's `--target` green, the
 middle elided past ten) with two icon buttons beside it: grey out
@@ -288,9 +288,12 @@ click on the canvas picks the target once the origin is set;
 **Dijkstra** reads like a BFS whose levels are distance bands: the origin
 alone at 0, then twelve equal slices up to the farthest settled vertex.
 Vertices settle by distance, so each band is a contiguous stretch of the
-timeline and the level chart ("vertices per distance", rows named by the
-distance their band reaches, three significant figures), the ↑/↓ keys
-and the colour ramp all work unchanged; the legend reads `distance 0 →
+timeline and the ↑/↓ keys and the colour ramp work unchanged. The chart
+is not banded, though: "distance over the search" is the DFS trace's
+twin, the distance of each vertex in settle order, a curve that only
+climbs (exact, no slices to choose), filled blue up to the timeline's
+cursor and scrubbable; in Distance it ends at the target, with a dashed
+line at the target's distance; the legend reads `distance 0 →
 distance MAX`, the hover card the vertex's distance, the tiles the
 eccentricity (or, in Distance, the path's weight) with at most three
 decimals. A graph with a negative weight is refused with a notice in the
