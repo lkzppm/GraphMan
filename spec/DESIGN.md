@@ -259,7 +259,8 @@ swap in place without a jump: the old view fades out, the next rises in,
 and the panel eases its height between them); Search: the algorithm
 as a full-width three-way segmented control (BFS / DFS / Dijkstra), under
 it mode (Max, the whole traversal / Distance) and, for Dijkstra only, the
-frontier (Vector / Heap, the course's two versions, so their times can be
+priority queue ("Fila de prioridade": Vector / Heap, the course's two versions; the
+code calls it the `Frontier`, the site uses the textbook name, so their times can be
 compared on the spot) side by side, then
 origin (and, in Distance, target) with a square play button, then result
 tiles, level profile and playback (replay + slider + count; download and
