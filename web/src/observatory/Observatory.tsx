@@ -39,6 +39,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -2020,21 +2021,31 @@ export default function Observatory() {
                     />
                     <Stat label={t.time} value={formatMs(search.elapsedMs)} />
                   </div>
-                  {search.kind !== 'dfs' ? (
+                  {search.kind === 'bfs' ? (
                     <LevelProfile
                       t={t}
                       sizes={search.levelSizes}
-                      kind={search.kind}
-                      bandWidth={search.distances ? search.bandWidth : 0}
                       current={revealLevel}
                       onSelect={scrubToLevel}
                     />
-                  ) : (
-                    <DepthTrace
+                  ) : search.distances ? (
+                    <Trace
                       t={t}
+                      title={t.distanceTrace}
                       order={search.order}
-                      levels={search.levels}
-                      depth={search.depth}
+                      values={search.distances}
+                      format={formatWeight}
+                      goal={search.target !== 0 && search.path !== null}
+                      reveal={reveal}
+                      onScrub={scrub}
+                    />
+                  ) : (
+                    <Trace
+                      t={t}
+                      title={t.depthTrace}
+                      order={search.order}
+                      values={search.levels}
+                      format={String}
                       reveal={reveal}
                       onScrub={scrub}
                     />
@@ -3281,22 +3292,16 @@ function ComponentsView({
   );
 }
 
-/** Vertices per level as horizontal bars, level 0 at the bottom; the index
-    on the left is a button that moves the timeline to that level. */
+/** A BFS's vertices per level as horizontal bars, level 0 at the top; the
+    index on the left is a button that moves the timeline to that level. */
 function LevelProfile({
   t,
   sizes,
-  kind,
-  bandWidth = 0,
   current,
   onSelect,
 }: {
   t: Strings;
   sizes: Uint32Array;
-  kind: SearchKindName;
-  /** Dijkstra: the width of a distance band; rows are labelled with the
-      distance their band reaches instead of a level number. */
-  bandWidth?: number;
   current: number;
   onSelect: (level: number) => void;
 }) {
@@ -3320,10 +3325,8 @@ function LevelProfile({
     return out;
   }, [sizes]);
   const peak = rows.reduce((m, r) => Math.max(m, r.count), 1);
-  const noun = kind === 'dijkstra' ? t.distanceNoun : kind === 'bfs' ? t.levelNoun : t.depthNoun;
-  /** A row's name: its level, or for a distance band the distance it reaches. */
-  const name = (level: number) =>
-    kind === 'dijkstra' ? String(Number((level * bandWidth).toPrecision(3))) : String(level);
+  const noun = t.levelNoun;
+  const name = String;
 
   // Keep the current level in view while the wave plays.
   useEffect(() => {
@@ -3371,43 +3374,60 @@ function LevelProfile({
   );
 }
 
-/** A DFS as the stack depth over discovery time: it plunges and backtracks.
-    Click or drag on the trace to move the timeline. */
-function DepthTrace({
+/** A search as a value over its visit order, with the timeline's cursor on
+    it: a DFS's depth (it plunges and backtracks) or Dijkstra's distance
+    (it only climbs, since vertices settle closest first, so the curve is
+    exact, with no bands to choose). Click or drag on it to move the
+    timeline. `goal` draws a dashed line at the last value: the target's
+    distance, where a distance query stops. */
+function Trace({
   t,
+  title,
   order,
-  levels,
-  depth,
+  values,
+  format,
+  goal = false,
   reveal,
   onScrub,
 }: {
   t: Strings;
+  title: string;
+  /** Vertices in visit order (rank → vertex). */
   order: Uint32Array;
-  levels: Uint32Array;
-  depth: number;
+  /** The plotted value of each vertex, indexed by vertex. */
+  values: ArrayLike<number>;
+  format: (value: number) => string;
+  goal?: boolean;
   reveal: number;
   onScrub: (rank: number) => void;
 }) {
   const W = 300;
   const H = 72;
+  const clipId = useId();
   const total = order.length;
-  // Downsample to at most W columns, keeping the deepest point of each.
+  const top = useMemo(() => {
+    let max = 0;
+    for (let r = 0; r < total; r++) max = Math.max(max, values[order[r]]);
+    return max;
+  }, [order, values, total]);
+  const yOf = (value: number) => H - (value / (top > 0 ? top : 1)) * (H - 2) - 1;
+  // Downsample to at most W columns, keeping the highest point of each.
   const path = useMemo(() => {
     const columns = Math.min(W, total);
     const pts: string[] = [];
     for (let c = 0; c < columns; c++) {
       const from = Math.floor((c * total) / columns);
       const to = Math.max(from, Math.floor(((c + 1) * total) / columns) - 1);
-      let deepest = 0;
-      for (let r = from; r <= to; r++) deepest = Math.max(deepest, levels[order[r]]);
+      let highest = 0;
+      for (let r = from; r <= to; r++) highest = Math.max(highest, values[order[r]]);
       const x = (c / Math.max(columns - 1, 1)) * W;
-      const y = H - (deepest / Math.max(depth, 1)) * (H - 2) - 1;
+      const y = H - (highest / (top > 0 ? top : 1)) * (H - 2) - 1;
       pts.push(`${x.toFixed(1)} ${y.toFixed(1)}`);
     }
     return pts.join(' L');
-  }, [order, levels, depth, total]);
+  }, [order, values, top, total]);
   const cursorX = (Math.min(reveal, total - 1) / Math.max(total - 1, 1)) * W;
-  const currentDepth = levels[order[Math.min(Math.round(reveal), total - 1)]];
+  const current = values[order[Math.min(Math.round(reveal), total - 1)]];
 
   const scrubAt = (event: ReactPointerEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -3416,11 +3436,11 @@ function DepthTrace({
   };
 
   return (
-    <div className={`${styles.chart} ${styles.shedFourth}`} aria-label={t.depthTrace}>
+    <div className={`${styles.chart} ${styles.shedFourth}`} aria-label={title}>
       <div className={styles.chartHeader}>
-        <span className={`label ${styles.tileLabel}`}>{t.depthTrace}</span>
+        <span className={`label ${styles.tileLabel}`}>{title}</span>
         <span className={`mono ${styles.tileHint}`}>
-          {currentDepth} / {depth}
+          {format(current)} / {format(top)}
         </span>
       </div>
       <svg
@@ -3441,16 +3461,17 @@ function DepthTrace({
         aria-valuenow={Math.round(reveal)}
         tabIndex={0}
       >
+        {goal && <line className={styles.traceGoal} x1={0} x2={W} y1={yOf(top)} y2={yOf(top)} />}
         <path className={styles.traceDim} d={`M${path}`} />
-        <clipPath id="trace-lit">
+        <clipPath id={clipId}>
           <rect x={0} y={0} width={cursorX} height={H} />
         </clipPath>
         <path
           className={styles.traceLit}
           d={`M${path} L${W} ${H} L0 ${H} Z`}
-          clipPath="url(#trace-lit)"
+          clipPath={`url(#${clipId})`}
         />
-        <path className={styles.traceLine} d={`M${path}`} clipPath="url(#trace-lit)" />
+        <path className={styles.traceLine} d={`M${path}`} clipPath={`url(#${clipId})`} />
         <line className={styles.traceCursor} x1={cursorX} x2={cursorX} y1={0} y2={H} />
       </svg>
     </div>

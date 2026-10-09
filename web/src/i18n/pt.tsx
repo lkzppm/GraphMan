@@ -319,7 +319,6 @@ export const pt: Dictionary = {
     negativeWeights: (n: number) => (n === 1 ? '1 peso negativo' : `${n} pesos negativos`),
     refusal: (u: number, v: number, w: string) =>
       `O Dijkstra recusa este grafo: a aresta ${u} ${v} pesa ${w}, e caminhos mínimos com pesos negativos ainda não foram implementados.`,
-    distanceNoun: 'distância',
     distanceAt: (d: string) => `distância ${d}`,
     mode: 'Modo',
     modeSearch: 'Max',
@@ -443,6 +442,7 @@ export const pt: Dictionary = {
     verticesPer: (noun: string) => `Vértices por ${noun}`,
     goTo: (noun: string, n: number | string) => `Ir para ${noun} ${n}`,
     depthTrace: 'Profundidade ao longo da busca',
+    distanceTrace: 'Distância ao longo da busca',
   },
 
   presentation: {

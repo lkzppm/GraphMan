@@ -776,7 +776,8 @@
   opacity: 1;
 }
 
-/* DFS depth trace: an SVG area, blue up to the timeline cursor. */
+/* A search over its visit order (DFS depth, Dijkstra distance): an SVG
+   area, blue up to the timeline cursor. */
 .trace:focus-visible {
   outline-offset: 4px;
 }
@@ -807,6 +808,14 @@
   fill: none;
   stroke: var(--accent);
   stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Where a distance query stops: the target's distance, dashed. */
+.traceGoal {
+  stroke: var(--fg-3);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
   vector-effect: non-scaling-stroke;
 }
 
