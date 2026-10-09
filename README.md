@@ -42,6 +42,7 @@ network), and a graph with a negative weight is refused, not answered wrongly.
 cargo build --release
 ./target/release/graphman info graphs/grafo_1.txt              # summary file
 ./target/release/graphman bfs graphs/grafo_1.txt --from 1      # parent + level of every vertex
+./target/release/graphman dfs graphs/grafo_1.txt --from 1 --recursive   # same tree, the textbook way
 ./target/release/graphman distance graphs/grafo_1.txt --pair 10 20
 ./target/release/graphman diameter graphs/grafo_1.txt -m bounds
 ./target/release/graphman components graphs/grafo_1.txt

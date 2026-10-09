@@ -5,6 +5,7 @@
 //! subcommand is the program used to answer the assignment's case studies.
 
 mod commands;
+mod deep;
 mod load;
 mod report;
 mod rng;

@@ -16,7 +16,7 @@ use crate::rng::SplitMix64;
 use crate::ui::{self, Ui};
 use anyhow::{Context, Result};
 use graphman::algo::{
-    Components, Control, DiameterMethod, bfs, degree_stats, dfs, diameter_with_progress,
+    Components, Control, DfsKind, DiameterMethod, bfs, degree_stats, dfs, diameter_with_progress,
     distance_into,
 };
 use graphman::{Representation, SearchTree, Vertex, dispatch};
@@ -134,7 +134,7 @@ fn study_graph(
                 format!("{:.3} ms over {} runs", t.mean_ms, t.runs),
             );
             bfs_timing = Some(t);
-            let t = time_searches(&graph, &roots, Search::Dfs, ui);
+            let t = time_searches(&graph, &roots, Search::Dfs(DfsKind::Iterative), ui);
             ui.kv(
                 "DFS mean",
                 format!("{:.3} ms over {} runs", t.mean_ms, t.runs),

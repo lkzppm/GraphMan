@@ -16,7 +16,7 @@
 use graphman::algo::{
     self, Components, Control, DegreeStats, DiameterMethod, FrontierKind, HeapFrontier,
     LazyHeapFrontier, SearchTree, ShortestPathTree, UNREACHED, VectorFrontier, WeightStats,
-    bfs_into, dfs_into, dijkstra_into, radial_layout,
+    bfs_into, dfs_into, dfs_recursive_into, dijkstra_into, radial_layout,
 };
 use graphman::io::write_summary;
 use graphman::{
@@ -80,6 +80,20 @@ impl From<DiameterKind> for DiameterMethod {
             DiameterKind::Sweep => DiameterMethod::Sweep,
         }
     }
+}
+
+/// How deep the recursive DFS may nest in the browser: one call per tree
+/// level, on a call stack of about a megabyte. V8 (Chrome, Node) runs out
+/// between 5,150 levels (matrix) and 6,175 (list, CSR); half of the lower
+/// one leaves room for the JavaScript already on the stack. Past it the
+/// search refuses rather than trap the instance, and the iterative DFS
+/// answers instead.
+pub const DFS_RECURSION_LIMIT: u32 = 2_500;
+
+/// The deepest tree [`WasmGraph::dfs_recursive`] accepts.
+#[wasm_bindgen(js_name = dfsRecursionLimit)]
+pub fn dfs_recursion_limit() -> u32 {
+    DFS_RECURSION_LIMIT
 }
 
 /// How Dijkstra keeps its distance estimates (the library's `FrontierKind`).
@@ -785,6 +799,25 @@ impl WasmGraph {
             tree: self.tree.clone(),
             elapsed_ms,
         })
+    }
+
+    /// Runs the recursive DFS from `root` (the textbook one, one call per
+    /// level), timed like [`search`](Self::search). Returns `undefined` when
+    /// the tree would nest deeper than [`dfsRecursionLimit`](dfs_recursion_limit):
+    /// the browser's stack cannot hold it, and the iterative DFS can.
+    #[wasm_bindgen(js_name = dfsRecursive)]
+    pub fn dfs_recursive(&mut self, root: u32) -> Result<Option<SearchResult>, JsError> {
+        self.check(root)?;
+        let start = now();
+        let outcome = dispatch!(&self.graph, g => {
+            dfs_recursive_into(g, root, &mut self.tree, &mut (), DFS_RECURSION_LIMIT)
+        });
+        let elapsed_ms = now() - start;
+        Ok(outcome.ok().map(|()| SearchResult {
+            kind: SearchKind::Dfs,
+            tree: self.tree.clone(),
+            elapsed_ms,
+        }))
     }
 
     /// Runs Dijkstra from `root` with the chosen frontier and returns the
