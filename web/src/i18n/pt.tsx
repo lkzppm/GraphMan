@@ -367,7 +367,6 @@ export const pt: Dictionary = {
     parsing: (name: string) => `Lendo ${name}…`,
     drop: 'Solte um arquivo de grafo em qualquer lugar',
     fileFormat: 'Formato do arquivo',
-    browse: 'Procurar arquivos',
     hideControls: 'Esconder os controles',
     showControls: 'Mostrar os controles',
     hideWeights: 'Esconder os pesos das arestas',

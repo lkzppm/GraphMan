@@ -374,11 +374,11 @@ tint, accent text), drawn last so they sit on top.
   hairline links, pushed away by the pointer; decoration only) under a
   compact dashed card: icon, "Drop a graph file anywhere", the sample file
   as the format explanation (a tiny file card with `// comments`, the
-  optional weight column in faint blue), and two buttons (browse,
-  Examples). Examples, tile or button, turns into the choice in place
-  (its two faces share one grid cell, so it keeps its size; the face fades
-  as the choices rise in): two rows in the tile, two halves with a hairline
-  between on the button, each with its icon: the same ten vertices and
+  optional weight column in faint blue); no buttons, since the sidebar's
+  tiles already open a file or an example. The Examples tile turns into
+  the choice in place (its two faces share one grid cell, so it keeps its
+  size; the face fades as the choices rise in): two rows, each with its
+  icon: the same ten vertices and
   fifteen edges (`EXAMPLE_EDGES` in `web/src/lib/graphman.ts`) without
   weights (waypoints) or with them (a weight), whose lightest path from 1
   to 10 is not the shortest, so BFS and Dijkstra disagree visibly. A click
