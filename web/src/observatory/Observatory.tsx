@@ -3307,8 +3307,8 @@ function ComponentsView({
   );
 }
 
-/** A BFS's vertices per level as horizontal bars, level 0 at the top; the
-    index on the left is a button that moves the timeline to that level. */
+/** A BFS's vertices per level as horizontal bars, level 0 at the top; each
+    row is a button that moves the timeline to that level. */
 function LevelProfile({
   t,
   sizes,
@@ -3361,19 +3361,17 @@ function LevelProfile({
           const lit = row.from <= current;
           const isCurrent = current >= row.from && current <= row.to;
           return (
-            <div
+            <button
               key={row.from}
+              type="button"
               className={`${styles.level} ${lit ? styles.levelLit : ''} ${isCurrent ? styles.levelCurrent : ''}`}
               data-current={isCurrent ? 'true' : undefined}
+              onClick={() => onSelect(row.from)}
+              title={t.goTo(noun, name(row.from))}
             >
-              <button
-                type="button"
-                className={`mono ${styles.levelIndex}`}
-                onClick={() => onSelect(row.from)}
-                title={t.goTo(noun, name(row.from))}
-              >
+              <span className={`mono ${styles.levelIndex}`}>
                 {row.from === row.to ? name(row.from) : `${name(row.from)}–${name(row.to)}`}
-              </button>
+              </span>
               <span className={styles.levelTrack}>
                 <span
                   className={styles.levelBar}
@@ -3381,7 +3379,7 @@ function LevelProfile({
                 />
               </span>
               <span className={`mono ${styles.levelCount}`}>{formatInt(row.count)}</span>
-            </div>
+            </button>
           );
         })}
       </div>
