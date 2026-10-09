@@ -1,0 +1,591 @@
+/* The structure strip under the canvas: a header line (what the step did,
+   how big the structure is) over the structure itself. White like the
+   stage, one hairline above, the grip in the middle of that line. */
+
+.strip {
+  position: relative;
+  flex: none;
+  height: var(--strip-height, 220px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  animation: stripIn 0.35s var(--ease) both;
+}
+
+@keyframes stripIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  min-width: 0;
+  padding: 12px 18px 8px;
+}
+
+.title {
+  flex: none;
+  color: var(--accent);
+}
+
+.op {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.meta {
+  flex: none;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 18px 14px;
+}
+
+.empty {
+  max-width: 560px;
+  margin: auto;
+  padding-top: 18px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fg-3);
+  text-align: center;
+}
+
+.note {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+/* ---- chips: one per vertex ------------------------------------------------ */
+
+.chip {
+  --chip: var(--accent);
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 7px;
+  border-radius: 15px;
+  background: var(--chip);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 500;
+  box-shadow: 0 0 0 2px var(--bg);
+  transition:
+    box-shadow 0.2s var(--ease),
+    transform 0.2s var(--ease);
+  animation: chipIn 0.35s var(--ease-spring) backwards;
+}
+
+/* `scale`, not `transform`: a heap node's place is its transform. */
+@keyframes chipIn {
+  from {
+    opacity: 0;
+    scale: 0.6;
+  }
+}
+
+.chip:hover,
+.chip[data-hot] {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--fg);
+}
+
+/* The vertex the step just added, and the ones the current vertex added. */
+.chip[data-state='just'] {
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--accent);
+}
+
+.chip[data-state='new'] {
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 3.5px color-mix(in srgb, var(--accent) 45%, white);
+}
+
+.chip[data-state='current'] {
+  opacity: 0.55;
+}
+
+/* A stack frame: the vertex (or the call) over how far it has read its
+   neighbours. */
+.frame {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.05;
+}
+
+.frame small {
+  font-size: 9px;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.chips .chip:has(.frame small) {
+  height: 34px;
+  border-radius: 10px;
+}
+
+.gap {
+  display: inline-grid;
+  place-items: center;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px dashed var(--border-2);
+  border-radius: 15px;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.none {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: var(--fg-3);
+}
+
+/* ---- the queue and the stack: one lane of chips --------------------------- */
+
+.tape {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  min-height: 100%;
+}
+
+.slot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-right: 18px;
+  border-right: 1px solid var(--border);
+}
+
+.slotLabel,
+.end {
+  font-size: 10px;
+  color: var(--fg-3);
+}
+
+.lane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.end {
+  flex: none;
+  padding-top: 9px;
+}
+
+.chips {
+  flex: 1;
+  min-width: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 6px;
+}
+
+/* Where the queue's level changes: BFS holds at most two levels at once. */
+.divider {
+  width: 1.5px;
+  height: 22px;
+  margin: 0 4px;
+  background: var(--border-2);
+}
+
+/* Frames popped since the previous step, fading out past the top. */
+.popped {
+  animation: poppedOut 1.2s var(--ease) both;
+}
+
+@keyframes poppedOut {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.ghost {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 7px;
+  border: 1px dashed var(--border-2);
+  border-radius: 15px;
+  font-size: 11px;
+  color: var(--fg-3);
+  text-decoration: line-through;
+}
+
+/* ---- Dijkstra's vector: one slot per vertex ------------------------------- */
+
+.vector {
+  min-height: 100%;
+}
+
+.cells {
+  --scan: 0.42s;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cellGap {
+  display: flex;
+  align-items: center;
+}
+
+.cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  height: 38px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 11.5px;
+  color: var(--fg-2);
+  transition:
+    border-color 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+.cell small {
+  font-size: 9px;
+  color: var(--fg-3);
+}
+
+/* The scan: every slot lights in turn, the whole row in --scan. */
+.cell::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  opacity: 0;
+  animation: scan 0.18s linear both;
+  animation-delay: calc(var(--scan) * var(--i, 0) / max(var(--cells, 1), 1));
+  pointer-events: none;
+}
+
+@keyframes scan {
+  50% {
+    opacity: 1;
+  }
+}
+
+.cell[data-state='empty'] {
+  color: var(--fg-3);
+}
+
+.cell[data-state='open'] {
+  border-color: color-mix(in srgb, var(--accent) 40%, white);
+  color: var(--accent);
+}
+
+.cell[data-state='settled'] {
+  background: var(--bg-2);
+  color: var(--fg-3);
+}
+
+.cell[data-state='lowered'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  animation: flash 0.6s var(--ease) var(--scan) backwards;
+}
+
+/* Where the scan lands: the vertex this step settles. */
+.cell[data-state='just'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  animation: land 0.3s var(--ease-spring) var(--scan) backwards;
+}
+
+.cell[data-state='just'] small {
+  color: rgb(255 255 255 / 0.75);
+}
+
+@keyframes land {
+  from {
+    background: var(--bg);
+    color: var(--accent);
+    scale: 0.9;
+  }
+}
+
+@keyframes flash {
+  from {
+    background: color-mix(in srgb, var(--accent) 22%, white);
+  }
+}
+
+.cell:hover,
+.cell[data-hot] {
+  border-color: var(--fg);
+}
+
+/* ---- Dijkstra's heap: the tree over its array ------------------------------ */
+
+.heap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+
+.tree {
+  position: relative;
+  flex: 1;
+  min-height: 60px;
+}
+
+.tree svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.treeEdge {
+  stroke: var(--border-2);
+  stroke-width: 1.5;
+}
+
+/* A node is centred on its place; moving between places is a slide. */
+.node {
+  position: absolute;
+  top: -15px;
+  left: -15px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  box-shadow: 0 0 0 2px var(--bg);
+  transition:
+    transform 0.45s var(--ease),
+    box-shadow 0.2s var(--ease);
+  animation: chipIn 0.35s var(--ease-spring) backwards;
+}
+
+.nodeVertex {
+  line-height: 1;
+}
+
+.nodeEstimate {
+  position: absolute;
+  top: 32px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
+.node[data-state='next'] {
+  background: var(--level-0, var(--accent));
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--accent);
+}
+
+.node[data-state='lowered'] {
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px color-mix(in srgb, var(--accent) 45%, white);
+}
+
+.node:hover,
+.node[data-hot] {
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--fg);
+}
+
+.deeper {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.array {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.arrayLabel {
+  flex: none;
+  font-size: 10px;
+  color: var(--fg-3);
+}
+
+.arrayCells {
+  list-style: none;
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.arrayCell {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 30px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--fg-2);
+  animation: chipIn 0.3s var(--ease) backwards;
+}
+
+.arrayCell small {
+  font-size: 8.5px;
+  color: var(--fg-3);
+}
+
+.arrayCell[data-state='next'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.arrayCell[data-state='lowered'] {
+  border-color: color-mix(in srgb, var(--accent) 45%, white);
+}
+
+.arrayCell[data-hot] {
+  border-color: var(--fg);
+}
+
+/* ---- the drag handle on the top edge --------------------------------------- */
+
+.handle {
+  position: absolute;
+  top: -7px;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.handle::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 6px;
+  height: 2px;
+  background: transparent;
+  transition: background 0.2s var(--ease);
+}
+
+.grip {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 14px;
+  cursor: row-resize;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.grip::after {
+  content: '';
+  width: 36px;
+  height: 6px;
+  border: 1px solid var(--border-2);
+  border-radius: 3px;
+  background: var(--bg);
+  transition:
+    border-color 0.2s var(--ease),
+    background 0.2s var(--ease),
+    width 0.25s var(--ease);
+}
+
+.grip:focus-visible {
+  outline: none;
+}
+
+.handle:has(.grip:hover)::before,
+.handle:has(.grip:focus-visible)::before,
+.handle[data-dragging]::before {
+  background: var(--accent);
+}
+
+.grip:hover::after,
+.grip:focus-visible::after,
+.handle[data-dragging] .grip::after {
+  border-color: var(--accent);
+  background: var(--accent);
+  width: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip,
+  .node,
+  .arrayCell,
+  .cell::after,
+  .cell[data-state='just'],
+  .cell[data-state='lowered'],
+  .popped,
+  .strip {
+    animation: none;
+  }
+
+  .node {
+    transition: none;
+  }
+}

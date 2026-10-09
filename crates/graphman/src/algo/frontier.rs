@@ -15,6 +15,9 @@
 //!
 //! All three break ties on the smaller vertex id, so the same graph and root
 //! give the same settle order and the same tree whichever is used.
+//!
+//! [`Frontier::entries`] reads a frontier as it is stored (the heap's array,
+//! the vector's slots), for drawing it; the algorithm never calls it.
 
 use crate::graph::{NO_VERTEX, Vertex, Weight};
 use core::cmp::Ordering;
@@ -42,6 +45,24 @@ pub trait Frontier {
 
     /// Which strategy this is.
     fn kind(&self) -> FrontierKind;
+
+    /// The entries as they are stored: the vector's finite slots by vertex,
+    /// a heap's array in heap order (index 0 is the next to leave, the
+    /// children of `i` are `2i + 1` and `2i + 2`). For showing a frontier,
+    /// not for running one: it allocates and copies.
+    fn entries(&self) -> Vec<FrontierEntry>;
+}
+
+/// One entry of a frontier, as [`Frontier::entries`] reads it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FrontierEntry {
+    /// The vertex the estimate belongs to.
+    pub vertex: Vertex,
+    /// Its tentative distance.
+    pub estimate: Weight,
+    /// [`LazyHeapFrontier`] only: an older estimate of a vertex whose
+    /// estimate has since dropped, left in the heap to be skipped.
+    pub stale: bool,
 }
 
 /// `true` when `(a_distance, a)` comes before `(b_distance, b)`.
@@ -129,6 +150,17 @@ impl Frontier for VectorFrontier {
 
     fn kind(&self) -> FrontierKind {
         FrontierKind::Vector
+    }
+
+    fn entries(&self) -> Vec<FrontierEntry> {
+        (1..self.estimate.len())
+            .filter(|&v| self.estimate[v] < Weight::INFINITY)
+            .map(|v| FrontierEntry {
+                vertex: v as Vertex,
+                estimate: self.estimate[v],
+                stale: false,
+            })
+            .collect()
     }
 }
 
@@ -246,6 +278,17 @@ impl Frontier for HeapFrontier {
     fn kind(&self) -> FrontierKind {
         FrontierKind::Heap
     }
+
+    fn entries(&self) -> Vec<FrontierEntry> {
+        self.heap
+            .iter()
+            .map(|&(estimate, vertex)| FrontierEntry {
+                vertex,
+                estimate,
+                stale: false,
+            })
+            .collect()
+    }
 }
 
 /// A heap entry ordered so that `BinaryHeap` (a max-heap) pops the smallest
@@ -331,6 +374,19 @@ impl Frontier for LazyHeapFrontier {
 
     fn kind(&self) -> FrontierKind {
         FrontierKind::LazyHeap
+    }
+
+    fn entries(&self) -> Vec<FrontierEntry> {
+        // `as_slice` is the heap's own array, in heap order.
+        self.heap
+            .as_slice()
+            .iter()
+            .map(|&Entry(estimate, vertex)| FrontierEntry {
+                vertex,
+                estimate,
+                stale: estimate != self.latest[vertex as usize],
+            })
+            .collect()
     }
 }
 

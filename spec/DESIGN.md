@@ -258,7 +258,36 @@ On a desktop the boundary between them resizes by the grip pill in its
 middle (only the grip drags, `col-resize`; the rest of the edge stays a
 border), the boundary blue while the grip is hovered or dragged; the width stays within 280–560 px and leaves the canvas at
 least 400, is remembered per browser, resets on a double click and moves
-with the arrow keys (Shift for bigger steps). Phones keep the bottom sheet. The sidebar never
+with the arrow keys (Shift for bigger steps). Phones keep the bottom sheet.
+
+Under the canvas, the **structure strip** shows the data structure of the
+search on it at the replay's step, toggled by a panel icon in the
+top-right cluster (open by default, remembered; not on phones). Its top
+edge resizes it like the sidebar's (a horizontal grip pill in the middle,
+`row-resize`, 120–560 px and at least 220 px of canvas left, remembered,
+double click resets, arrow keys nudge). A header line names the structure
+(tracked blue label: Fila, Pilha, Fila de prioridade · vetor / heap
+binário), says what the step did in mono ("expande 3: enfileira 7",
+"desempilha 8, 4 · empilha 6", "fixa 5 em 1,5 · baixa 8: 4 → 3,25") and,
+in grey, the size and the step. BFS's queue is a lane of vertex chips in
+the level colours (front to back, a hairline where the level changes, the
+vertex being expanded in a faded slot before it, the vertex just enqueued
+ringed in blue and its siblings in a lighter ring); DFS's stack runs from
+the base to the top, each frame with how far it has read its neighbours
+(`3/7`), `explore(v)` frames for the recursive DFS, and the frames popped
+since the last step fading out struck through. Dijkstra's vector is one
+cell per vertex (every vertex up to 120, past that only the slots holding
+an estimate with the empty runs counted): a blue wash sweeps the cells and
+lands on the vertex the step settles, which fills blue; lowered estimates
+flash, settled cells go grey. The heap is drawn as the tree it is (up to
+five levels, as many as the height allows), each node a blue disc with its
+estimate under it, the root ringed as the next to leave, keyed by vertex
+so a sift slides the nodes between places; its array runs under the tree.
+Chips, cells and nodes link to the canvas both ways (hover lights the
+vertex, click selects it, a hovered vertex lights its chip), and the
+canvas rings every vertex the strip holds, the one the step is about more
+strongly. Long structures show their first and last chips with the middle
+as a dashed count. The sidebar never
 scrolls; it is a column of panels (Graph: file name with an info button
 whose tooltip lists what parsing dropped (loops, repeats and, when there
 are any, the negative weights), 2 × 2 tiles, the distribution chart (titled Degrees; on a

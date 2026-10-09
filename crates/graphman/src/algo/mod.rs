@@ -22,7 +22,9 @@ mod traversal;
 pub use components::Components;
 pub use diameter::{Diameter, DiameterMethod, diameter, diameter_with_progress};
 pub use distance::{distance, distance_into, eccentricity, eccentricity_into};
-pub use frontier::{Frontier, FrontierKind, HeapFrontier, LazyHeapFrontier, VectorFrontier};
+pub use frontier::{
+    Frontier, FrontierEntry, FrontierKind, HeapFrontier, LazyHeapFrontier, VectorFrontier,
+};
 pub use layout::{RadialLayout, radial_layout};
 pub use shortest_path::{
     NegativeWeight, Path, ShortestPathTree, dijkstra, dijkstra_into, dijkstra_with, shortest_path,

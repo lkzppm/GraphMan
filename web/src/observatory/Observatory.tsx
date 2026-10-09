@@ -24,6 +24,7 @@ import {
   MemoryStick,
   Minimize2,
   Minus,
+  PanelBottom,
   Pause,
   Play,
   Plus,
@@ -80,6 +81,13 @@ import RepresentationPicto from '@/components/RepresentationPicto';
 import { useT } from '@/i18n/LocaleProvider';
 import type { Dictionary } from '@/i18n';
 import styles from './Observatory.module.css';
+import Structures, {
+  clampStrip,
+  storedStripHeight,
+  STRIP_HEIGHT_KEY,
+  type FrontierView,
+  type Members,
+} from './Structures';
 
 type Strings = Dictionary['observatory'];
 
@@ -269,6 +277,18 @@ const SIDEBAR_MIN = 280;
 const SIDEBAR_MAX = 560;
 const STAGE_MIN = 400;
 const SIDEBAR_KEY = 'graphman.sidebar-width';
+/** Whether the structure strip under the canvas is open (open by default). */
+const STRUCTURES_KEY = 'graphman.structures';
+
+function storedStructuresOpen(): boolean {
+  try {
+    return localStorage.getItem(STRUCTURES_KEY) !== 'closed';
+  } catch {
+    return true;
+  }
+}
+
+const NO_NEIGHBOURS = new Uint32Array(0);
 
 /** The width this browser remembered (the observatory renders only in the
     browser), or the default. */
@@ -388,6 +408,14 @@ export default function Observatory() {
   const appRef = useRef<HTMLDivElement>(null);
   /** The sidebar's width on a desktop, set by dragging its edge. */
   const [sidebarWidth, setSidebarWidth] = useState(storedSidebarWidth);
+  const [structuresOpen, setStructuresOpen] = useState(storedStructuresOpen);
+  const [stripHeight, setStripHeight] = useState(storedStripHeight);
+  const columnRef = useRef<HTMLDivElement>(null);
+  /** What the structure strip holds at the replay's step: ringed on the canvas. */
+  const membersRef = useRef<Members | null>(null);
+  const onMembers = useCallback((members: Members | null) => {
+    membersRef.current = members;
+  }, []);
 
   // Pointer interaction state lives in refs: it changes every frame.
   const gesture = useRef<{
@@ -1148,6 +1176,43 @@ export default function Observatory() {
     return () => cancelAnimationFrame(frame);
   }, [playing, search, fitDiscovered]);
 
+  // The structure strip reads the graph through these: a vertex's
+  // neighbours (for the DFS frames' cursors) and Dijkstra's frontier
+  // replayed to a step by the library.
+  const neighborsOf = useCallback(
+    (v: number) => graphRef.current?.neighbors(v) ?? NO_NEIGHBOURS,
+    [],
+  );
+  const frontierAt = useCallback(
+    (step: number, limit: number): FrontierView | null => {
+      const graph = graphRef.current;
+      const wasm = wasmRef.current;
+      if (!graph || !wasm || search?.kind !== 'dijkstra') return null;
+      try {
+        const snapshot = graph.frontierAt(
+          search.root,
+          search.frontier === 'vector' ? wasm.FrontierType.Vector : wasm.FrontierType.Heap,
+          step,
+          limit,
+        );
+        const view: FrontierView = {
+          step,
+          vertices: snapshot.vertices(),
+          estimates: snapshot.estimates(),
+          total: snapshot.total,
+          relaxed: snapshot.relaxed(),
+          previous: snapshot.previous(),
+          lowered: snapshot.lowered(),
+        };
+        snapshot.free();
+        return view;
+      } catch {
+        return null;
+      }
+    },
+    [search],
+  );
+
   const scrub = (rank: number) => {
     keysTarget.current = 'search';
     setPlaying(false);
@@ -1674,6 +1739,27 @@ export default function Observatory() {
       }
 
       const radius = Math.min(12, Math.max(1.5, 3.5 * Math.sqrt(camera.zoom)));
+
+      // The vertices in the structure strip, ringed: the queue, the stack,
+      // the frontier at this step; the one the step is about more strongly.
+      const held = membersRef.current;
+      if (held && held.vertices.length) {
+        const accent = style.getPropertyValue('--accent');
+        ctx.strokeStyle = accent;
+        for (const v of held.vertices) {
+          const x = sx(v);
+          const y = sy(v);
+          if (x < -20 || y < -20 || x > rect.width + 20 || y > rect.height + 20) continue;
+          const focus = v === held.focus;
+          ctx.globalAlpha = focus ? 1 : 0.55;
+          ctx.lineWidth = focus ? 2.5 : 1.5;
+          ctx.beginPath();
+          ctx.arc(x, y, radius + (focus ? 5 : 3.5), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+
       if (!showLabels || radius < 5) return;
       const fontSize = Math.min(11, Math.round(radius * 1.05));
       ctx.font = `500 ${fontSize}px ${mono}`;
@@ -2292,344 +2378,403 @@ export default function Observatory() {
       </aside>
 
       <div
-        ref={stageRef}
-        className={styles.stage}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onPointerLeave={onPointerLeave}
-        onWheel={onWheel}
-        onDoubleClick={(event) => {
-          if (onCanvas(event) && !pick(event.clientX, event.clientY)) fit();
-        }}
-        style={{
-          cursor: gesture.current.mode === 'pan' ? 'grabbing' : hovered ? 'pointer' : 'default',
-        }}
+        ref={columnRef}
+        className={styles.stageColumn}
+        style={{ '--strip-height': `${stripHeight}px` } as CSSProperties}
       >
-        <canvas
-          ref={canvasRef}
-          className={styles.canvas}
-          style={{ opacity: canvasVisible ? 1 : 0 }}
-          aria-label={t.canvas}
-        />
-        <canvas ref={labelCanvasRef} className={styles.labels} aria-hidden="true" />
+        <div
+          ref={stageRef}
+          className={styles.stage}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onPointerLeave={onPointerLeave}
+          onWheel={onWheel}
+          onDoubleClick={(event) => {
+            if (onCanvas(event) && !pick(event.clientX, event.clientY)) fit();
+          }}
+          style={{
+            cursor: gesture.current.mode === 'pan' ? 'grabbing' : hovered ? 'pointer' : 'default',
+          }}
+        >
+          <canvas
+            ref={canvasRef}
+            className={styles.canvas}
+            style={{ opacity: canvasVisible ? 1 : 0 }}
+            aria-label={t.canvas}
+          />
+          <canvas ref={labelCanvasRef} className={styles.labels} aria-hidden="true" />
 
-        {!meta && <Constellation />}
-        {!meta && (
-          <div className={styles.empty}>
-            {status.kind === 'unsupported' ? (
-              <div className={styles.emptyCard}>
-                <h2>{t.noWebGpu}</h2>
-                <p>{status.message}</p>
-                <p className={styles.hint}>{t.noWebGpuHint}</p>
-              </div>
-            ) : status.kind === 'failed' ? (
-              <div className={styles.emptyCard}>
-                <h2>{t.failed}</h2>
-                <p>{status.message}</p>
-              </div>
-            ) : pending ? (
-              <RepresentationPicker
-                t={t}
-                pending={pending}
-                leaving={status.kind === 'parsing'}
-                onChoose={(which) => void openPending(pending, which)}
-              />
-            ) : (
-              <div className={styles.dropCard}>
-                <span className={styles.dropIcon} aria-hidden="true">
-                  <Upload size={22} strokeWidth={1.5} />
-                </span>
-                <span className={styles.dropTitle} data-drop={status.kind === 'ready' || undefined}>
-                  {status.kind === 'booting'
-                    ? t.booting
-                    : status.kind === 'parsing'
-                      ? t.parsing(status.name)
-                      : t.drop}
-                </span>
-                <div className={`mono ${styles.format}`} aria-label={t.fileFormat}>
-                  <span className={styles.formatName}>sample.txt</span>
-                  {FORMAT_LINES.map(([edge, weight], i) => (
-                    <Fragment key={edge}>
-                      <span>{edge}</span>
-                      <span className={styles.formatWeight}>{weight}</span>
-                      <span className={styles.formatNote}>
-                        {FORMAT_NOTES[i] ? t.format[FORMAT_NOTES[i]] : ''}
-                      </span>
-                    </Fragment>
-                  ))}
+          {!meta && <Constellation />}
+          {!meta && (
+            <div className={styles.empty}>
+              {status.kind === 'unsupported' ? (
+                <div className={styles.emptyCard}>
+                  <h2>{t.noWebGpu}</h2>
+                  <p>{status.message}</p>
+                  <p className={styles.hint}>{t.noWebGpuHint}</p>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {meta && status.kind === 'parsing' && (
-          <div className={styles.overlay}>{t.parsing(status.name)}</div>
-        )}
-
-        {meta && (
-          <>
-            {/* Controls, top left */}
-            <div ref={helpRef} className={`${styles.floating} ${styles.floatingTopLeft}`}>
-              <div className={styles.cluster}>
-                <IconButton
-                  label={helpOpen ? t.hideControls : t.showControls}
-                  pressed={helpOpen}
-                  onClick={() => setHelpOpen((o) => !o)}
-                >
-                  <CircleHelp size={15} />
-                </IconButton>
-              </div>
-              {helpOpen && (
-                <div className={styles.help} role="dialog" aria-label={t.controlsTitle}>
-                  <span className={`label ${styles.helpTitle}`}>{t.controlsTitle}</span>
-                  <ul className={styles.keys}>
-                    {t.controls.map(([key, does]) => (
-                      <li key={key + does}>
-                        <kbd className="mono">{key}</kbd>
-                        <span>{does}</span>
-                      </li>
+              ) : status.kind === 'failed' ? (
+                <div className={styles.emptyCard}>
+                  <h2>{t.failed}</h2>
+                  <p>{status.message}</p>
+                </div>
+              ) : pending ? (
+                <RepresentationPicker
+                  t={t}
+                  pending={pending}
+                  leaving={status.kind === 'parsing'}
+                  onChoose={(which) => void openPending(pending, which)}
+                />
+              ) : (
+                <div className={styles.dropCard}>
+                  <span className={styles.dropIcon} aria-hidden="true">
+                    <Upload size={22} strokeWidth={1.5} />
+                  </span>
+                  <span
+                    className={styles.dropTitle}
+                    data-drop={status.kind === 'ready' || undefined}
+                  >
+                    {status.kind === 'booting'
+                      ? t.booting
+                      : status.kind === 'parsing'
+                        ? t.parsing(status.name)
+                        : t.drop}
+                  </span>
+                  <div className={`mono ${styles.format}`} aria-label={t.fileFormat}>
+                    <span className={styles.formatName}>sample.txt</span>
+                    {FORMAT_LINES.map(([edge, weight], i) => (
+                      <Fragment key={edge}>
+                        <span>{edge}</span>
+                        <span className={styles.formatWeight}>{weight}</span>
+                        <span className={styles.formatNote}>
+                          {FORMAT_NOTES[i] ? t.format[FORMAT_NOTES[i]] : ''}
+                        </span>
+                      </Fragment>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               )}
             </div>
+          )}
 
-            {/* The path of a distance query, top centre */}
-            {search?.target !== 0 && search && (
-              <div className={`${styles.floating} ${styles.floatingTopCenter}`}>
-                {search.path && (
-                  <div className={styles.cluster}>
-                    <IconButton
-                      label={pathOnly ? t.colourSearch : t.pathOnly}
-                      pressed={pathOnly}
-                      onClick={() => {
-                        setPathOnly(!pathOnly);
-                        rendererRef.current?.setPathOnly(!pathOnly);
-                      }}
-                    >
-                      <Highlighter size={15} />
-                    </IconButton>
-                    <IconButton
-                      label={t.fitPath}
-                      onClick={() => {
-                        const onPath = new Set(search.path);
-                        autoFit.current = false;
-                        fitVertices((v) => onPath.has(v), PATH_FILL);
-                      }}
-                    >
-                      <Scan size={15} />
-                    </IconButton>
+          {meta && status.kind === 'parsing' && (
+            <div className={styles.overlay}>{t.parsing(status.name)}</div>
+          )}
+
+          {meta && (
+            <>
+              {/* Controls, top left */}
+              <div ref={helpRef} className={`${styles.floating} ${styles.floatingTopLeft}`}>
+                <div className={styles.cluster}>
+                  <IconButton
+                    label={helpOpen ? t.hideControls : t.showControls}
+                    pressed={helpOpen}
+                    onClick={() => setHelpOpen((o) => !o)}
+                  >
+                    <CircleHelp size={15} />
+                  </IconButton>
+                </div>
+                {helpOpen && (
+                  <div className={styles.help} role="dialog" aria-label={t.controlsTitle}>
+                    <span className={`label ${styles.helpTitle}`}>{t.controlsTitle}</span>
+                    <ul className={styles.keys}>
+                      {t.controls.map(([key, does]) => (
+                        <li key={key + does}>
+                          <kbd className="mono">{key}</kbd>
+                          <span>{does}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
-                <p className={`mono ${styles.path}`} aria-label={t.path}>
-                  {search.path ? (
-                    pathSteps(search.path).map((step, i, all) => (
-                      <Fragment key={i}>
-                        {i > 0 && <span className={styles.pathArrow}>→</span>}
-                        {step === '…' ? (
-                          <span className={styles.pathGap}>{step}</span>
-                        ) : (
-                          <span
-                            className={styles.pathBall}
-                            style={{
-                              // The canvas gradient: the origin's blue to the destination's green.
-                              background: `color-mix(in srgb, var(--accent) ${Math.round(100 - (100 * i) / Math.max(all.length - 1, 1))}%, var(--target))`,
-                            }}
-                          >
-                            {step}
-                          </span>
-                        )}
-                      </Fragment>
-                    ))
-                  ) : (
-                    <span className={styles.pathGap}>{t.noPath}</span>
-                  )}
-                </p>
               </div>
-            )}
 
-            {/* Layout tools, top right */}
-            <div ref={layoutMenuRef} className={`${styles.floating} ${styles.floatingTopRight}`}>
-              <div className={styles.cluster}>
-                {meta.edgeWeights && (
-                  <IconButton
-                    label={showWeights ? t.hideWeights : t.showWeights}
-                    pressed={showWeights}
-                    onClick={() => setShowWeights((on) => !on)}
-                  >
-                    <Weight size={15} />
-                  </IconButton>
-                )}
-                <IconButton
-                  label={showLabels ? t.hideNumbers : t.showNumbers}
-                  pressed={showLabels}
-                  onClick={() => setShowLabels((on) => !on)}
-                >
-                  <Hash size={15} />
-                </IconButton>
-                <IconButton
-                  label={follow ? t.stopFollowing : t.follow}
-                  pressed={follow}
-                  onClick={() => {
-                    const next = !follow;
-                    setFollow(next);
-                    if (next && search) fitDiscovered(search.ranks, revealRef.current);
-                  }}
-                >
-                  <Focus size={15} />
-                </IconButton>
-                <span className={styles.clusterRule} aria-hidden="true" />
-                <IconButton
-                  label={layoutOpen ? t.hideLayouts : t.chooseLayout}
-                  pressed={layoutOpen}
-                  onClick={() => setLayoutOpen((o) => !o)}
-                >
-                  <Shapes size={15} />
-                </IconButton>
-              </div>
-              {layoutOpen && (
-                <div
-                  className={`${styles.help} ${styles.menu}`}
-                  role="menu"
-                  aria-label={t.layoutsMenu}
-                >
-                  <span className={`label ${styles.helpTitle}`}>{t.layout}</span>
-                  {LAYOUTS.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={layout === item.id}
-                      className={styles.menuItem}
-                      onClick={() => {
-                        setLayoutOpen(false);
-                        applyLayout(item.id, search?.root ?? (selected || 1));
-                      }}
-                    >
-                      <span className={styles.menuIcon}>{item.icon}</span>
-                      <span className={styles.menuText}>
-                        <span>{t.layouts[item.id].label}</span>
-                        <span className={styles.menuHint}>{t.layouts[item.id].hint}</span>
-                      </span>
-                    </button>
-                  ))}
-                  {layout === 'force' && (
-                    <div className={styles.menuFooter}>
-                      <span className={`label ${styles.helpTitle}`}>{t.simulation}</span>
-                      <span className={styles.menuButtons}>
-                        <IconButton
-                          label={simulate ? t.pauseSimulation : t.resumeSimulation}
-                          pressed={simulate}
-                          onClick={() => {
-                            const next = !simulate;
-                            setSimulate(next);
-                            rendererRef.current?.setSimulate(next);
-                          }}
-                        >
-                          <Magnet size={15} />
-                        </IconButton>
-                        <IconButton
-                          label={t.reheat}
-                          onClick={() => {
-                            rendererRef.current?.reheat(1);
-                          }}
-                          disabled={!simulate}
-                        >
-                          <RefreshCw size={15} />
-                        </IconButton>
-                      </span>
+              {/* The path of a distance query, top centre */}
+              {search?.target !== 0 && search && (
+                <div className={`${styles.floating} ${styles.floatingTopCenter}`}>
+                  {search.path && (
+                    <div className={styles.cluster}>
+                      <IconButton
+                        label={pathOnly ? t.colourSearch : t.pathOnly}
+                        pressed={pathOnly}
+                        onClick={() => {
+                          setPathOnly(!pathOnly);
+                          rendererRef.current?.setPathOnly(!pathOnly);
+                        }}
+                      >
+                        <Highlighter size={15} />
+                      </IconButton>
+                      <IconButton
+                        label={t.fitPath}
+                        onClick={() => {
+                          const onPath = new Set(search.path);
+                          autoFit.current = false;
+                          fitVertices((v) => onPath.has(v), PATH_FILL);
+                        }}
+                      >
+                        <Scan size={15} />
+                      </IconButton>
                     </div>
                   )}
+                  <p className={`mono ${styles.path}`} aria-label={t.path}>
+                    {search.path ? (
+                      pathSteps(search.path).map((step, i, all) => (
+                        <Fragment key={i}>
+                          {i > 0 && <span className={styles.pathArrow}>→</span>}
+                          {step === '…' ? (
+                            <span className={styles.pathGap}>{step}</span>
+                          ) : (
+                            <span
+                              className={styles.pathBall}
+                              style={{
+                                // The canvas gradient: the origin's blue to the destination's green.
+                                background: `color-mix(in srgb, var(--accent) ${Math.round(100 - (100 * i) / Math.max(all.length - 1, 1))}%, var(--target))`,
+                              }}
+                            >
+                              {step}
+                            </span>
+                          )}
+                        </Fragment>
+                      ))
+                    ) : (
+                      <span className={styles.pathGap}>{t.noPath}</span>
+                    )}
+                  </p>
                 </div>
               )}
-            </div>
 
-            {/* View tools, bottom right */}
-            <div className={`${styles.floating} ${styles.floatingBottomRight}`}>
-              <div className={`${styles.cluster} ${styles.clusterVertical}`}>
-                <IconButton label={t.zoomIn} onClick={() => zoomBy(1.4)}>
-                  <Plus size={15} />
-                </IconButton>
-                <IconButton label={t.zoomOut} onClick={() => zoomBy(1 / 1.4)}>
-                  <Minus size={15} />
-                </IconButton>
-                <IconButton label={t.fit} onClick={() => fit()}>
-                  <Maximize2 size={15} />
-                </IconButton>
-                {!phone && (
+              {/* Layout tools, top right */}
+              <div ref={layoutMenuRef} className={`${styles.floating} ${styles.floatingTopRight}`}>
+                <div className={styles.cluster}>
+                  {meta.edgeWeights && (
+                    <IconButton
+                      label={showWeights ? t.hideWeights : t.showWeights}
+                      pressed={showWeights}
+                      onClick={() => setShowWeights((on) => !on)}
+                    >
+                      <Weight size={15} />
+                    </IconButton>
+                  )}
                   <IconButton
-                    label={fullscreen ? t.exitFullscreen : t.fullscreen}
-                    onClick={toggleFullscreen}
+                    label={showLabels ? t.hideNumbers : t.showNumbers}
+                    pressed={showLabels}
+                    onClick={() => setShowLabels((on) => !on)}
                   >
-                    {fullscreen ? <Minimize2 size={15} /> : <Expand size={15} />}
+                    <Hash size={15} />
                   </IconButton>
+                  {!phone && (
+                    <IconButton
+                      label={structuresOpen ? t.structures.hide : t.structures.show}
+                      pressed={structuresOpen}
+                      onClick={() => {
+                        const next = !structuresOpen;
+                        setStructuresOpen(next);
+                        try {
+                          localStorage.setItem(STRUCTURES_KEY, next ? 'open' : 'closed');
+                        } catch {
+                          // No storage: the choice lasts for this visit.
+                        }
+                      }}
+                    >
+                      <PanelBottom size={15} />
+                    </IconButton>
+                  )}
+                  <IconButton
+                    label={follow ? t.stopFollowing : t.follow}
+                    pressed={follow}
+                    onClick={() => {
+                      const next = !follow;
+                      setFollow(next);
+                      if (next && search) fitDiscovered(search.ranks, revealRef.current);
+                    }}
+                  >
+                    <Focus size={15} />
+                  </IconButton>
+                  <span className={styles.clusterRule} aria-hidden="true" />
+                  <IconButton
+                    label={layoutOpen ? t.hideLayouts : t.chooseLayout}
+                    pressed={layoutOpen}
+                    onClick={() => setLayoutOpen((o) => !o)}
+                  >
+                    <Shapes size={15} />
+                  </IconButton>
+                </div>
+                {layoutOpen && (
+                  <div
+                    className={`${styles.help} ${styles.menu}`}
+                    role="menu"
+                    aria-label={t.layoutsMenu}
+                  >
+                    <span className={`label ${styles.helpTitle}`}>{t.layout}</span>
+                    {LAYOUTS.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={layout === item.id}
+                        className={styles.menuItem}
+                        onClick={() => {
+                          setLayoutOpen(false);
+                          applyLayout(item.id, search?.root ?? (selected || 1));
+                        }}
+                      >
+                        <span className={styles.menuIcon}>{item.icon}</span>
+                        <span className={styles.menuText}>
+                          <span>{t.layouts[item.id].label}</span>
+                          <span className={styles.menuHint}>{t.layouts[item.id].hint}</span>
+                        </span>
+                      </button>
+                    ))}
+                    {layout === 'force' && (
+                      <div className={styles.menuFooter}>
+                        <span className={`label ${styles.helpTitle}`}>{t.simulation}</span>
+                        <span className={styles.menuButtons}>
+                          <IconButton
+                            label={simulate ? t.pauseSimulation : t.resumeSimulation}
+                            pressed={simulate}
+                            onClick={() => {
+                              const next = !simulate;
+                              setSimulate(next);
+                              rendererRef.current?.setSimulate(next);
+                            }}
+                          >
+                            <Magnet size={15} />
+                          </IconButton>
+                          <IconButton
+                            label={t.reheat}
+                            onClick={() => {
+                              rendererRef.current?.reheat(1);
+                            }}
+                            disabled={!simulate}
+                          >
+                            <RefreshCw size={15} />
+                          </IconButton>
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-            </div>
 
-            <div className={styles.legend}>
-              {search?.target ? (
-                <>
-                  <span className={styles.swatchOrigin} /> {t.origin.toLowerCase()}
-                  <span className={styles.legendSep} />
-                  <span className={styles.swatchTarget} /> {t.target.toLowerCase()}
-                  <span className={styles.legendSep} />
-                  <span className={styles.swatchDim} /> {t.notReached}
-                </>
-              ) : search ? (
-                <>
-                  <span className={styles.swatchA} />{' '}
-                  {search.distances ? t.distanceAt('0') : t.level(0)}
-                  <span className={styles.swatchBar} />
-                  <span className={styles.swatchB} />{' '}
-                  {search.distances
-                    ? t.distanceAt(formatWeight(search.depth * search.bandWidth))
-                    : t.level(search.depth)}
-                  <span className={styles.legendSep} />
-                  <span className={styles.swatchDim} /> {t.notReached}
-                </>
-              ) : component ? (
-                <>
-                  <span className={styles.swatchLit} /> {t.component(component)}
-                  <span className={styles.legendSep} />
-                  <span className={styles.swatchDim} /> {t.theRest}
-                </>
-              ) : selected ? (
-                t.originVertex(selected)
-              ) : (
-                t.chooseOrigin
-              )}
-            </div>
-          </>
-        )}
+              {/* View tools, bottom right */}
+              <div className={`${styles.floating} ${styles.floatingBottomRight}`}>
+                <div className={`${styles.cluster} ${styles.clusterVertical}`}>
+                  <IconButton label={t.zoomIn} onClick={() => zoomBy(1.4)}>
+                    <Plus size={15} />
+                  </IconButton>
+                  <IconButton label={t.zoomOut} onClick={() => zoomBy(1 / 1.4)}>
+                    <Minus size={15} />
+                  </IconButton>
+                  <IconButton label={t.fit} onClick={() => fit()}>
+                    <Maximize2 size={15} />
+                  </IconButton>
+                  {!phone && (
+                    <IconButton
+                      label={fullscreen ? t.exitFullscreen : t.fullscreen}
+                      onClick={toggleFullscreen}
+                    >
+                      {fullscreen ? <Minimize2 size={15} /> : <Expand size={15} />}
+                    </IconButton>
+                  )}
+                </div>
+              </div>
 
-        {meta && hovered !== 0 && pointer && hoverInfo && (
-          <div
-            className={styles.tooltip}
-            style={
-              pointer.x + 14 + TOOLTIP_WIDTH > window.innerWidth
-                ? { right: window.innerWidth - pointer.x + 14, top: pointer.y + 14 }
-                : { left: pointer.x + 14, top: pointer.y + 14 }
-            }
-            role="status"
-          >
-            <span className="mono">{t.vertex(hovered)}</span>
-            <span>{t.degree(hoverInfo.degree)}</span>
-            {search &&
-              (hoverInfo.level === null ? (
-                <span>{t.notReached}</span>
-              ) : (
-                <span>
-                  {hoverInfo.distance !== null
-                    ? t.distanceAt(formatWeight(hoverInfo.distance))
-                    : t.level(hoverInfo.level)}
-                  {hoverInfo.parent !== null && t.parent(hoverInfo.parent)}
-                </span>
-              ))}
-          </div>
+              <div className={styles.legend}>
+                {search?.target ? (
+                  <>
+                    <span className={styles.swatchOrigin} /> {t.origin.toLowerCase()}
+                    <span className={styles.legendSep} />
+                    <span className={styles.swatchTarget} /> {t.target.toLowerCase()}
+                    <span className={styles.legendSep} />
+                    <span className={styles.swatchDim} /> {t.notReached}
+                  </>
+                ) : search ? (
+                  <>
+                    <span className={styles.swatchA} />{' '}
+                    {search.distances ? t.distanceAt('0') : t.level(0)}
+                    <span className={styles.swatchBar} />
+                    <span className={styles.swatchB} />{' '}
+                    {search.distances
+                      ? t.distanceAt(formatWeight(search.depth * search.bandWidth))
+                      : t.level(search.depth)}
+                    <span className={styles.legendSep} />
+                    <span className={styles.swatchDim} /> {t.notReached}
+                  </>
+                ) : component ? (
+                  <>
+                    <span className={styles.swatchLit} /> {t.component(component)}
+                    <span className={styles.legendSep} />
+                    <span className={styles.swatchDim} /> {t.theRest}
+                  </>
+                ) : selected ? (
+                  t.originVertex(selected)
+                ) : (
+                  t.chooseOrigin
+                )}
+              </div>
+            </>
+          )}
+
+          {meta && hovered !== 0 && pointer && hoverInfo && (
+            <div
+              className={styles.tooltip}
+              style={
+                pointer.x + 14 + TOOLTIP_WIDTH > window.innerWidth
+                  ? { right: window.innerWidth - pointer.x + 14, top: pointer.y + 14 }
+                  : { left: pointer.x + 14, top: pointer.y + 14 }
+              }
+              role="status"
+            >
+              <span className="mono">{t.vertex(hovered)}</span>
+              <span>{t.degree(hoverInfo.degree)}</span>
+              {search &&
+                (hoverInfo.level === null ? (
+                  <span>{t.notReached}</span>
+                ) : (
+                  <span>
+                    {hoverInfo.distance !== null
+                      ? t.distanceAt(formatWeight(hoverInfo.distance))
+                      : t.level(hoverInfo.level)}
+                    {hoverInfo.parent !== null && t.parent(hoverInfo.parent)}
+                  </span>
+                ))}
+            </div>
+          )}
+        </div>
+
+        {meta && structuresOpen && !phone && (
+          <Structures
+            t={t}
+            search={search}
+            reveal={reveal}
+            playing={playing}
+            height={stripHeight}
+            columnRef={columnRef}
+            neighbors={neighborsOf}
+            frontierAt={frontierAt}
+            hovered={hovered}
+            onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
+            onSelect={(v) => {
+              setSelected(v);
+              rendererRef.current?.setSelected(v);
+            }}
+            onMembers={onMembers}
+            onResize={(height) => {
+              const next = clampStrip(
+                height,
+                columnRef.current?.getBoundingClientRect().height ?? 800,
+              );
+              setStripHeight(next);
+              columnRef.current?.style.setProperty('--strip-height', `${next}px`);
+              try {
+                localStorage.setItem(STRIP_HEIGHT_KEY, String(next));
+              } catch {
+                // No storage: the height lasts for this visit.
+              }
+            }}
+          />
         )}
       </div>
 

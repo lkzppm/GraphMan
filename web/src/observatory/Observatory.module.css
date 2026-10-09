@@ -1621,6 +1621,20 @@
 
 /* Stage */
 
+/* The stage over the structure strip: the canvas takes what the strip
+   leaves. */
+.stageColumn {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.stageColumn > .stage {
+  flex: 1 1 0;
+}
+
 .stage {
   position: relative;
   min-width: 0;

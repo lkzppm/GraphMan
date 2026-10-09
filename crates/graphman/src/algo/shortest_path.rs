@@ -269,12 +269,14 @@ pub fn dijkstra_into<G: Weighted, F: Frontier, V: Visitor>(
             let through_v = distance + weight;
             let estimate = &mut tree.distance[w as usize];
             if through_v < *estimate {
-                if *estimate == Weight::INFINITY {
+                let previous = *estimate;
+                if previous == Weight::INFINITY {
                     tree.touched.push(w);
                 }
                 *estimate = through_v;
                 tree.parent[w as usize] = v;
                 frontier.decrease(w, through_v);
+                visitor.relax(w, v, previous, through_v);
             }
         }
     }

@@ -237,7 +237,9 @@ some sections and keeps the rest of the previous JSON.
 - `petgraph::algo::dijkstra` as a baseline column (dev/bench-only dependency).
 - **Web.** Done in the observatory: Dijkstra as a third search with a
   vector/heap switch, distance bands for colour and chart, the refusal as a
-  notice, weight chips. Still open there: edges tinted by weight, and the
+  notice, weight labels, and the structure strip under the canvas that
+  draws each search's queue, stack or frontier (the real heap, replayed by
+  `frontierAt`) at the replay's step. Still open there: edges tinted by weight, and the
   names file (hover, a search box, "Dijkstra to Turing"), whose wasm glue
   (`setNames`, `vertexNamed`, `searchNames`) is in place. Studies and
   presentation: the Part 2 tables and the "one Dijkstra, three frontiers"
