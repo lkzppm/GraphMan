@@ -51,6 +51,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type CSSProperties,
   type ReactNode,
+  type RefObject,
   type WheelEvent as ReactWheelEvent,
 } from 'react';
 import { formatBytes, formatCompact, formatInt, formatMs, formatWeight } from '@/lib/format';
@@ -261,6 +262,32 @@ const CLICK_SLOP = 4;
 /** The vertex card's widest usual line, for keeping it inside the window. */
 const TOOLTIP_WIDTH = 190;
 
+/** The sidebar's width (CSS px): the default, the range a drag may reach,
+    the canvas it must leave, and where this browser remembers it. */
+const SIDEBAR_DEFAULT = 340;
+const SIDEBAR_MIN = 280;
+const SIDEBAR_MAX = 560;
+const STAGE_MIN = 400;
+const SIDEBAR_KEY = 'graphman.sidebar-width';
+
+/** The width this browser remembered (the observatory renders only in the
+    browser), or the default. */
+function storedSidebarWidth(): number {
+  try {
+    const stored = localStorage.getItem(SIDEBAR_KEY);
+    const width = Number(stored);
+    return stored && Number.isFinite(width) ? clampSidebar(width) : SIDEBAR_DEFAULT;
+  } catch {
+    return SIDEBAR_DEFAULT;
+  }
+}
+
+/** A sidebar width kept inside the range and clear of the canvas. */
+function clampSidebar(width: number): number {
+  const room = typeof window === 'undefined' ? SIDEBAR_MAX : window.innerWidth - STAGE_MIN;
+  return Math.round(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, room, width)));
+}
+
 /** The first lines of the example file as `[edge, weight]` (see
     `EXAMPLE_EDGES`); the first three carry the format notes. The weights
     are drawn faint: the column is optional. */
@@ -359,6 +386,8 @@ export default function Observatory() {
   const [sheet, setSheet] = useState<Sheet>('graph');
   const diameterShown = diameterOpen || phone;
   const appRef = useRef<HTMLDivElement>(null);
+  /** The sidebar's width on a desktop, set by dragging its edge. */
+  const [sidebarWidth, setSidebarWidth] = useState(storedSidebarWidth);
 
   // Pointer interaction state lives in refs: it changes every frame.
   const gesture = useRef<{
@@ -1709,6 +1738,7 @@ export default function Observatory() {
     <div
       ref={appRef}
       className={`${styles.app} ${dragOver ? styles.dragOver : ''} ${fullscreen ? styles.fullscreen : ''}`}
+      style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}
       onDragOver={(event) => {
         event.preventDefault();
         if (!dragOver) setDragOver(true);
@@ -1724,6 +1754,19 @@ export default function Observatory() {
         accept=".txt,text/plain"
         hidden
         onChange={onFileChange}
+      />
+      <SidebarHandle
+        label={t.resizeSidebar}
+        width={sidebarWidth}
+        appRef={appRef}
+        onCommit={(width) => {
+          setSidebarWidth(width);
+          try {
+            localStorage.setItem(SIDEBAR_KEY, String(width));
+          } catch {
+            // No storage (private window): the width lasts for this visit.
+          }
+        }}
       />
 
       <aside
@@ -2785,6 +2828,82 @@ function ExamplesMenu({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The sidebar's edge, draggable on a desktop: a grip in the middle of the
+ * boundary, the whole edge as its hit zone. While dragging, the width goes
+ * straight to the app's CSS variable (no re-render per pointer move); it is
+ * committed on release. Arrow keys nudge it, a double click restores the
+ * default.
+ */
+function SidebarHandle({
+  label,
+  width,
+  appRef,
+  onCommit,
+}: {
+  label: string;
+  width: number;
+  appRef: RefObject<HTMLDivElement | null>;
+  onCommit: (width: number) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const live = useRef(width);
+
+  const widthAt = (clientX: number) => {
+    const left = appRef.current?.getBoundingClientRect().left ?? 0;
+    return clampSidebar(clientX - left);
+  };
+  const preview = (next: number) => {
+    live.current = next;
+    appRef.current?.style.setProperty('--sidebar-width', `${next}px`);
+  };
+
+  return (
+    <div
+      className={styles.sidebarHandle}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={label}
+      aria-valuemin={SIDEBAR_MIN}
+      aria-valuemax={SIDEBAR_MAX}
+      aria-valuenow={width}
+      title={label}
+      tabIndex={0}
+      data-dragging={dragging || undefined}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        live.current = width;
+        setDragging(true);
+      }}
+      onPointerMove={(event) => {
+        if (dragging) preview(widthAt(event.clientX));
+      }}
+      onPointerUp={() => {
+        if (!dragging) return;
+        setDragging(false);
+        onCommit(live.current);
+      }}
+      onPointerCancel={() => {
+        if (!dragging) return;
+        setDragging(false);
+        onCommit(live.current);
+      }}
+      onDoubleClick={() => onCommit(SIDEBAR_DEFAULT)}
+      onKeyDown={(event) => {
+        const step = event.shiftKey ? 64 : 16;
+        if (event.key === 'ArrowLeft') onCommit(clampSidebar(width - step));
+        else if (event.key === 'ArrowRight') onCommit(clampSidebar(width + step));
+        else return;
+        event.preventDefault();
+      }}
+    >
+      <span className={styles.sidebarGrip} aria-hidden="true" />
     </div>
   );
 }

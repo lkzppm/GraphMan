@@ -246,7 +246,12 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   pure CSS: masked radial gradients; hidden under reduced motion).
 
 The observatory renders under the nav (`calc(100dvh - var(--nav-height))`)
-with no header of its own: a 340 px sidebar and the stage. The sidebar never
+with no header of its own: a sidebar (340 px by default) and the stage.
+On a desktop the boundary between them is draggable: a grip pill in its
+middle (the whole edge is the hit zone, `col-resize`), blue while hovered
+or dragged; the width stays within 280–560 px and leaves the canvas at
+least 400, is remembered per browser, resets on a double click and moves
+with the arrow keys (Shift for bigger steps). Phones keep the bottom sheet. The sidebar never
 scrolls; it is a column of panels (Graph: file name with an info button
 whose tooltip lists what parsing dropped (loops, repeats and, when there
 are any, the negative weights), 2 × 2 tiles, the distribution chart (titled Degrees; on a

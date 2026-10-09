@@ -1,7 +1,8 @@
 .app {
+  position: relative;
   height: calc(100dvh - var(--nav-height));
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width, 340px) minmax(0, 1fr);
   background: var(--bg);
   overflow: hidden;
 }
@@ -26,6 +27,63 @@
   font-size: 13px;
   color: var(--accent);
   pointer-events: none;
+}
+
+/* The sidebar's edge: a 10 px drag zone over the boundary, a grip pill in
+   its middle; the boundary turns blue while hovered or dragged. */
+.sidebarHandle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--sidebar-width, 340px) - 5px);
+  z-index: 15;
+  width: 10px;
+  display: grid;
+  place-items: center;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sidebarHandle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.2s var(--ease);
+}
+
+.sidebarGrip {
+  position: relative;
+  width: 6px;
+  height: 36px;
+  border: 1px solid var(--border-2);
+  border-radius: 3px;
+  background: var(--bg);
+  transition:
+    border-color 0.2s var(--ease),
+    background 0.2s var(--ease),
+    height 0.25s var(--ease);
+}
+
+.sidebarHandle:hover::before,
+.sidebarHandle:focus-visible::before,
+.sidebarHandle[data-dragging]::before {
+  background: var(--accent);
+}
+
+.sidebarHandle:hover .sidebarGrip,
+.sidebarHandle:focus-visible .sidebarGrip,
+.sidebarHandle[data-dragging] .sidebarGrip {
+  border-color: var(--accent);
+  background: var(--accent);
+  height: 48px;
+}
+
+.sidebarHandle:focus-visible {
+  outline: none;
 }
 
 /* Sidebar: fixed height, never scrolls; the middle panel takes the slack. */
@@ -2279,6 +2337,11 @@
   .app {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  /* A phone has the bottom sheet, not a sidebar to widen. */
+  .sidebarHandle {
+    display: none;
   }
 
   .sidebar {

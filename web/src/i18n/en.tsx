@@ -372,6 +372,7 @@ export const en = {
     parsing: (name: string) => `Parsing ${name}…`,
     drop: 'Drop a graph file anywhere',
     fileFormat: 'File format',
+    resizeSidebar: 'Drag to resize the sidebar (double click to reset)',
     hideControls: 'Hide the controls',
     showControls: 'Show the controls',
     hideWeights: 'Hide edge weights',
