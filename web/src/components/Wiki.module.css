@@ -16,7 +16,8 @@
 
 /* Fixed on the left, centred on the viewport: the chapters as vertices on
    one vertical edge. The edge is drawn in blue down to the current vertex
-   (`--progress` is its index), which is filled and a little larger. */
+   (`--progress` is its index), which is filled and a little larger;
+   `--stops` is how many chapters there are. */
 .rail {
   position: fixed;
   z-index: 5;
@@ -42,7 +43,7 @@
 }
 
 .rail ol {
-  --step: 40px;
+  --step: 34px;
   position: relative;
   list-style: none;
   display: flex;
@@ -56,7 +57,7 @@
   left: 7px;
   top: calc(var(--step) / 2);
   width: 1.5px;
-  height: calc(var(--step) * 7);
+  height: calc(var(--step) * (var(--stops) - 1));
   background: var(--border-2);
 }
 
@@ -398,6 +399,29 @@
 }
 
 .calls li[data-last] .callResult {
+  color: var(--accent);
+}
+
+/* What VertexNames answers: the call, then its answer in blue. */
+.lookups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.lookups div {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 12px;
+}
+
+.lookups dt {
+  color: var(--fg);
+}
+
+.lookups dd {
   color: var(--accent);
 }
 

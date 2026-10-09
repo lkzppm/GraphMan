@@ -239,10 +239,10 @@ some sections and keeps the rest of the previous JSON.
   vector/heap switch, distance bands for colour and chart, the refusal as a
   notice, weight chips. Still open there: edges tinted by weight, and the
   names file (hover, a search box, "Dijkstra to Turing"), whose wasm glue
-  (`setNames`, `vertexNamed`, `searchNames`) is in place. The Library page: chapters for the
-  `weights`, `dijkstra`, `frontiers` and `names` blocks already proved in
-  `tests/wiki.rs`. Studies and presentation: the Part 2 tables and the
-  "one Dijkstra, three frontiers" slide.
+  (`setNames`, `vertexNamed`, `searchNames`) is in place. Studies and
+  presentation: the Part 2 tables and the "one Dijkstra, three frontiers"
+  slide. The Library page has its Part 2 chapters (weights, Dijkstra,
+  priority queues, names), each over its block in `tests/wiki.rs`.
 
 ### The rest of the plan (beyond what Part 2 grades)
 

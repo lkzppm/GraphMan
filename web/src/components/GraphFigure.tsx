@@ -4,11 +4,15 @@ import styles from './GraphFigure.module.css';
 
 /* A small graph drawn from given positions (the same units and look as
    the home's three-representations figure), with whatever the chapter wants
-   to show on top: tree edges, levels, a path, components, marked vertices. */
+   to show on top: tree edges, levels, a path, components, marked vertices,
+   edge weights, a note beside each vertex. */
 
 /** Room around the drawing, in the positions' units, and how many pixels
     one unit takes: the same as the home's figure, so both look alike. */
 const PAD = 16;
+/** Extra room when the vertices carry notes, and how far out they sit. */
+const NOTE_PAD = 16;
+const NOTE_OFFSET = 22;
 const PX_PER_UNIT = 1.35;
 
 /** The level ramp, from the origin's navy to the far end's light blue,
@@ -32,7 +36,8 @@ interface Props {
   edges: Edge[];
   /** Position per vertex, index 0 unused; any units, the box is fitted. */
   positions: [number, number][];
-  /** Level per vertex (UNREACHED for unreached): colours the vertices. */
+  /** Level per vertex (UNREACHED for unreached): colours the vertices.
+      Any non-negative number shades the same ramp (Dijkstra's distances). */
   levels?: number[];
   /** Parent per vertex: draws the tree edges in blue. */
   parents?: number[];
@@ -42,6 +47,11 @@ interface Props {
   components?: number[];
   /** Vertices to ring in blue. */
   marks?: number[];
+  /** A weight per edge, in the order of `edges`: written on the edge. */
+  weights?: number[];
+  /** A note per vertex (index 0 unused), written just outside the drawing's
+      centre from it, like a distance beside its vertex. */
+  notes?: string[];
 }
 
 export default function GraphFigure({
@@ -52,15 +62,25 @@ export default function GraphFigure({
   path,
   components,
   marks,
+  weights,
+  notes,
 }: Props) {
   const n = positions.length - 1;
+  const pos = positions;
   const xs = positions.slice(1).map((p) => p[0]);
   const ys = positions.slice(1).map((p) => p[1]);
-  const minX = Math.min(...xs) - PAD;
-  const minY = Math.min(...ys) - PAD;
-  const width = Math.max(...xs) + PAD - minX;
-  const height = Math.max(...ys) + PAD - minY;
-  const pos = positions;
+  const pad = notes ? PAD + NOTE_PAD : PAD;
+  const minX = Math.min(...xs) - pad;
+  const minY = Math.min(...ys) - pad;
+  const width = Math.max(...xs) + pad - minX;
+  const height = Math.max(...ys) + pad - minY;
+  const centre = [xs.reduce((a, b) => a + b, 0) / n, ys.reduce((a, b) => a + b, 0) / n];
+  /** Where vertex v's note goes: out from the centre, past the circle. */
+  const notePlace = (v: number): [number, number] => {
+    const [dx, dy] = [pos[v][0] - centre[0], pos[v][1] - centre[1]];
+    const length = Math.hypot(dx, dy) || 1;
+    return [pos[v][0] + (dx / length) * NOTE_OFFSET, pos[v][1] + (dy / length) * NOTE_OFFSET];
+  };
 
   const maxLevel = levels ? Math.max(0, ...levels.filter((l) => l !== UNREACHED)) : 0;
   const onPath = new Set<string>();
@@ -76,6 +96,8 @@ export default function GraphFigure({
   };
   const isTree = (u: number, v: number) =>
     parents !== undefined && (parents[u] === v || parents[v] === u);
+  const kind = (u: number, v: number) =>
+    onPath.has(key(u, v)) ? 'path' : isTree(u, v) ? 'tree' : undefined;
 
   return (
     <svg
@@ -92,9 +114,23 @@ export default function GraphFigure({
           x2={pos[v][0]}
           y2={pos[v][1]}
           className={styles.edge}
-          data-kind={onPath.has(key(u, v)) ? 'path' : isTree(u, v) ? 'tree' : undefined}
+          data-kind={kind(u, v)}
         />
       ))}
+      {weights &&
+        edges.map(([u, v], i) => (
+          <text
+            key={`w${u}-${v}`}
+            x={(pos[u][0] + pos[v][0]) / 2}
+            y={(pos[u][1] + pos[v][1]) / 2}
+            dy="0.35em"
+            textAnchor="middle"
+            className={styles.weight}
+            data-kind={kind(u, v)}
+          >
+            {weights[i]}
+          </text>
+        ))}
       {Array.from({ length: n }, (_, i) => i + 1).map((v) => (
         <g key={v} className={styles.vertex} data-marked={marked.has(v) || undefined}>
           <circle
@@ -113,6 +149,17 @@ export default function GraphFigure({
           >
             {v}
           </text>
+          {notes?.[v] && (
+            <text
+              x={notePlace(v)[0]}
+              y={notePlace(v)[1]}
+              dy="0.35em"
+              textAnchor="middle"
+              className={styles.note}
+            >
+              {notes[v]}
+            </text>
+          )}
         </g>
       ))}
     </svg>
