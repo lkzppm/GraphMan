@@ -446,12 +446,10 @@ export const en = {
       },
       front: 'front',
       back: 'back',
-      expanding: 'expanding',
+      analysing: 'analysing',
       bottom: 'bottom',
       top: 'top',
       ops: {
-        bfsStart: (v: string) => `enqueue ${v}`,
-        bfs: (u: string, v: string) => `expand ${u}: enqueue ${v}`,
         push: (v: string) => `push ${v}`,
         pop: (list: string) => `pop ${list}`,
         call: (v: string) => `explore(${v})`,

@@ -267,12 +267,19 @@ edge resizes it like the sidebar's (a horizontal grip pill in the middle,
 `row-resize`, 120–560 px and at least 220 px of canvas left, remembered,
 double click resets, arrow keys nudge). A header line names the structure
 (tracked blue label: Fila, Pilha, Fila de prioridade · vetor / heap
-binário), says what the step did in mono ("expande 3: enfileira 7",
-"desempilha 8, 4 · empilha 6", "fixa 5 em 1,5 · baixa 8: 4 → 3,25") and,
-in grey, the size and the step. BFS's queue is a lane of vertex chips in
-the level colours (front to back, a hairline where the level changes, the
-vertex being expanded in a faded slot before it, the vertex just enqueued
-ringed in blue and its siblings in a lighter ring); DFS's stack runs from
+binário), says what the step did in mono ("desempilha 8, 4 · empilha 6",
+"fixa 5 em 1,5 · baixa 8: 4 → 3,25") and, in grey, the size and the step;
+for BFS the header keeps only the queue's size. BFS's queue is an array:
+34 px square cells in the level colours glued by a 1 px seam (rounded only
+at its two ends, a wider seam where the level changes, the vertex just
+enqueued marked by a white bar at its foot), centred between its "início"
+and "fim" labels, with the vertex being analysed in its own cell on the
+left under "Analisando". Cells are keyed by vertex and slide from where
+they were (FLIP, 460 ms): the front cell glides into the analysing cell
+as the queue closes up behind it, new cells come in at the back, the
+vertex analysed before leaves to the left fading, and a vertex dequeued
+with nothing to enqueue passes through the analysing cell on its way
+out. DFS's stack runs from
 the base to the top, each frame with how far it has read its neighbours
 (`3/7`), `explore(v)` frames for the recursive DFS, and the frames popped
 since the last step fading out struck through. Dijkstra's vector is one

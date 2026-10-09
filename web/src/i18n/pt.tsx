@@ -449,12 +449,10 @@ export const pt: Dictionary = {
       },
       front: 'início',
       back: 'fim',
-      expanding: 'expandindo',
+      analysing: 'analisando',
       bottom: 'base',
       top: 'topo',
       ops: {
-        bfsStart: (v: string) => `enfileira ${v}`,
-        bfs: (u: string, v: string) => `expande ${u}: enfileira ${v}`,
         push: (v: string) => `empilha ${v}`,
         pop: (list: string) => `desempilha ${list}`,
         call: (v: string) => `explore(${v})`,
