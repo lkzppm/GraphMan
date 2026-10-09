@@ -445,6 +445,7 @@ export const en = {
       queueSize: 'Queue size',
       stackSize: 'Stack size',
       heapSize: 'Heap size',
+      heapHeight: 'Height',
       openSize: 'Open estimates',
       distance: (d: string) => `distance ${d}`,
       bottom: 'bottom',

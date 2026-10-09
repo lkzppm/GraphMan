@@ -448,6 +448,7 @@ export const pt: Dictionary = {
       queueSize: 'Tamanho da fila',
       stackSize: 'Tamanho da pilha',
       heapSize: 'Tamanho do heap',
+      heapHeight: 'Altura',
       openSize: 'Estimativas abertas',
       distance: (d: string) => `distância ${d}`,
       bottom: 'base',

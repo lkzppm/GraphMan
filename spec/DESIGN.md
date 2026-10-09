@@ -273,13 +273,17 @@ layers for the stack, brackets for the vector, a tree for the heap). Closed by d
 not on phones. Its top
 edge resizes it like the sidebar's (a horizontal grip pill in the middle,
 `row-resize`, 120–560 px and at least 220 px of canvas left, remembered,
-double click resets, arrow keys nudge). Every structure shares one
+double click resets, arrow keys nudge); dragged up to the column's top
+(within 28 px) it maximizes, covering the canvas and rising from where its
+edge was (0.32 s), until dragged down again (or double clicked; the arrow
+keys go past the tallest height into it and back). Every structure shares one
 layout and none has a header: the analysing circle on the left (28 px in,
 mirrored by an empty column on the right), the structure centred, its name
 (tracked, blue: "Fila", "Pilha" or "Pilha de chamadas", "Fila de
 prioridade · vetor" or "· heap binário") over it on the analysing label's
 line, and its size under it ("Tamanho da fila: N", "Tamanho da pilha: N",
-"Estimativas abertas: N", "Tamanho do heap: N") in grey with N in blue
+"Estimativas abertas: N", "Tamanho do heap: N" and, 18 px on, "Altura: H",
+⌊log₂ N⌋) in grey with N in blue
 mono. BFS's queue is an array:
 square cells in the level colours, sized from the strip's height (the
 analysing circle 34 to 64 px, the queue's squares 72 % of it), glued by a 1 px seam (rounded only at its two ends, a wider seam
@@ -318,7 +322,9 @@ rest pale with ∞. Each step a blue wash sweeps the slots (the scan) and the
 circle grows out of the slot it lands on, which turns grey with a blue
 edge; lowered estimates flash. The heap is the tree it is (as many levels
 as the height allows, up to five), blue discs with their estimates under
-them, the root ringed as the next to leave, over its array as glued cells
+them, the root ringed as the next to leave (the entries deeper than the
+levels drawn counted beside the bottom level's last node as "↓ +N" in
+grey mono), over its array as glued cells
 with their indices under them. Nodes and cells are keyed by vertex, so a
 sift slides them (FLIP, nodes placed by left/top) and the root popped
 glides into the analysing circle, growing as it goes. Cells and nodes link to the canvas both ways (hover lights the
