@@ -117,7 +117,9 @@ src/commands/
   bench      time BFS/DFS (--recursive)/Dijkstra from N distinct random roots
   memory     RSS after loading one representation (run in a subprocess by `study`)
   generate   random graphs (optionally weighted, or the edges of a file with --like)
-  study      the case-study runner: JSON per graph + merged results.json + RESULTS.md
+  study      the case-study runner: JSON per graph + merged results.json + RESULTS.md;
+             Part 1 on unweighted files, Part 2 (study/weighted.rs: paths, frontier
+             timings under a budget) on weighted ones, --only for some sections
 ```
 
 All decorative output goes to stderr; stdout carries results (`--json` where

@@ -46,6 +46,11 @@ jobs:
           if ./target/release/graphman -q dijkstra samples/figure1_weighted.txt -o n.txt; then exit 1; fi
           ./target/release/graphman -q dijkstra samples/collaboration.txt --names samples/collaboration_names.txt \
             --from "Edsger W. Dijkstra" --to "Éva Tardos" -o c.txt | grep -q '^1 5 1.75 '
+          # The case-study runner: Part 1 on an unweighted file, Part 2 on weighted ones.
+          ./target/release/graphman -q study figure1.txt samples/weighted_100.txt samples/figure1_weighted.txt --out st
+          grep -q 'recursive DFS built exactly' st/RESULTS.md
+          grep -q '^| 30 | 5.205 | 1 | 10 → 30 |' st/RESULTS.md
+          grep -q '^Refused: edge 3-4' st/RESULTS.md
 
   web:
     name: Web · typecheck, lint, build

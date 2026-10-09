@@ -205,7 +205,11 @@ export const pt: Dictionary = {
         needs: (bytes: string) => `precisaria de ${bytes}`,
       },
       bfs: { title: 'Tempo médio de uma BFS' },
-      dfs: { title: 'Tempo médio de uma DFS' },
+      dfs: {
+        title: 'Tempo médio de uma DFS',
+        way: 'Implementação',
+        ways: { iterative: 'Iterativa', recursive: 'Recursiva' },
+      },
       parents: {
         title: 'Pais de 10, 20 e 30',
         root: (r: string) => `raiz ${r}`,
