@@ -458,6 +458,8 @@ export default function Observatory() {
   /** The strip is shrinking away: still drawn until its animation ends. */
   const [stripClosing, setStripClosing] = useState(false);
   const [stripHeight, setStripHeight] = useState(storedStripHeight);
+  /** The strip dragged to the top: it covers the canvas until dragged down. */
+  const [stripMax, setStripMax] = useState(false);
   const columnRef = useRef<HTMLDivElement>(null);
   /** What the structure strip holds at the replay's step: ringed on the canvas. */
   const membersRef = useRef<Members | null>(null);
@@ -2722,6 +2724,7 @@ export default function Observatory() {
                       onClick={() => {
                         const next = !structuresOpen;
                         setStructuresOpen(next);
+                        setStripMax(false);
                         // Closing keeps the strip until it has shrunk away
                         // (at once when motion is reduced: no animation runs).
                         setStripClosing(
@@ -2852,6 +2855,8 @@ export default function Observatory() {
             onMembers={onMembers}
             closing={stripClosing && !structuresOpen}
             onClosed={() => setStripClosing(false)}
+            maximized={stripMax}
+            onMaximize={setStripMax}
             onResize={(height) => {
               const next = clampStrip(
                 height,

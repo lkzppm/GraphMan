@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
+import { ArrowDown } from 'lucide-react';
 import { formatInt, formatWeight } from '@/lib/format';
 import type { Dictionary } from '@/i18n';
 import styles from './Structures.module.css';
@@ -115,6 +116,8 @@ export default function Structures({
   onHover,
   onSelect,
   onResize,
+  maximized,
+  onMaximize,
   onMembers,
   closing,
   onClosed,
@@ -134,6 +137,10 @@ export default function Structures({
   onHover: (v: number) => void;
   onSelect: (v: number) => void;
   onResize: (height: number) => void;
+  /** Whether the strip fills the whole column, over the canvas: dragged
+      to the column's top. */
+  maximized: boolean;
+  onMaximize: (maximized: boolean) => void;
   /** Hears what the structure holds whenever the step changes (`null` once
       the strip closes), so the canvas can ring it. */
   onMembers: (members: Members | null) => void;
@@ -146,6 +153,9 @@ export default function Structures({
   const [growing, setGrowing] = useState(
     () => !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
   );
+  /** While a drag reaches the column's top (or leaves it), the maximized
+      look it would commit to; `null` when no drag says otherwise. */
+  const [snap, setSnap] = useState<boolean | null>(null);
   const s = t.structures;
   const step = search ? Math.max(0, Math.min(Math.round(reveal), search.steps - 1)) : 0;
   const link = { hovered, onHover, onSelect };
@@ -213,13 +223,25 @@ export default function Structures({
       aria-label={title || s.show}
       data-moving={growing || undefined}
       data-closing={closing || undefined}
+      data-max={(snap ?? maximized) || undefined}
       onAnimationEnd={(event) => {
         if (event.target !== event.currentTarget) return;
         if (closing) onClosed();
         else setGrowing(false);
       }}
     >
-      <StripHandle label={s.resize} height={height} columnRef={columnRef} onCommit={onResize} />
+      <StripHandle
+        label={s.resize}
+        height={height}
+        maximized={maximized}
+        columnRef={columnRef}
+        onCommit={onResize}
+        onSnap={setSnap}
+        onMaximize={(on) => {
+          setSnap(null);
+          onMaximize(on);
+        }}
+      />
       <div className={styles.body}>{body}</div>
     </section>
   );
@@ -1011,9 +1033,21 @@ function HeapView({
             </button>
           );
         })}
-        {deeper > 0 && (
-          <span className={`mono ${styles.deeper}`}>{s.deeper(formatInt(deeper))}</span>
-        )}
+        {deeper > 0 &&
+          (() => {
+            // Beside the last node drawn, the bottom level's rightmost:
+            // how many entries the levels under it hold.
+            const [x, y] = place(count - 1);
+            return (
+              <span
+                className={`mono ${styles.deeper}`}
+                style={{ left: x + unit / 2 + 8, top: y }}
+                title={s.deeper(formatInt(deeper))}
+              >
+                <ArrowDown size={11} aria-hidden="true" />+{formatInt(deeper)}
+              </span>
+            );
+          })()}
       </div>
       <div className={styles.heapArray}>
         <span className={`label ${styles.end}`}>{s.heapArray}</span>
@@ -1041,6 +1075,10 @@ function HeapView({
       </div>
       <p className={styles.heapSize}>
         {s.heapSize}: <span className="mono">{formatInt(view.total)}</span>
+        <span className={styles.sizeGap} aria-hidden="true" />
+        {/* A binary heap of n entries is ⌊log₂ n⌋ levels deep under its root. */}
+        {s.heapHeight}:{' '}
+        <span className="mono">{formatInt(view.total ? 31 - Math.clz32(view.total) : 0)}</span>
       </p>
     </div>
   );
@@ -1048,35 +1086,58 @@ function HeapView({
 
 // ---- the drag handle -------------------------------------------------------
 
+/** How close to the column's top a drag has to come to maximize the strip. */
+const SNAP = 28;
+
 /** The strip's top edge: a grip in the middle drags its height, like the
-    sidebar's; a double click resets it, the arrow keys nudge it. */
+    sidebar's; dragged up to the column's top it maximizes the strip (and
+    dragged down again, restores it). A double click resets it, the arrow
+    keys nudge it (up past the tallest height maximizes it). */
 function StripHandle({
   label,
   height,
+  maximized,
   columnRef,
   onCommit,
+  onSnap,
+  onMaximize,
 }: {
   label: string;
   height: number;
+  maximized: boolean;
   columnRef: RefObject<HTMLDivElement | null>;
   onCommit: (height: number) => void;
+  /** Whether the drag, as it stands, would maximize the strip. */
+  onSnap: (maximized: boolean) => void;
+  onMaximize: (maximized: boolean) => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const live = useRef(height);
-  const heightAt = (clientY: number) => {
-    const rect = columnRef.current?.getBoundingClientRect();
-    if (!rect) return height;
-    return clampStrip(rect.bottom - clientY, rect.height);
-  };
+  const snapped = useRef(maximized);
   const column = () => columnRef.current?.getBoundingClientRect().height ?? 800;
   const preview = (next: number) => {
     live.current = next;
     columnRef.current?.style.setProperty('--strip-height', `${next}px`);
   };
+  const move = (clientY: number) => {
+    const rect = columnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const top = clientY - rect.top <= SNAP;
+    if (top !== snapped.current) {
+      snapped.current = top;
+      onSnap(top);
+    }
+    if (!top) preview(clampStrip(rect.bottom - clientY, rect.height));
+  };
   const finish = () => {
     if (!dragging) return;
     setDragging(false);
-    onCommit(live.current);
+    if (snapped.current) {
+      onMaximize(true);
+    } else {
+      onMaximize(false);
+      onCommit(live.current);
+    }
   };
   return (
     <div className={styles.handle} data-dragging={dragging || undefined}>
@@ -1095,19 +1156,29 @@ function StripHandle({
           event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
           live.current = height;
+          snapped.current = maximized;
           setDragging(true);
         }}
         onPointerMove={(event) => {
-          if (dragging) preview(heightAt(event.clientY));
+          if (dragging) move(event.clientY);
         }}
         onPointerUp={finish}
         onPointerCancel={finish}
-        onDoubleClick={() => onCommit(clampStrip(STRIP_DEFAULT, column()))}
+        onDoubleClick={() => {
+          onMaximize(false);
+          onCommit(clampStrip(STRIP_DEFAULT, column()));
+        }}
         onKeyDown={(event) => {
           const by = event.shiftKey ? 64 : 16;
-          if (event.key === 'ArrowUp') onCommit(clampStrip(height + by, column()));
-          else if (event.key === 'ArrowDown') onCommit(clampStrip(height - by, column()));
-          else return;
+          if (event.key === 'ArrowUp') {
+            if (maximized) return;
+            const next = clampStrip(height + by, column());
+            if (next === height) onMaximize(true);
+            else onCommit(next);
+          } else if (event.key === 'ArrowDown') {
+            if (maximized) onMaximize(false);
+            else onCommit(clampStrip(height - by, column()));
+          } else return;
           event.preventDefault();
         }}
       />
