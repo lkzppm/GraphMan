@@ -299,7 +299,15 @@ just discovered (a deep stack keeps its top frames and the root, the
 middle as a dashed count). The vertex analysed is the top itself: the
 square pushed comes in from the left as the circle grows out of it, the
 circle analysed before leaves to the left, and the frames popped since the
-last step lift off and fade. Dijkstra's vector is one
+last step lift off and fade. A DFS's replay steps through its pops too:
+its timeline (slider, play, arrow keys) has one step per push and one per
+pop, read off the tree (between two discoveries the stack pops back to the
+new vertex's parent), so a whole search ends with the stack emptied one
+frame at a time (one stopped at a target ends on the path to it); the
+canvas holds still during pops. The recursive and the iterative DFS hold
+the same frames at every step (the iterative one keeps a stack of
+neighbour iterators, not of vertices), so only the name differs: "Pilha
+de chamadas" for the recursive one. Dijkstra's vector is one
 cell per vertex (every vertex up to 120, past that only the slots holding
 an estimate with the empty runs counted): a blue wash sweeps the cells and
 lands on the vertex the step settles, which fills blue; lowered estimates

@@ -36,6 +36,12 @@ export interface StructureSearch {
   ranks: Uint32Array;
   frontier: 'vector' | 'heap' | null;
   dfs: 'iterative' | 'recursive' | null;
+  /** Steps of the replay: `span`, or for a DFS one per push and per pop. */
+  steps: number;
+  /** DFS only: the stack's moves, step by step (`v` pushes v, `-v` pops it). */
+  trail: Int32Array | null;
+  /** DFS only: the discovery rank each step stands at. */
+  rankAt: Uint32Array | null;
 }
 
 /** Dijkstra's frontier right after one settle, as the wasm side reads it. */
@@ -141,7 +147,7 @@ export default function Structures({
     () => !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
   );
   const s = t.structures;
-  const step = search ? Math.max(0, Math.min(Math.round(reveal), search.span - 1)) : 0;
+  const step = search ? Math.max(0, Math.min(Math.round(reveal), search.steps - 1)) : 0;
   const link = { hovered, onHover, onSelect };
   const frontier = useFrontier(
     search?.kind === 'dijkstra' ? search : null,
@@ -238,7 +244,7 @@ function members(search: StructureSearch, step: number, frontier: FrontierView |
   if (search.kind !== 'dijkstra') {
     const held = search.kind === 'bfs' ? bfsQueue(search, step) : dfsStack(search, step);
     const shown = held.items.filter((x): x is number => !isGap(x));
-    return { vertices: shown, focus: search.order[step] };
+    return { vertices: shown, focus: search.kind === 'bfs' ? search.order[step] : held.current };
   }
   const vertices = frontier ? Array.from(frontier.vertices) : [];
   let focus = 0;
@@ -648,13 +654,22 @@ function QueueCell({
   );
 }
 
-/** DFS's stack right after the discovery of `order[step]`: the path from
-    the root to it, the frames of a recursive DFS and the explicit stack of
-    the iterative one alike, the top (the vertex just discovered, whose
-    neighbours are read next) first. A deep stack keeps its top frames and
-    its root, the ones between counted. */
+/** DFS's stack after the timeline's step `step` (a push or a pop): the
+    path from the root to its top, the frames of a recursive DFS and the
+    explicit stack of the iterative one alike, the top (the vertex whose
+    neighbours are being read) first. After the pops that follow the push
+    of the last vertex discovered, the top is that vertex's ancestor as
+    many levels up; once the search is over the stack is empty. A deep
+    stack keeps its top frames and its root, the ones between counted. */
 function dfsStack(search: StructureSearch, step: number, max = MAX_CHIPS): Sequence {
-  const top = search.order[step];
+  let top = search.order[step];
+  if (search.trail && search.rankAt) {
+    const rank = search.rankAt[step];
+    top = search.order[rank];
+    // Steps since that push are pops, each one frame off the top.
+    for (let s = step; s > 0 && search.trail[s] < 0; s--) top = search.parents[top];
+  }
+  if (!top) return { current: 0, length: 0, items: [] };
   const length = search.levels[top] + 1;
   const items: (number | { gap: number })[] = [];
   for (let v = top; items.length < max - 2 && v; v = search.parents[v]) items.push(v);
