@@ -375,6 +375,7 @@ export const pt: Dictionary = {
     parsing: (name: string) => `Lendo ${name}…`,
     drop: 'Solte um arquivo de grafo em qualquer lugar',
     fileFormat: 'Formato do arquivo',
+    resizeSidebar: 'Arraste para redimensionar a barra lateral (clique duplo para restaurar)',
     hideControls: 'Esconder os controles',
     showControls: 'Mostrar os controles',
     hideWeights: 'Esconder os pesos das arestas',
