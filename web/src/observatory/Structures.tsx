@@ -347,6 +347,8 @@ const CELL_MAX = 64;
 const LABELS = 150;
 /** Air between the strip's edges and the analysing column (and its mirror). */
 const GUTTER = 28;
+/** The queue's squares against the analysing circle. */
+const QUEUE_SCALE = 0.72;
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
 /** BFS's queue as an array of glued cells, centred in the strip, and the
@@ -378,15 +380,16 @@ function QueueView({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  // The cells take the strip's height (the label over the analysing cell
-  // and some air above and below), and as many fit as the width allows
-  // once the analysing column is mirrored on the right to keep the queue
-  // centred.
+  // The analysing circle takes the strip's height (its label above and
+  // some air around it); the queue's squares are a size smaller, and as
+  // many fit as the width allows once the analysing column is mirrored on
+  // the right to keep the queue centred.
   const size = Math.round(Math.max(CELL_MIN, Math.min(CELL_MAX, (box.height - 40) * 0.62)));
+  const cell = Math.round(Math.max(28, size * QUEUE_SCALE));
   const side = Math.max(size + 40, 130);
   const room = Math.max(
     5,
-    Math.min(MAX_CHIPS, Math.floor((box.width - 2 * (side + GUTTER) - LABELS) / (size + 1))),
+    Math.min(MAX_CHIPS, Math.floor((box.width - 2 * (side + GUTTER) - LABELS) / (cell + 1))),
   );
   const queue = bfsQueue(search, step, room);
   const colour = (v: number) => rampColour(search.levels[v], search.depth);
@@ -428,24 +431,28 @@ function QueueView({
           const dx = before.x - place.x + rx;
           const dy = before.y - place.y + ry;
           el.getAnimations().forEach((a) => a.cancel());
-          // Out of the queue into the analysing slot: the square becomes a circle.
+          // Out of the queue into the analysing slot: the square grows into
+          // the circle, from the queue cell's corner and size.
           const morph = place.role === 'current' && before.role === 'queue';
           if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
             el.animate(
-              [
-                {
-                  transform: `translate(${dx}px, ${dy}px)`,
-                  ...(morph ? { borderRadius: '0px' } : {}),
-                },
-                { transform: 'none', ...(morph ? { borderRadius: '50%' } : {}) },
-              ],
+              morph
+                ? [
+                    {
+                      transform: `translate(${dx}px, ${dy}px) scale(${cell / size})`,
+                      transformOrigin: '0 0',
+                      borderRadius: '0px',
+                    },
+                    { transform: 'none', transformOrigin: '0 0', borderRadius: '50%' },
+                  ]
+                : [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
               { duration: 460, easing: EASE },
             );
           }
         } else {
           el.animate(
             [
-              { opacity: 0, transform: `translateX(${size / 2}px)` },
+              { opacity: 0, transform: `translateX(${cell / 2}px)` },
               { opacity: 1, transform: 'none' },
             ],
             { duration: 360, easing: EASE },
@@ -470,10 +477,11 @@ function QueueView({
         const dy = to ? to.y - before.y : 0;
         ghost.animate(
           [
-            { opacity: 1, transform: 'none' },
+            { opacity: 1, transform: 'none', transformOrigin: '0 0' },
             {
               opacity: 0,
-              transform: `translate(${dx}px, ${dy}px)`,
+              transform: `translate(${dx}px, ${dy}px)${to ? ` scale(${size / cell})` : ''}`,
+              transformOrigin: '0 0',
               ...(to ? { borderRadius: '50%' } : {}),
             },
           ],
@@ -482,14 +490,19 @@ function QueueView({
       }
     }
     last.current = { of: search, at };
-  }, [search, step, size, room]);
+  }, [search, step, size, cell, room]);
 
   return (
     <div
       ref={boxRef}
       className={styles.queue}
       style={
-        { '--cell': `${size}px`, '--side': `${side}px`, '--gutter': `${GUTTER}px` } as CSSProperties
+        {
+          '--cell': `${cell}px`,
+          '--slot': `${size}px`,
+          '--side': `${side}px`,
+          '--gutter': `${GUTTER}px`,
+        } as CSSProperties
       }
     >
       <span className={`label ${styles.slotLabel} ${styles.queueLabel}`}>{s.analysing}</span>
