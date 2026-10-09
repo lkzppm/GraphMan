@@ -519,6 +519,7 @@ function QueueView({
           <span className={styles.slotEmpty} />
         )}
       </div>
+      <span className={`label ${styles.queueTitle}`}>{s.titles.bfs}</span>
       <div className={styles.queueGroup}>
         <span className={`label ${styles.end}`}>{s.front}</span>
         <ol className={styles.queueCells}>
