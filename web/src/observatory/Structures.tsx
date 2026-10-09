@@ -329,6 +329,8 @@ const CELL_MIN = 34;
 const CELL_MAX = 64;
 /** Room the queue's two end labels and the gaps around it take. */
 const LABELS = 150;
+/** Air between the strip's edges and the analysing column (and its mirror). */
+const GUTTER = 28;
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
 /** BFS's queue as an array of glued cells, centred in the strip, and the
@@ -365,13 +367,12 @@ function QueueView({
   // once the analysing column is mirrored on the right to keep the queue
   // centred.
   const size = Math.round(Math.max(CELL_MIN, Math.min(CELL_MAX, (box.height - 40) * 0.62)));
-  const side = size + 40;
+  const side = Math.max(size + 40, 130);
   const room = Math.max(
     5,
-    Math.min(MAX_CHIPS, Math.floor((box.width - 2 * side - LABELS) / (size + 1))),
+    Math.min(MAX_CHIPS, Math.floor((box.width - 2 * (side + GUTTER) - LABELS) / (size + 1))),
   );
   const queue = bfsQueue(search, step, room);
-  const just = search.order[step];
   const colour = (v: number) => rampColour(search.levels[v], search.depth);
 
   // Where every cell sat at the previous step (layout positions, which
@@ -411,11 +412,19 @@ function QueueView({
           const dx = before.x - place.x + rx;
           const dy = before.y - place.y + ry;
           el.getAnimations().forEach((a) => a.cancel());
+          // Out of the queue into the analysing slot: the square becomes a circle.
+          const morph = place.role === 'current' && before.role === 'queue';
           if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-            el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
-              duration: 460,
-              easing: EASE,
-            });
+            el.animate(
+              [
+                {
+                  transform: `translate(${dx}px, ${dy}px)`,
+                  ...(morph ? { borderRadius: '0px' } : {}),
+                },
+                { transform: 'none', ...(morph ? { borderRadius: '50%' } : {}) },
+              ],
+              { duration: 460, easing: EASE },
+            );
           }
         } else {
           el.animate(
@@ -446,7 +455,11 @@ function QueueView({
         ghost.animate(
           [
             { opacity: 1, transform: 'none' },
-            { opacity: 0, transform: `translate(${dx}px, ${dy}px)` },
+            {
+              opacity: 0,
+              transform: `translate(${dx}px, ${dy}px)`,
+              ...(to ? { borderRadius: '50%' } : {}),
+            },
           ],
           { duration: 460, easing: EASE },
         ).onfinish = () => ghost.remove();
@@ -459,7 +472,9 @@ function QueueView({
     <div
       ref={boxRef}
       className={styles.queue}
-      style={{ '--cell': `${size}px`, '--side': `${side}px` } as CSSProperties}
+      style={
+        { '--cell': `${size}px`, '--side': `${side}px`, '--gutter': `${GUTTER}px` } as CSSProperties
+      }
     >
       <span className={`label ${styles.slotLabel} ${styles.queueLabel}`}>{s.analysing}</span>
       <div className={styles.slotCell}>
@@ -496,13 +511,7 @@ function QueueView({
                   undefined
                 }
               >
-                <QueueCell
-                  v={item}
-                  link={link}
-                  colour={colour(item)}
-                  role="queue"
-                  state={item === just ? 'just' : undefined}
-                />
+                <QueueCell v={item} link={link} colour={colour(item)} role="queue" />
               </li>
             );
           })}

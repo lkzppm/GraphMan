@@ -275,11 +275,11 @@ binário), says what the step did in mono ("desempilha 8, 4 · empilha 6",
 for BFS the header keeps only the queue's size. BFS's queue is an array:
 square cells in the level colours, sized from the strip's height (34 to
 64 px), glued by a 1 px seam (rounded only at its two ends, a wider seam
-where the level changes, the vertex just enqueued marked by a white bar at
-its foot), between its "início" and "fim" labels and centred in the strip
-(the analysing column on the left is mirrored by an empty one on the
-right), with the vertex being analysed in its own cell under
-"Analisando", level with the queue. Cells are keyed by vertex and slide
+where the level changes), between its "início" and "fim" labels and centred in the strip
+(the analysing column, 28 px in from the edge, is mirrored by an empty
+one on the right) and on the strip's middle line, with the vertex being
+analysed as a circle under "Analisando", level with the queue: the front
+square morphs into the circle as it slides over. Cells are keyed by vertex and slide
 from where they were (FLIP, 460 ms, only when the step changes, from
 transform-free layout positions so a slide caught mid-way carries on from
 where it shows): the front cell glides into the analysing cell
