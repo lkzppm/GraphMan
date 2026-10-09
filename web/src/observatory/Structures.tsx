@@ -154,9 +154,7 @@ export default function Structures({
   let body: ReactNode = <p className={styles.empty}>{s.empty}</p>;
 
   if (search?.kind === 'bfs') {
-    const q = bfsQueue(search, step);
     title = s.titles.bfs;
-    size = s.size.bfs(formatInt(q.length));
     body = <QueueView t={t} search={search} step={step} link={link} />;
   } else if (search?.kind === 'dfs') {
     const st = dfsStack(search, step);
@@ -206,13 +204,11 @@ export default function Structures({
   return (
     <section className={styles.strip} aria-label={title || s.show}>
       <StripHandle label={s.resize} height={height} columnRef={columnRef} onCommit={onResize} />
-      {search && (
+      {search && search.kind !== 'bfs' && (
         <header className={styles.head}>
           <span className={`label ${styles.title}`}>{title}</span>
           {search.kind === 'dijkstra' ? (
             <DijkstraHead t={t} search={search} step={step} view={frontier ?? null} />
-          ) : search.kind === 'bfs' ? (
-            <span className={`mono ${styles.meta}`}>{size}</span>
           ) : (
             <>
               <span className={`mono ${styles.op}`}>{op}</span>
@@ -518,6 +514,9 @@ function QueueView({
         </ol>
         <span className={`label ${styles.end}`}>{s.back}</span>
       </div>
+      <p className={styles.queueSize}>
+        {s.queueSize}: <span className="mono">{formatInt(queue.length)}</span>
+      </p>
     </div>
   );
 }

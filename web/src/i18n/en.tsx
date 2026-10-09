@@ -440,13 +440,13 @@ export const en = {
       },
       step: (k: string, n: string) => `step ${k} of ${n}`,
       size: {
-        bfs: (n: string) => `${n} in the queue`,
         dfs: (n: string) => `${n} on the stack`,
         dijkstra: (n: string) => `${n} estimates`,
       },
       front: 'front',
       back: 'back',
       analysing: 'analysing',
+      queueSize: 'Queue size',
       bottom: 'bottom',
       top: 'top',
       ops: {

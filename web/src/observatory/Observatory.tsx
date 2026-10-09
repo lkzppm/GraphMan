@@ -2,11 +2,14 @@
 
 import {
   ArrowDown01,
+  Brackets,
+  GalleryHorizontalEnd,
+  Layers,
+  Network,
   ArrowDownNarrowWide,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   CircleDashed,
   CircleHelp,
   Download,
@@ -2644,31 +2647,31 @@ export default function Observatory() {
               {/* The structure strip's toggle, bottom centre, once a search ran */}
               {search && !phone && (
                 <div className={`${styles.floating} ${styles.floatingBottomCenter}`}>
-                  <button
-                    type="button"
-                    className={styles.structuresToggle}
-                    aria-pressed={structuresOpen}
-                    aria-label={structuresOpen ? t.structures.hide : t.structures.show}
-                    title={structuresOpen ? t.structures.hide : t.structures.show}
-                    onClick={() => {
-                      const next = !structuresOpen;
-                      setStructuresOpen(next);
-                      try {
-                        localStorage.setItem(STRUCTURES_KEY, next ? 'open' : 'closed');
-                      } catch {
-                        // No storage: the choice lasts for this visit.
-                      }
-                    }}
-                  >
-                    <ChevronUp size={14} className={styles.structuresChevron} aria-hidden="true" />
-                    <span className="label">
-                      {search.kind === 'bfs'
-                        ? t.structures.titles.bfs
-                        : search.kind === 'dfs'
-                          ? t.structures.titles.dfs
-                          : t.frontier}
-                    </span>
-                  </button>
+                  <div className={styles.cluster}>
+                    <IconButton
+                      label={structuresOpen ? t.structures.hide : t.structures.show}
+                      pressed={structuresOpen}
+                      onClick={() => {
+                        const next = !structuresOpen;
+                        setStructuresOpen(next);
+                        try {
+                          localStorage.setItem(STRUCTURES_KEY, next ? 'open' : 'closed');
+                        } catch {
+                          // No storage: the choice lasts for this visit.
+                        }
+                      }}
+                    >
+                      {search.kind === 'bfs' ? (
+                        <GalleryHorizontalEnd size={15} />
+                      ) : search.kind === 'dfs' ? (
+                        <Layers size={15} />
+                      ) : search.frontier === 'vector' ? (
+                        <Brackets size={15} />
+                      ) : (
+                        <Network size={15} />
+                      )}
+                    </IconButton>
+                  </div>
                 </div>
               )}
 

@@ -443,13 +443,13 @@ export const pt: Dictionary = {
       },
       step: (k: string, n: string) => `passo ${k} de ${n}`,
       size: {
-        bfs: (n: string) => `${n} na fila`,
         dfs: (n: string) => `${n} na pilha`,
         dijkstra: (n: string) => `${n} estimativas`,
       },
       front: 'início',
       back: 'fim',
       analysing: 'analisando',
+      queueSize: 'Tamanho da fila',
       bottom: 'base',
       top: 'topo',
       ops: {
