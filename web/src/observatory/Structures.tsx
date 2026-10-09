@@ -157,10 +157,7 @@ export default function Structures({
     const q = bfsQueue(search, step);
     title = s.titles.bfs;
     size = s.size.bfs(formatInt(q.length));
-    op = q.current
-      ? s.ops.bfs(String(q.current), String(search.order[step]))
-      : s.ops.bfsStart(String(search.root));
-    body = <QueueView t={t} search={search} step={step} queue={q} link={link} />;
+    body = <QueueView t={t} search={search} step={step} link={link} />;
   } else if (search?.kind === 'dfs') {
     const st = dfsStack(search, step);
     const recursive = search.dfs === 'recursive';
@@ -214,6 +211,8 @@ export default function Structures({
           <span className={`label ${styles.title}`}>{title}</span>
           {search.kind === 'dijkstra' ? (
             <DijkstraHead t={t} search={search} step={step} view={frontier ?? null} />
+          ) : search.kind === 'bfs' ? (
+            <span className={`mono ${styles.meta}`}>{size}</span>
           ) : (
             <>
               <span className={`mono ${styles.op}`}>{op}</span>
@@ -311,95 +310,230 @@ interface Queue {
     keeps its queue in the discovery order itself: the front is the vertex
     after the one being expanded, the back the last vertex discovered. Only
     the chips drawn are copied, so a queue of a million costs a hundred. */
-function bfsQueue(search: StructureSearch, step: number): Queue {
+function bfsQueue(search: StructureSearch, step: number, max = MAX_CHIPS): Queue {
   if (step === 0) return { current: 0, length: 1, items: [search.root] };
   const current = search.parents[search.order[step]];
   const from = search.ranks[current] + 1;
   const length = step + 1 - from;
   const slice = (a: number, b: number) => Array.from(search.order.subarray(from + a, from + b));
-  const tail = 16;
+  const tail = Math.max(1, Math.floor(max / 4));
   const items =
-    length <= MAX_CHIPS
+    length <= max
       ? slice(0, length)
-      : [
-          ...slice(0, MAX_CHIPS - tail),
-          { gap: length - MAX_CHIPS },
-          ...slice(length - tail, length),
-        ];
+      : [...slice(0, max - tail - 1), { gap: length - max + 1 }, ...slice(length - tail, length)];
   return { current, length, items };
 }
 
+/** One queue cell: 34 px and the 1 px seam between cells. */
+const CELL = 35;
+/** Room the queue's two end labels take beside the cells. */
+const LABELS = 120;
+const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+/** BFS's queue as an array of glued cells, centred, and the vertex being
+    analysed in its own cell on the left. Every cell is keyed by vertex and
+    animated from where it was (FLIP): when a vertex leaves the front it
+    slides into the analysing cell, the queue closes up behind it, new
+    vertices come in at the back, and the vertex analysed before leaves to
+    the left. */
 function QueueView({
   t,
   search,
   step,
-  queue,
   link,
 }: {
   t: Strings;
   search: StructureSearch;
   step: number;
-  queue: Queue;
   link: Link;
 }) {
   const s = t.structures;
+  const boxRef = useRef<HTMLDivElement>(null);
+  const laneRef = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState(MAX_CHIPS);
+  useLayoutEffect(() => {
+    const lane = laneRef.current;
+    if (!lane) return;
+    const measure = () =>
+      setRoom(Math.max(5, Math.min(MAX_CHIPS, Math.floor((lane.clientWidth - LABELS) / CELL))));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(lane);
+    return () => observer.disconnect();
+  }, []);
+  const queue = bfsQueue(search, step, room);
   const just = search.order[step];
-  const items = queue.items;
+  const colour = (v: number) => rampColour(search.levels[v], search.depth);
+
+  // Where every cell was at the previous step, to slide it from there.
+  const last = useRef<{ of: StructureSearch | null; at: Map<string, Place> }>({
+    of: null,
+    at: new Map(),
+  });
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const motion = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const fresh = last.current.of !== search;
+    const origin = box.getBoundingClientRect();
+    const at = new Map<string, Place>();
+    let slot: Place | null = null;
+    for (const el of box.querySelectorAll<HTMLElement>('[data-flip]')) {
+      const r = el.getBoundingClientRect();
+      const place = {
+        x: r.left - origin.left,
+        y: r.top - origin.top,
+        el,
+        role: el.dataset.role ?? '',
+      };
+      if (place.role === 'current') slot = place;
+      at.set(el.dataset.flip ?? '', place);
+    }
+    if (motion && !fresh) {
+      for (const [key, place] of at) {
+        const before = last.current.at.get(key);
+        if (before) {
+          const dx = before.x - place.x;
+          const dy = before.y - place.y;
+          if (dx || dy) {
+            place.el.animate(
+              [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+              { duration: 460, easing: EASE },
+            );
+          }
+        } else {
+          place.el.animate(
+            [
+              { opacity: 0, transform: 'translateX(16px)' },
+              { opacity: 1, transform: 'none' },
+            ],
+            { duration: 360, easing: EASE },
+          );
+        }
+      }
+      // The cells gone since the previous step: the vertex analysed before
+      // leaves to the left; a vertex dequeued with nothing new to enqueue
+      // passes through the analysing cell on its way out.
+      for (const [key, before] of last.current.at) {
+        if (at.has(key) || before.el.isConnected) continue;
+        const ghost = before.el;
+        ghost.removeAttribute('data-flip');
+        ghost.style.position = 'absolute';
+        ghost.style.left = `${before.x}px`;
+        ghost.style.top = `${before.y}px`;
+        ghost.style.pointerEvents = 'none';
+        box.appendChild(ghost);
+        const to: Place | null = before.role === 'current' ? null : slot;
+        const dx = to ? to.x - before.x : -28;
+        const dy = to ? to.y - before.y : 0;
+        ghost.animate(
+          [
+            { opacity: 1, transform: 'none' },
+            { opacity: 0, transform: `translate(${dx}px, ${dy}px)` },
+          ],
+          { duration: 460, easing: EASE },
+        ).onfinish = () => ghost.remove();
+      }
+    }
+    last.current = { of: search, at };
+  });
+
   return (
-    <div className={styles.tape}>
+    <div ref={boxRef} className={styles.queue}>
       <div className={styles.slot}>
-        <span className={`label ${styles.slotLabel}`}>{s.expanding}</span>
-        {queue.current ? (
-          <Chip
-            key={`current-${queue.current}`}
-            v={queue.current}
-            link={link}
-            colour={rampColour(search.levels[queue.current], search.depth)}
-            state="current"
-          />
-        ) : (
-          <span className={styles.none}>·</span>
-        )}
+        <span className={`label ${styles.slotLabel}`}>{s.analysing}</span>
+        <div className={styles.slotCell}>
+          {queue.current ? (
+            <QueueCell
+              key={queue.current}
+              v={queue.current}
+              link={link}
+              colour={colour(queue.current)}
+              role="current"
+            />
+          ) : (
+            <span className={styles.slotEmpty} />
+          )}
+        </div>
       </div>
-      <div className={styles.lane}>
-        <span className={`label ${styles.end}`}>{s.front}</span>
-        <ol className={styles.chips}>
-          {items.map((item, i) => {
-            if (isGap(item)) {
+      <div ref={laneRef} className={styles.lane}>
+        <div className={styles.queueGroup}>
+          <span className={`label ${styles.end}`}>{s.front}</span>
+          <ol className={styles.queueCells}>
+            {queue.items.map((item, i) => {
+              if (isGap(item)) {
+                return (
+                  <li key="gap" className={`mono ${styles.queueGap}`}>
+                    +{formatInt(item.gap)}
+                  </li>
+                );
+              }
+              const before = queue.items[i - 1];
+              const level = search.levels[item];
               return (
-                <li key="gap">
-                  <Gap count={item.gap} />
-                </li>
-              );
-            }
-            const level = search.levels[item];
-            const before = items[i - 1];
-            const divider =
-              before !== undefined && !isGap(before) && search.levels[before] !== level;
-            return (
-              <Fragment key={item}>
-                {divider && <li className={styles.divider} aria-hidden="true" />}
-                <li>
-                  <Chip
+                <li
+                  key={item}
+                  data-level-break={
+                    (before !== undefined && !isGap(before) && search.levels[before] !== level) ||
+                    undefined
+                  }
+                >
+                  <QueueCell
                     v={item}
                     link={link}
-                    colour={rampColour(level, search.depth)}
-                    state={
-                      item === just
-                        ? 'just'
-                        : queue.current && search.parents[item] === queue.current
-                          ? 'new'
-                          : undefined
-                    }
+                    colour={colour(item)}
+                    role="queue"
+                    state={item === just ? 'just' : undefined}
                   />
                 </li>
-              </Fragment>
-            );
-          })}
-        </ol>
-        <span className={`label ${styles.end}`}>{s.back}</span>
+              );
+            })}
+          </ol>
+          <span className={`label ${styles.end}`}>{s.back}</span>
+        </div>
       </div>
     </div>
+  );
+}
+
+interface Place {
+  x: number;
+  y: number;
+  el: HTMLElement;
+  role: string;
+}
+
+/** A queue cell: a square of the array, in its vertex's level colour. */
+function QueueCell({
+  v,
+  link,
+  colour,
+  role,
+  state,
+}: {
+  v: number;
+  link: Link;
+  colour: string;
+  role: 'current' | 'queue';
+  state?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={`mono ${styles.queueCell}`}
+      data-flip={v}
+      data-role={role}
+      data-state={state}
+      data-hot={link.hovered === v || undefined}
+      style={{ '--chip': colour } as CSSProperties}
+      onPointerEnter={() => link.onHover(v)}
+      onPointerLeave={() => link.onHover(0)}
+      onFocus={() => link.onHover(v)}
+      onBlur={() => link.onHover(0)}
+      onClick={() => link.onSelect(v)}
+    >
+      {v}
+    </button>
   );
 }
 
