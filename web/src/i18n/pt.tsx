@@ -301,6 +301,15 @@ export const pt: Dictionary = {
     theOrigin: 'a origem',
     runFrom: (kind: string, root: string) => `Rodar ${kind} a partir de ${root}`,
     dijkstra: 'Dijkstra',
+    dfsWay: 'Implementação',
+    dfsWays: { iterative: 'Iterativa', recursive: 'Recursiva' },
+    dfsWayHints: {
+      iterative: 'uma pilha explícita de iteradores de vizinhos: sem limite de profundidade',
+      recursive: (limit: string) =>
+        `uma chamada por nível, como nos livros: até ${limit} níveis no navegador`,
+    },
+    recursionRefusal: (limit: string) =>
+      `A DFS recursiva desceria mais de ${limit} níveis, mais do que a pilha do navegador aguenta. A DFS iterativa constrói a mesma árvore sem esse limite.`,
     frontier: 'Fila de prioridade',
     frontiers: { vector: 'Vetor', heap: 'Heap' },
     frontierHints: {

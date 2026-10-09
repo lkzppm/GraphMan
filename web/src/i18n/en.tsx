@@ -298,6 +298,15 @@ export const en = {
     theOrigin: 'the origin',
     runFrom: (kind: string, root: string) => `Run ${kind} from ${root}`,
     dijkstra: 'Dijkstra',
+    dfsWay: 'Implementation',
+    dfsWays: { iterative: 'Iterative', recursive: 'Recursive' },
+    dfsWayHints: {
+      iterative: 'an explicit stack of neighbour iterators: no depth limit',
+      recursive: (limit: string) =>
+        `one call per level, as the textbook writes it: up to ${limit} levels in the browser`,
+    },
+    recursionRefusal: (limit: string) =>
+      `The recursive DFS would go deeper than ${limit} levels, more than the browser's stack holds. The iterative DFS builds the same tree without that limit.`,
     frontier: 'Priority queue',
     frontiers: { vector: 'Vector', heap: 'Heap' },
     frontierHints: {
