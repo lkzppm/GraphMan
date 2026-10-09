@@ -54,6 +54,14 @@ pub trait Visitor {
         let _ = (v, parent, distance);
         Control::Continue
     }
+
+    /// Dijkstra only: the estimate of `v` fell from `previous` (`+∞` when
+    /// `v` was just reached) to `distance`, through the vertex `parent`
+    /// being settled.
+    #[inline]
+    fn relax(&mut self, v: Vertex, parent: Vertex, previous: Weight, distance: Weight) {
+        let _ = (v, parent, previous, distance);
+    }
 }
 
 /// The silent visitor.
