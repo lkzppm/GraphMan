@@ -271,13 +271,14 @@ layers for the stack, brackets for the vector, a tree for the heap). Closed by d
 not on phones. Its top
 edge resizes it like the sidebar's (a horizontal grip pill in the middle,
 `row-resize`, 120–560 px and at least 220 px of canvas left, remembered,
-double click resets, arrow keys nudge). A header line names the structure
-(tracked blue label: Fila, Pilha, Fila de prioridade · vetor / heap
-binário), says what the step did in mono ("desempilha 8, 4 · empilha 6",
-"fixa 5 em 1,5 · baixa 8: 4 → 3,25") and, in grey, the size and the step;
-BFS has no header: the structure's name ("Fila", tracked, blue) sits over
-the queue on the analysing label's line, and its size is written under it,
-"Tamanho da fila: N" in grey with N in blue mono. BFS's queue is an array:
+double click resets, arrow keys nudge). For Dijkstra a header line names
+the structure (tracked blue label: Fila de prioridade · vetor / heap
+binário), says what the step did in mono ("fixa 5 em 1,5 · baixa 8: 4 →
+3,25") and, in grey, the size and the step. BFS and DFS share one view
+and have no header: the structure's name ("Fila", "Pilha", or "Pilha de
+chamadas" for the recursive DFS; tracked, blue) sits over the array on
+the analysing label's line, and its size is written under it ("Tamanho
+da fila: N", "Tamanho da pilha: N") in grey with N in blue mono. BFS's queue is an array:
 square cells in the level colours, sized from the strip's height (the
 analysing circle 34 to 64 px, the queue's squares 72 % of it), glued by a 1 px seam (rounded only at its two ends, a wider seam
 where the level changes), between its "início" and "fim" labels and centred in the strip
@@ -291,10 +292,14 @@ where it shows): the front cell glides into the analysing cell
 as the queue closes up behind it, new cells come in at the back, the
 vertex analysed before leaves to the left fading, and a vertex dequeued
 with nothing to enqueue passes through the analysing cell on its way
-out. DFS's stack runs from
-the base to the top, each frame with how far it has read its neighbours
-(`3/7`), `explore(v)` frames for the recursive DFS, and the frames popped
-since the last step fading out struck through. Dijkstra's vector is one
+out. DFS's stack is the same array read the other way: its top on the
+left, next to the analysing circle, and its base (the root) on the right,
+between "topo" and "base", one square per frame of the path to the vertex
+just discovered (a deep stack keeps its top frames and the root, the
+middle as a dashed count). The vertex analysed is the top itself: the
+square pushed comes in from the left as the circle grows out of it, the
+circle analysed before leaves to the left, and the frames popped since the
+last step lift off and fade. Dijkstra's vector is one
 cell per vertex (every vertex up to 120, past that only the slots holding
 an estimate with the empty runs counted): a blue wash sweeps the cells and
 lands on the vertex the step settles, which fills blue; lowered estimates

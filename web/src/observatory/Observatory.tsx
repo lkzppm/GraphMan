@@ -291,8 +291,6 @@ function storedStructuresOpen(): boolean {
   }
 }
 
-const NO_NEIGHBOURS = new Uint32Array(0);
-
 /** The width this browser remembered (the observatory renders only in the
     browser), or the default. */
 function storedSidebarWidth(): number {
@@ -1184,10 +1182,6 @@ export default function Observatory() {
   // The structure strip reads the graph through these: a vertex's
   // neighbours (for the DFS frames' cursors) and Dijkstra's frontier
   // replayed to a step by the library.
-  const neighborsOf = useCallback(
-    (v: number) => graphRef.current?.neighbors(v) ?? NO_NEIGHBOURS,
-    [],
-  );
   const frontierAt = useCallback(
     (step: number, limit: number): FrontierView | null => {
       const graph = graphRef.current;
@@ -2776,7 +2770,6 @@ export default function Observatory() {
             playing={playing}
             height={stripHeight}
             columnRef={columnRef}
-            neighbors={neighborsOf}
             frontierAt={frontierAt}
             hovered={hovered}
             onHover={(v) => rendererRef.current?.setHovered(v || hovered)}

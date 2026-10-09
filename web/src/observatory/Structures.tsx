@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  Fragment,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -19,7 +18,7 @@ import styles from './Structures.module.css';
    are read off the finished tree (the queue is a slice of the discovery
    order, the stack the path to the vertex just discovered); Dijkstra's
    frontier is the library's own, replayed to the step by the wasm side and
-   read as stored. Chips and heap nodes are keyed by vertex, so a step
+   read as stored. Cells and heap nodes are keyed by vertex, so a step
    slides what moved instead of redrawing it. */
 
 type Strings = Dictionary['observatory'];
@@ -105,7 +104,6 @@ export default function Structures({
   playing,
   height,
   columnRef,
-  neighbors,
   frontierAt,
   hovered,
   onHover,
@@ -123,7 +121,6 @@ export default function Structures({
   /** The stage column: its height bounds the strip, and it carries the
       `--strip-height` the drag previews. */
   columnRef: RefObject<HTMLDivElement | null>;
-  neighbors: (v: number) => Uint32Array;
   /** Dijkstra's frontier after the settle `step`, at most `limit` entries;
       `null` when it cannot be replayed. */
   frontierAt: (step: number, limit: number) => FrontierView | null;
@@ -159,36 +156,37 @@ export default function Structures({
   useEffect(() => () => onMembers(null), [onMembers]);
 
   let title = '';
-  let op: ReactNode = null;
-  let size = '';
   let body: ReactNode = <p className={styles.empty}>{s.empty}</p>;
 
   if (search?.kind === 'bfs') {
     title = s.titles.bfs;
-    body = <QueueView t={t} search={search} step={step} link={link} />;
-  } else if (search?.kind === 'dfs') {
-    const st = dfsStack(search, step);
-    const recursive = search.dfs === 'recursive';
-    title = s.titles.dfs;
-    size = s.size.dfs(formatInt(st.depth + 1));
-    const top = search.order[step];
-    const popped = st.popped.join(', ');
-    op = recursive
-      ? [st.popped.length ? s.ops.ret(popped) : '', s.ops.call(String(top))]
-          .filter(Boolean)
-          .join(' · ')
-      : [st.popped.length ? s.ops.pop(popped) : '', s.ops.push(String(top))]
-          .filter(Boolean)
-          .join(' · ');
     body = (
-      <StackView
-        t={t}
+      <ArrayView
         search={search}
         step={step}
-        stack={st}
-        recursive={recursive}
-        neighbors={neighbors}
         link={link}
+        title={title}
+        analysing={s.analysing}
+        ends={[s.front, s.back]}
+        sizeLabel={s.queueSize}
+        read={(room) => bfsQueue(search, step, room)}
+        seams
+      />
+    );
+  } else if (search?.kind === 'dfs') {
+    const recursive = search.dfs === 'recursive';
+    title = recursive ? s.titles.calls : s.titles.dfs;
+    body = (
+      <ArrayView
+        search={search}
+        step={step}
+        link={link}
+        title={title}
+        analysing={s.analysing}
+        ends={[s.top, s.bottom]}
+        sizeLabel={s.stackSize}
+        read={(room) => dfsStack(search, step, room)}
+        peek
       />
     );
   } else if (search?.kind === 'dijkstra') {
@@ -224,19 +222,10 @@ export default function Structures({
       }}
     >
       <StripHandle label={s.resize} height={height} columnRef={columnRef} onCommit={onResize} />
-      {search && search.kind !== 'bfs' && (
+      {search?.kind === 'dijkstra' && (
         <header className={styles.head}>
           <span className={`label ${styles.title}`}>{title}</span>
-          {search.kind === 'dijkstra' ? (
-            <DijkstraHead t={t} search={search} step={step} view={frontier ?? null} />
-          ) : (
-            <>
-              <span className={`mono ${styles.op}`}>{op}</span>
-              <span className={`mono ${styles.meta}`}>
-                {size} · {s.step(formatInt(step + 1), formatInt(search.span))}
-              </span>
-            </>
-          )}
+          <DijkstraHead t={t} search={search} step={step} view={frontier ?? null} />
         </header>
       )}
       <div className={styles.body}>{body}</div>
@@ -246,13 +235,10 @@ export default function Structures({
 
 /** What the strip draws at `step`, as vertices for the canvas. */
 function members(search: StructureSearch, step: number, frontier: FrontierView | null): Members {
-  if (search.kind === 'bfs') {
-    const q = bfsQueue(search, step);
-    const shown = q.items.filter((x): x is number => !isGap(x));
+  if (search.kind !== 'dijkstra') {
+    const held = search.kind === 'bfs' ? bfsQueue(search, step) : dfsStack(search, step);
+    const shown = held.items.filter((x): x is number => !isGap(x));
     return { vertices: shown, focus: search.order[step] };
-  }
-  if (search.kind === 'dfs') {
-    return { vertices: dfsStack(search, step).frames, focus: search.order[step] };
   }
   const vertices = frontier ? Array.from(frontier.vertices) : [];
   let focus = 0;
@@ -274,51 +260,20 @@ interface Link {
   onSelect: (v: number) => void;
 }
 
-/** A vertex as a chip: hovering it lights the vertex on the canvas,
-    clicking selects it there. */
-function Chip({
-  v,
-  link,
-  colour,
-  state,
-  children,
-}: {
-  v: number;
-  link: Link;
-  colour?: string;
-  state?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      className={`mono ${styles.chip}`}
-      data-state={state}
-      data-hot={link.hovered === v || undefined}
-      style={colour ? ({ '--chip': colour } as CSSProperties) : undefined}
-      onPointerEnter={() => link.onHover(v)}
-      onPointerLeave={() => link.onHover(0)}
-      onFocus={() => link.onHover(v)}
-      onBlur={() => link.onHover(0)}
-      onClick={() => link.onSelect(v)}
-    >
-      {children ?? v}
-    </button>
-  );
-}
-
 function Gap({ count }: { count: number }) {
   return <span className={`mono ${styles.gap}`}>+{formatInt(count)}</span>;
 }
 
-// ---- BFS: the queue --------------------------------------------------------
+// ---- BFS's queue and DFS's stack --------------------------------------------
 
-interface Queue {
-  /** The vertex being expanded (0 before the root is), dequeued already. */
+/** A queue or a stack as the strip draws it. */
+interface Sequence {
+  /** The vertex being analysed (0 before the root is). */
   current: number;
-  /** How many vertices are discovered and not yet expanded. */
+  /** How many vertices the structure holds. */
   length: number;
-  /** Those vertices, front first, the middle of a long queue as a count. */
+  /** Those vertices from the end it is read at (the queue's front, the
+      stack's top), the middle of a long one as a count. */
   items: (number | { gap: number })[];
 }
 
@@ -326,7 +281,7 @@ interface Queue {
     keeps its queue in the discovery order itself: the front is the vertex
     after the one being expanded, the back the last vertex discovered. Only
     the chips drawn are copied, so a queue of a million costs a hundred. */
-function bfsQueue(search: StructureSearch, step: number, max = MAX_CHIPS): Queue {
+function bfsQueue(search: StructureSearch, step: number, max = MAX_CHIPS): Sequence {
   if (step === 0) return { current: 0, length: 1, items: [search.root] };
   const current = search.parents[search.order[step]];
   const from = search.ranks[current] + 1;
@@ -351,47 +306,48 @@ const GUTTER = 28;
 const QUEUE_SCALE = 0.72;
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
-/** BFS's queue as an array of glued cells, centred in the strip, and the
-    vertex being analysed in its own cell on the left. Every cell is keyed
-    by vertex and slides from where it was (FLIP) when the step changes:
-    the front cell glides into the analysing cell, the queue closes up
-    behind it, new vertices come in at the back, and the vertex analysed
-    before leaves to the left. */
-function QueueView({
-  t,
+/** A queue or a stack as an array of glued cells, centred in the strip,
+    its read end on the left next to the vertex being analysed, which has
+    its own cell. Every cell is keyed by vertex and slides from where it was
+    (FLIP) when the step changes. BFS's queue: the front cell glides into
+    the analysing cell, the queue closes up behind it, new vertices come in
+    at the back, and the vertex analysed before leaves to the left. DFS's
+    stack (`peek`, the analysed vertex stays on top): the vertex pushed
+    comes in on the left, the analysing circle grows out of it, and the
+    frames popped lift away. */
+function ArrayView({
   search,
   step,
   link,
+  title,
+  analysing,
+  ends,
+  sizeLabel,
+  read,
+  seams = false,
+  peek = false,
 }: {
-  t: Strings;
   search: StructureSearch;
   step: number;
   link: Link;
+  title: string;
+  analysing: string;
+  /** The labels of the left (read) end and the right one. */
+  ends: [string, string];
+  sizeLabel: string;
+  /** The structure at the step, at most `room` cells of it. */
+  read: (room: number) => Sequence;
+  /** A wider seam where the level changes (BFS holds two levels at most). */
+  seams?: boolean;
+  /** The analysed vertex is also the first cell (the stack's top). */
+  peek?: boolean;
 }) {
-  const s = t.structures;
   const boxRef = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState({ width: 0, height: 0 });
-  useLayoutEffect(() => {
-    const el = boxRef.current;
-    if (!el) return;
-    const measure = () => setBox({ width: el.clientWidth, height: el.clientHeight });
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  // The analysing circle takes the strip's height (its label above and
-  // some air around it); the queue's squares are a size smaller, and as
-  // many fit as the width allows once the analysing column is mirrored on
-  // the right to keep the queue centred.
-  const size = Math.round(Math.max(CELL_MIN, Math.min(CELL_MAX, (box.height - 40) * 0.62)));
-  const cell = Math.round(Math.max(28, size * QUEUE_SCALE));
-  const side = Math.max(size + 40, 130);
-  const room = Math.max(
-    5,
-    Math.min(MAX_CHIPS, Math.floor((box.width - 2 * (side + GUTTER) - LABELS) / (cell + 1))),
-  );
-  const queue = bfsQueue(search, step, room);
+  const { size, cell, side, room } = cellSizes(useBox(boxRef));
+  const queue = read(room);
+  // The analysing circle shares its vertex with the top cell when peeking,
+  // so it slides by its own key.
+  const slotKey = (v: number) => (peek ? `c${v}` : String(v));
   const colour = (v: number) => rampColour(search.levels[v], search.depth);
 
   // Where every cell sat at the previous step (layout positions, which
@@ -408,29 +364,30 @@ function QueueView({
     const motion = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const fresh = last.current.of !== search;
     const origin = frame.getBoundingClientRect();
-    const at = new Map<string, Place>();
-    let slot: Place | null = null;
-    for (const el of frame.querySelectorAll<HTMLElement>('[data-flip]')) {
-      const place = { x: el.offsetLeft, y: el.offsetTop, el, role: el.dataset.role ?? '' };
-      if (place.role === 'current') slot = place;
-      at.set(el.dataset.flip ?? '', place);
-    }
+    const at = places(frame);
+    const slot = [...at.values()].find((place) => place.role === 'current') ?? null;
     if (motion && !fresh) {
       for (const [key, place] of at) {
         const before = last.current.at.get(key);
         const el = place.el;
-        if (before) {
-          // A cell still sliding keeps going from where it shows now.
-          let rx = 0;
-          let ry = 0;
-          if (before.el === el && el.getAnimations().length) {
-            const r = el.getBoundingClientRect();
-            rx = r.left - origin.left - place.x;
-            ry = r.top - origin.top - place.y;
-          }
-          const dx = before.x - place.x + rx;
-          const dy = before.y - place.y + ry;
-          el.getAnimations().forEach((a) => a.cancel());
+        const square = peek && place.role === 'current' ? at.get(key.slice(1)) : undefined;
+        if (!before && square) {
+          // The top just pushed is the vertex analysed: the circle grows
+          // out of its square.
+          place.el.animate(
+            [
+              {
+                transform: `translate(${square.x - place.x}px, ${square.y - place.y}px) scale(${cell / size})`,
+                transformOrigin: '0 0',
+                borderRadius: '0px',
+                opacity: 0,
+              },
+              { transform: 'none', transformOrigin: '0 0', borderRadius: '50%', opacity: 1 },
+            ],
+            { duration: 460, easing: EASE },
+          );
+        } else if (before) {
+          const [dx, dy] = travel(place, before, origin);
           // Out of the queue into the analysing slot: the square grows into
           // the circle, from the queue cell's corner and size.
           const morph = place.role === 'current' && before.role === 'queue';
@@ -452,7 +409,9 @@ function QueueView({
         } else {
           el.animate(
             [
-              { opacity: 0, transform: `translateX(${cell / 2}px)` },
+              // A stack's cells come in on the left (the top), a queue's
+              // at the back.
+              { opacity: 0, transform: `translateX(${peek ? -cell / 2 : cell / 2}px)` },
               { opacity: 1, transform: 'none' },
             ],
             { duration: 360, easing: EASE },
@@ -461,17 +420,21 @@ function QueueView({
       }
       // The cells gone since the previous step: the vertex analysed before
       // leaves to the left; a vertex dequeued with nothing new to enqueue
-      // passes through the analysing cell on its way out.
+      // passes through the analysing cell on its way out; a frame popped
+      // lifts off the stack.
       for (const [key, before] of last.current.at) {
         if (at.has(key) || before.el.isConnected) continue;
-        const ghost = before.el;
-        ghost.getAnimations().forEach((a) => a.cancel());
-        ghost.removeAttribute('data-flip');
-        ghost.style.position = 'absolute';
-        ghost.style.left = `${before.x}px`;
-        ghost.style.top = `${before.y}px`;
-        ghost.style.pointerEvents = 'none';
-        frame.appendChild(ghost);
+        const ghost = haunt(frame, before);
+        if (peek && before.role !== 'current') {
+          ghost.animate(
+            [
+              { opacity: 1, transform: 'none' },
+              { opacity: 0, transform: `translateY(${-cell}px)` },
+            ],
+            { duration: 380, easing: EASE },
+          ).onfinish = () => ghost.remove();
+          continue;
+        }
         const to: Place | null = before.role === 'current' ? null : slot;
         const dx = to ? to.x - before.x : -size;
         const dy = to ? to.y - before.y : 0;
@@ -490,27 +453,17 @@ function QueueView({
       }
     }
     last.current = { of: search, at };
-  }, [search, step, size, cell, room]);
+  }, [search, step, size, cell, room, peek]);
 
   return (
-    <div
-      ref={boxRef}
-      className={styles.queue}
-      style={
-        {
-          '--cell': `${cell}px`,
-          '--slot': `${size}px`,
-          '--side': `${side}px`,
-          '--gutter': `${GUTTER}px`,
-        } as CSSProperties
-      }
-    >
-      <span className={`label ${styles.slotLabel} ${styles.queueLabel}`}>{s.analysing}</span>
+    <div ref={boxRef} className={styles.queue} style={cellVars({ size, cell, side })}>
+      <span className={`label ${styles.slotLabel} ${styles.queueLabel}`}>{analysing}</span>
       <div className={styles.slotCell}>
         {queue.current ? (
           <QueueCell
-            key={queue.current}
+            key={slotKey(queue.current)}
             v={queue.current}
+            flip={slotKey(queue.current)}
             link={link}
             colour={colour(queue.current)}
             role="current"
@@ -519,9 +472,9 @@ function QueueView({
           <span className={styles.slotEmpty} />
         )}
       </div>
-      <span className={`label ${styles.queueTitle}`}>{s.titles.bfs}</span>
+      <span className={`label ${styles.queueTitle}`}>{title}</span>
       <div className={styles.queueGroup}>
-        <span className={`label ${styles.end}`}>{s.front}</span>
+        <span className={`label ${styles.end}`}>{ends[0]}</span>
         <ol className={styles.queueCells}>
           {queue.items.map((item, i) => {
             if (isGap(item)) {
@@ -537,22 +490,70 @@ function QueueView({
               <li
                 key={item}
                 data-level-break={
-                  (before !== undefined && !isGap(before) && search.levels[before] !== level) ||
+                  (seams &&
+                    before !== undefined &&
+                    !isGap(before) &&
+                    search.levels[before] !== level) ||
                   undefined
                 }
               >
-                <QueueCell v={item} link={link} colour={colour(item)} role="queue" />
+                <QueueCell
+                  v={item}
+                  link={link}
+                  colour={colour(item)}
+                  role={peek ? 'stack' : 'queue'}
+                />
               </li>
             );
           })}
         </ol>
-        <span className={`label ${styles.end}`}>{s.back}</span>
+        <span className={`label ${styles.end}`}>{ends[1]}</span>
       </div>
       <p className={styles.queueSize}>
-        {s.queueSize}: <span className="mono">{formatInt(queue.length)}</span>
+        {sizeLabel}: <span className="mono">{formatInt(queue.length)}</span>
       </p>
     </div>
   );
+}
+
+/** The size of an element, kept as it resizes. */
+function useBox(ref: RefObject<HTMLElement | null>): { width: number; height: number } {
+  const [box, setBox] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setBox({ width: el.clientWidth, height: el.clientHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return box;
+}
+
+/** The analysing circle takes the strip's height (its label above and some
+    air around it); the squares are a size smaller, and as many fit as the
+    width allows once the analysing column is mirrored on the right to keep
+    the array centred. */
+function cellSizes(box: { width: number; height: number }) {
+  const size = Math.round(Math.max(CELL_MIN, Math.min(CELL_MAX, (box.height - 40) * 0.62)));
+  const cell = Math.round(Math.max(28, size * QUEUE_SCALE));
+  const side = Math.max(size + 40, 130);
+  const room = Math.max(
+    5,
+    Math.min(MAX_CHIPS, Math.floor((box.width - 2 * (side + GUTTER) - LABELS) / (cell + 1))),
+  );
+  return { size, cell, side, room };
+}
+
+/** The box's custom properties for those sizes. */
+function cellVars({ size, cell, side }: { size: number; cell: number; side: number }) {
+  return {
+    '--cell': `${cell}px`,
+    '--slot': `${size}px`,
+    '--side': `${side}px`,
+    '--gutter': `${GUTTER}px`,
+  } as CSSProperties;
 }
 
 interface Place {
@@ -562,161 +563,107 @@ interface Place {
   role: string;
 }
 
-/** A queue cell: a square of the array, in its vertex's level colour. */
+/** Every sliding cell in `frame` by key, where the layout puts it
+    (offsetLeft/Top leave the slides' transforms out). */
+function places(frame: HTMLElement): Map<string, Place> {
+  const at = new Map<string, Place>();
+  for (const el of frame.querySelectorAll<HTMLElement>('[data-flip]')) {
+    at.set(el.dataset.flip ?? '', {
+      x: el.offsetLeft,
+      y: el.offsetTop,
+      el,
+      role: el.dataset.role ?? '',
+    });
+  }
+  return at;
+}
+
+/** How far a cell has to slide back to show where it was `before`, and
+    stops its running slide: one still moving keeps going from where it
+    shows now. */
+function travel(place: Place, before: Place, origin: DOMRect): [number, number] {
+  const el = place.el;
+  let rx = 0;
+  let ry = 0;
+  if (before.el === el && el.getAnimations().length) {
+    const r = el.getBoundingClientRect();
+    rx = r.left - origin.left - place.x;
+    ry = r.top - origin.top - place.y;
+  }
+  el.getAnimations().forEach((a) => a.cancel());
+  return [before.x - place.x + rx, before.y - place.y + ry];
+}
+
+/** A cell React has just removed, put back where it was, inert, to be
+    animated out (and removed when its animation ends). */
+function haunt(frame: HTMLElement, before: Place): HTMLElement {
+  const ghost = before.el;
+  ghost.getAnimations().forEach((a) => a.cancel());
+  ghost.removeAttribute('data-flip');
+  ghost.style.position = 'absolute';
+  ghost.style.left = `${before.x}px`;
+  ghost.style.top = `${before.y}px`;
+  ghost.style.pointerEvents = 'none';
+  frame.appendChild(ghost);
+  return ghost;
+}
+
+/** A cell of the array: a square in its vertex's level colour (the circle
+    of the analysing slot when `role` is 'current'). */
 function QueueCell({
   v,
+  flip = String(v),
   link,
   colour,
   role,
-  state,
+  title,
+  children,
 }: {
   v: number;
+  /** The key it slides by, unique in its box. */
+  flip?: string;
   link: Link;
   colour: string;
-  role: 'current' | 'queue';
-  state?: string;
+  role: 'current' | 'queue' | 'stack';
+  title?: string;
+  children?: ReactNode;
 }) {
   return (
     <button
       type="button"
       className={`mono ${styles.queueCell}`}
-      data-flip={v}
+      data-flip={flip}
       data-role={role}
-      data-state={state}
       data-hot={link.hovered === v || undefined}
       style={{ '--chip': colour } as CSSProperties}
+      title={title}
       onPointerEnter={() => link.onHover(v)}
       onPointerLeave={() => link.onHover(0)}
       onFocus={() => link.onHover(v)}
       onBlur={() => link.onHover(0)}
       onClick={() => link.onSelect(v)}
     >
-      {v}
+      {children ?? v}
     </button>
   );
 }
 
-// ---- DFS: the stack --------------------------------------------------------
-
-interface Stack {
-  /** Depth of the top frame (the stack holds depth + 1 frames). */
-  depth: number;
-  /** The frames from the root up to the top, windowed: the root, then the
-      top ones; `skipped` frames in between are not listed. */
-  frames: number[];
-  skipped: number;
-  /** Frames popped since the previous step, the deepest first. */
-  popped: number[];
-}
-
 /** DFS's stack right after the discovery of `order[step]`: the path from
     the root to it, the frames of a recursive DFS and the explicit stack of
-    the iterative one alike. Whatever was on top of the previous step's
-    stack and is not an ancestor of the new vertex was popped in between. */
-function dfsStack(search: StructureSearch, step: number): Stack {
+    the iterative one alike, the top (the vertex just discovered, whose
+    neighbours are read next) first. A deep stack keeps its top frames and
+    its root, the ones between counted. */
+function dfsStack(search: StructureSearch, step: number, max = MAX_CHIPS): Sequence {
   const top = search.order[step];
-  const depth = search.levels[top];
-  const keep = MAX_CHIPS - 2;
-  const frames: number[] = [];
-  for (let v = top; frames.length < keep && v; v = search.parents[v]) frames.push(v);
-  let skipped = 0;
-  if (frames[frames.length - 1] !== search.root) {
-    skipped = depth + 1 - frames.length - 1;
-    frames.push(search.root);
+  const length = search.levels[top] + 1;
+  const items: (number | { gap: number })[] = [];
+  for (let v = top; items.length < max - 2 && v; v = search.parents[v]) items.push(v);
+  if (items[items.length - 1] !== search.root) {
+    const hidden = length - items.length - 1;
+    if (hidden > 0) items.push({ gap: hidden });
+    items.push(search.root);
   }
-  frames.reverse();
-  const popped: number[] = [];
-  if (step > 0) {
-    const parent = search.parents[top];
-    for (let v = search.order[step - 1]; v && v !== parent; v = search.parents[v]) {
-      popped.push(v);
-      if (popped.length > 8) break;
-    }
-  }
-  return { depth, frames, skipped, popped };
-}
-
-/** Where `child` sits among `parent`'s neighbours (ascending rows), + 1:
-    how far the frame of `parent` has read its neighbour list. */
-function cursor(row: Uint32Array, child: number): number {
-  let lo = 0;
-  let hi = row.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (row[mid] < child) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo + 1;
-}
-
-function StackView({
-  t,
-  search,
-  step,
-  stack,
-  recursive,
-  neighbors,
-  link,
-}: {
-  t: Strings;
-  search: StructureSearch;
-  step: number;
-  stack: Stack;
-  recursive: boolean;
-  neighbors: (v: number) => Uint32Array;
-  link: Link;
-}) {
-  const s = t.structures;
-  const { frames, skipped, popped } = stack;
-  const top = search.order[step];
-  return (
-    <div className={styles.tape}>
-      <div className={styles.lane}>
-        <span className={`label ${styles.end}`}>{s.bottom}</span>
-        <ol className={styles.chips}>
-          {frames.map((v, i) => {
-            const row = neighbors(v);
-            // How far the frame has read its neighbours: up to the child it
-            // went down to (the frame above), none yet for the top.
-            const hidden = skipped > 0 && i === 0;
-            const read = i + 1 < frames.length ? cursor(row, frames[i + 1]) : 0;
-            return (
-              <Fragment key={v}>
-                <li>
-                  <Chip
-                    v={v}
-                    link={link}
-                    colour={rampColour(search.levels[v], search.depth)}
-                    state={v === top ? 'just' : undefined}
-                  >
-                    <span className={styles.frame}>
-                      <span>{recursive ? `explore(${v})` : v}</span>
-                      {!hidden && (
-                        <small>
-                          {read}/{row.length}
-                        </small>
-                      )}
-                    </span>
-                  </Chip>
-                </li>
-                {skipped > 0 && i === 0 && (
-                  <li>
-                    <Gap count={skipped} />
-                  </li>
-                )}
-              </Fragment>
-            );
-          })}
-          {popped.map((v) => (
-            <li key={`popped-${v}`} className={styles.popped} aria-hidden="true">
-              <span className={`mono ${styles.ghost}`}>{recursive ? `explore(${v})` : v}</span>
-            </li>
-          ))}
-        </ol>
-        <span className={`label ${styles.end}`}>{s.top}</span>
-      </div>
-    </div>
-  );
+  return { current: top, length, items };
 }
 
 // ---- Dijkstra: the frontier ------------------------------------------------
