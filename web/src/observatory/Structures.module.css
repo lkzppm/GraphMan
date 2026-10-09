@@ -11,13 +11,31 @@
   min-height: 0;
   border-top: 1px solid var(--border);
   background: var(--bg);
-  animation: stripIn 0.35s var(--ease) both;
+  animation: stripOpen 0.42s var(--ease) backwards;
 }
 
-@keyframes stripIn {
+/* Opening grows the strip from nothing and closing shrinks it back, the
+   canvas above taking or giving the room as it goes. Clipped meanwhile. */
+.strip[data-moving],
+.strip[data-closing] {
+  overflow: hidden;
+}
+
+.strip[data-closing] {
+  animation: stripClose 0.34s var(--ease) forwards;
+}
+
+@keyframes stripOpen {
   from {
+    height: 0;
     opacity: 0;
-    transform: translateY(12px);
+  }
+}
+
+@keyframes stripClose {
+  to {
+    height: 0;
+    opacity: 0;
   }
 }
 

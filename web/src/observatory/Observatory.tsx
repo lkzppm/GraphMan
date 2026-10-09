@@ -412,6 +412,8 @@ export default function Observatory() {
   /** The sidebar's width on a desktop, set by dragging its edge. */
   const [sidebarWidth, setSidebarWidth] = useState(storedSidebarWidth);
   const [structuresOpen, setStructuresOpen] = useState(storedStructuresOpen);
+  /** The strip is shrinking away: still drawn until its animation ends. */
+  const [stripClosing, setStripClosing] = useState(false);
   const [stripHeight, setStripHeight] = useState(storedStripHeight);
   const columnRef = useRef<HTMLDivElement>(null);
   /** What the structure strip holds at the replay's step: ringed on the canvas. */
@@ -2654,6 +2656,11 @@ export default function Observatory() {
                       onClick={() => {
                         const next = !structuresOpen;
                         setStructuresOpen(next);
+                        // Closing keeps the strip until it has shrunk away
+                        // (at once when motion is reduced: no animation runs).
+                        setStripClosing(
+                          !next && !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+                        );
                         try {
                           localStorage.setItem(STRUCTURES_KEY, next ? 'open' : 'closed');
                         } catch {
@@ -2761,7 +2768,7 @@ export default function Observatory() {
           )}
         </div>
 
-        {meta && search && structuresOpen && !phone && (
+        {meta && search && (structuresOpen || stripClosing) && !phone && (
           <Structures
             t={t}
             search={search}
@@ -2778,6 +2785,8 @@ export default function Observatory() {
               rendererRef.current?.setSelected(v);
             }}
             onMembers={onMembers}
+            closing={stripClosing && !structuresOpen}
+            onClosed={() => setStripClosing(false)}
             onResize={(height) => {
               const next = clampStrip(
                 height,

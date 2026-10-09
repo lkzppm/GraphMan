@@ -112,6 +112,8 @@ export default function Structures({
   onSelect,
   onResize,
   onMembers,
+  closing,
+  onClosed,
 }: {
   t: Strings;
   search: StructureSearch | null;
@@ -132,7 +134,15 @@ export default function Structures({
   /** Hears what the structure holds whenever the step changes (`null` once
       the strip closes), so the canvas can ring it. */
   onMembers: (members: Members | null) => void;
+  /** Shrink away, then call `onClosed`. */
+  closing: boolean;
+  onClosed: () => void;
 }) {
+  /** While the strip grows in or shrinks away it clips its content (the
+      grip pokes above its edge the rest of the time). */
+  const [growing, setGrowing] = useState(
+    () => !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
   const s = t.structures;
   const step = search ? Math.max(0, Math.min(Math.round(reveal), search.span - 1)) : 0;
   const link = { hovered, onHover, onSelect };
@@ -202,7 +212,17 @@ export default function Structures({
   }
 
   return (
-    <section className={styles.strip} aria-label={title || s.show}>
+    <section
+      className={styles.strip}
+      aria-label={title || s.show}
+      data-moving={growing || undefined}
+      data-closing={closing || undefined}
+      onAnimationEnd={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (closing) onClosed();
+        else setGrowing(false);
+      }}
+    >
       <StripHandle label={s.resize} height={height} columnRef={columnRef} onCommit={onResize} />
       {search && search.kind !== 'bfs' && (
         <header className={styles.head}>

@@ -264,7 +264,9 @@ Under the canvas, the **structure strip** shows the data structure of the
 search on it at the replay's step. It exists only once a search has run:
 a square icon button at the bottom centre of the canvas, like the other
 canvas tools (same hover lift and glow, pressed while open), opens and
-closes it; its icon names the structure (a row of cards for the queue,
+closes it, the strip growing up from the canvas's bottom edge (0.42 s) and
+shrinking back into it (0.34 s) while the canvas gives or takes the room;
+its icon names the structure (a row of cards for the queue,
 layers for the stack, brackets for the vector, a tree for the heap). Closed by default, the choice remembered;
 not on phones. Its top
 edge resizes it like the sidebar's (a horizontal grip pill in the middle,
