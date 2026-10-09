@@ -198,14 +198,15 @@
    label over the analysing circle in the space above it. */
 .queue {
   --cell: 34px;
+  --slot: 46px;
   --side: 130px;
   --gutter: 28px;
   position: relative;
   display: grid;
   grid-template-columns: var(--side) minmax(0, 1fr) var(--side);
-  grid-template-rows: minmax(0, 1fr) var(--cell) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) var(--slot) minmax(0, 1fr);
   height: 100%;
-  min-height: calc(var(--cell) + 56px);
+  min-height: calc(var(--slot) + 56px);
   padding: 0 var(--gutter);
 }
 
@@ -223,13 +224,13 @@
   justify-self: center;
   display: grid;
   place-items: center;
-  width: var(--cell);
-  height: var(--cell);
+  width: var(--slot);
+  height: var(--slot);
 }
 
 .slotEmpty {
-  width: var(--cell);
-  height: var(--cell);
+  width: var(--slot);
+  height: var(--slot);
   border: 1px dashed var(--border-2);
   border-radius: 50%;
 }
@@ -238,6 +239,7 @@
   grid-column: 2;
   grid-row: 2;
   justify-self: center;
+  align-self: center;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -301,9 +303,13 @@
   border-radius: 8px;
 }
 
-/* The vertex being analysed is a vertex again: a circle. */
+/* The vertex being analysed is a vertex again: a circle, a size larger
+   than the queue's squares. */
 .queueCell[data-role='current'] {
+  width: var(--slot);
+  height: var(--slot);
   border-radius: 50%;
+  font-size: calc(var(--slot) * 0.32);
 }
 
 .queueCell:hover,
