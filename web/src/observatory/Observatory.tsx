@@ -163,6 +163,8 @@ interface GraphMeta {
 type SearchKindName = 'bfs' | 'dfs' | 'dijkstra';
 /** How Dijkstra keeps its estimates: the course's two versions. */
 type FrontierName = 'vector' | 'heap';
+/** How DFS is written: with an explicit stack, or one call per level. */
+type DfsName = 'iterative' | 'recursive';
 
 /** Dijkstra's tree is coloured and charted by distance bands: the origin
     alone at 0, then BANDS equal slices up to the farthest settled vertex.
@@ -211,6 +213,8 @@ interface Search {
   bandWidth: number;
   /** Dijkstra only: the frontier that ran. */
   frontier: FrontierName | null;
+  /** DFS only: the way it was written. */
+  dfs: DfsName | null;
   result: SearchResult | ShortestPathResult;
 }
 
@@ -286,6 +290,9 @@ export default function Observatory() {
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [kind, setKind] = useState<SearchKindName>('bfs');
   const [frontier, setFrontier] = useState<FrontierName>('heap');
+  const [dfsWay, setDfsWay] = useState<DfsName>('iterative');
+  /** How deep the recursive DFS may go here (the library's browser limit). */
+  const [recursionLimit, setRecursionLimit] = useState(0);
   const [mode, setMode] = useState<SearchMode>('search');
   const [rootInput, setRootInput] = useState('');
   const [targetInput, setTargetInput] = useState('');
@@ -396,6 +403,7 @@ export default function Observatory() {
         if (cancelled) return;
         wasmRef.current = wasm;
         rendererRef.current = renderer;
+        setRecursionLimit(wasm.dfsRecursionLimit());
         renderer.onError = (message) => setNotice(message);
         renderer.onPositions = () => {
           if (autoFit.current) fitRef.current();
@@ -965,6 +973,16 @@ export default function Observatory() {
         return;
       }
       try {
+        // The recursive DFS may refuse a tree too deep for the browser's
+        // stack; ask first, so a refusal keeps the current search on screen.
+        let recursive: SearchResult | undefined;
+        if (which === 'dfs' && dfsWay === 'recursive') {
+          recursive = graph.dfsRecursive(root);
+          if (!recursive) {
+            setNotice(tRef.current.recursionRefusal(formatInt(wasm.dfsRecursionLimit())));
+            return;
+          }
+        }
         search?.result.free();
         let result: SearchResult | ShortestPathResult;
         let levels: Uint32Array;
@@ -992,10 +1010,9 @@ export default function Observatory() {
             fullPath = found.length ? found : null;
           }
         } else {
-          const traversal = graph.search(
-            which === 'bfs' ? wasm.SearchKind.Bfs : wasm.SearchKind.Dfs,
-            root,
-          );
+          const traversal =
+            recursive ??
+            graph.search(which === 'bfs' ? wasm.SearchKind.Bfs : wasm.SearchKind.Dfs, root);
           result = traversal;
           levels = traversal.levels();
           levelSizes = traversal.levelSizes();
@@ -1044,8 +1061,11 @@ export default function Observatory() {
           distances,
           bandWidth,
           frontier: which === 'dijkstra' ? frontier : null,
+          dfs: which === 'dfs' ? dfsWay : null,
           result,
         });
+        // A search that ran supersedes an earlier refusal.
+        setNotice(null);
         // The search picture is the tree: no selection ring or neighbourhood on the origin.
         setSelected(0);
         renderer.setSelected(0);
@@ -1057,7 +1077,7 @@ export default function Observatory() {
         setNotice(error instanceof Error ? error.message : String(error));
       }
     },
-    [search, pathOnly, frontier],
+    [search, pathOnly, frontier, dfsWay],
   );
 
   // The reveal animation: discovery ranks light up over a duration that
@@ -1897,30 +1917,27 @@ export default function Observatory() {
                   </div>
                 </div>
                 {kind === 'dijkstra' && (
-                  <div className={styles.field}>
-                    <span className={styles.fieldLabel}>{t.frontier}</span>
-                    <div
-                      className={styles.segmented}
-                      role="radiogroup"
-                      aria-label={t.frontier}
-                      data-active={frontier === 'heap' ? 'second' : 'first'}
-                    >
-                      <span className={styles.thumb} aria-hidden="true" />
-                      {(['vector', 'heap'] as const).map((which) => (
-                        <button
-                          key={which}
-                          type="button"
-                          role="radio"
-                          aria-checked={frontier === which}
-                          title={t.frontierHints[which]}
-                          className={frontier === which ? styles.segmentActive : styles.segment}
-                          onClick={() => setFrontier(which)}
-                        >
-                          {t.frontiers[which]}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <Choice
+                    label={t.frontier}
+                    options={['vector', 'heap'] as const}
+                    value={frontier}
+                    onChange={setFrontier}
+                    names={t.frontiers}
+                    hints={t.frontierHints}
+                  />
+                )}
+                {kind === 'dfs' && (
+                  <Choice
+                    label={t.dfsWay}
+                    options={['iterative', 'recursive'] as const}
+                    value={dfsWay}
+                    onChange={setDfsWay}
+                    names={t.dfsWays}
+                    hints={{
+                      iterative: t.dfsWayHints.iterative,
+                      recursive: t.dfsWayHints.recursive(formatInt(recursionLimit)),
+                    }}
+                  />
                 )}
               </div>
               <div className={styles.searchRow}>
@@ -2607,6 +2624,51 @@ function Panel({
       </header>
       <div className={styles.panelBody}>{children}</div>
     </section>
+  );
+}
+
+/** Two ways of running the chosen algorithm (Dijkstra's priority queue,
+    DFS's iterative or recursive form), as a two-option segmented field. */
+function Choice<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  names,
+  hints,
+}: {
+  label: string;
+  options: readonly [T, T];
+  value: T;
+  onChange: (next: T) => void;
+  names: Record<T, string>;
+  hints: Record<T, string>;
+}) {
+  return (
+    <div className={styles.field}>
+      <span className={styles.fieldLabel}>{label}</span>
+      <div
+        className={styles.segmented}
+        role="radiogroup"
+        aria-label={label}
+        data-active={value === options[1] ? 'second' : 'first'}
+      >
+        <span className={styles.thumb} aria-hidden="true" />
+        {options.map((which) => (
+          <button
+            key={which}
+            type="button"
+            role="radio"
+            aria-checked={value === which}
+            title={hints[which]}
+            className={value === which ? styles.segmentActive : styles.segment}
+            onClick={() => onChange(which)}
+          >
+            {names[which]}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

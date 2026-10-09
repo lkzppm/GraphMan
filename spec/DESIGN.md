@@ -261,7 +261,10 @@ as a full-width three-way segmented control (BFS / DFS / Dijkstra), under
 it mode (Max, the whole traversal / Distance) and, for Dijkstra only, the
 priority queue ("Fila de prioridade": Vector / Heap, the course's two
 versions, so their times can be compared on the spot; the code calls it
-the `Frontier`, the site uses the textbook name) side by side, then
+the `Frontier`, the site uses the textbook name) or, for DFS, its
+implementation (Iterative / Recursive, the same tree; the recursive one
+refuses past the browser's 2,500 levels with a notice that points to the
+iterative one) side by side, then
 origin (and, in Distance, target) with a square play button, then result
 tiles, level profile and playback (replay + slider + count; download and
 clear live in the panel header). Controls are compact: 28 px inputs,

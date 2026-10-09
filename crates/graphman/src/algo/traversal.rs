@@ -1,13 +1,17 @@
 //! Breadth-first and depth-first search.
 //!
 //! Both traversals share one output type, [`SearchTree`], and one extension
-//! point, [`Visitor`]. The traversal is the *template*; the tree records
+//! point, [`Visitor`]. DFS comes written both ways ([`DfsKind`]): iterative,
+//! with an explicit stack, and recursive, as the textbook writes it; both
+//! build the same tree and report the same events. The traversal is the *template*; the tree records
 //! parents and levels; visitors add behaviour (early exit, frame capture)
 //! without the traversal knowing about them. Dijkstra
 //! ([`dijkstra_into`](super::dijkstra_into)) reports to the same visitors.
 
 use crate::graph::{Graph, NO_VERTEX, Vertex, Weight};
+use std::fmt;
 use std::io::{self, Write};
+use std::str::FromStr;
 
 /// Level value of a vertex that the traversal never reached.
 pub const UNREACHED: u32 = u32::MAX;
@@ -320,4 +324,155 @@ pub fn dfs_into<'g, G: Graph, V: Visitor>(
             }
         }
     }
+}
+
+/// The two ways of writing DFS, for choosing one at runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum DfsKind {
+    /// [`dfs_into`]: an explicit stack of neighbour iterators, no recursion.
+    Iterative,
+    /// [`dfs_recursive_into`]: one call per tree level, as the textbook
+    /// writes it; refuses to nest deeper than its caller allows.
+    Recursive,
+}
+
+impl DfsKind {
+    /// Both ways, in the order they are usually reported.
+    pub const ALL: [DfsKind; 2] = [DfsKind::Iterative, DfsKind::Recursive];
+
+    /// Short identifier used on the command line (`iterative`, `recursive`).
+    pub fn label(self) -> &'static str {
+        match self {
+            DfsKind::Iterative => "iterative",
+            DfsKind::Recursive => "recursive",
+        }
+    }
+}
+
+impl fmt::Display for DfsKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
+impl FromStr for DfsKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "iterative" | "iter" | "stack" => Ok(DfsKind::Iterative),
+            "recursive" | "rec" => Ok(DfsKind::Recursive),
+            other => Err(format!(
+                "unknown DFS {other:?} (expected iterative or recursive)"
+            )),
+        }
+    }
+}
+
+/// The recursive DFS was about to nest deeper than its caller allowed.
+///
+/// Each tree level is one more call on the thread's stack, and a DFS tree
+/// can be as deep as the graph has vertices: a path of a million vertices
+/// needs a million nested calls. Rather than overflow the stack (which
+/// aborts the process, or traps a WebAssembly instance), the search stops
+/// and says so; the iterative DFS has no such limit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "recursive DFS would nest deeper than {max_depth} calls; the iterative DFS has no such limit"
+)]
+pub struct RecursionLimit {
+    /// The deepest tree level the caller allowed.
+    pub max_depth: u32,
+}
+
+/// Recursive depth-first search from `root`, at most `max_depth` levels deep.
+pub fn dfs_recursive<G: Graph>(
+    graph: &G,
+    root: Vertex,
+    max_depth: u32,
+) -> Result<SearchTree, RecursionLimit> {
+    dfs_recursive_with(graph, root, max_depth, &mut ())
+}
+
+/// Recursive depth-first search from `root`, reporting to `visitor`.
+pub fn dfs_recursive_with<G: Graph, V: Visitor>(
+    graph: &G,
+    root: Vertex,
+    max_depth: u32,
+    visitor: &mut V,
+) -> Result<SearchTree, RecursionLimit> {
+    let mut tree = SearchTree::new(graph.vertex_count());
+    dfs_recursive_into(graph, root, &mut tree, visitor, max_depth)?;
+    Ok(tree)
+}
+
+/// Recursive depth-first search into a reusable tree: the textbook DFS,
+/// one call per vertex, neighbours in ascending order. It builds exactly
+/// the tree [`dfs_into`] builds and reports the same events.
+///
+/// `max_depth` bounds the deepest tree level, which is the nesting of the
+/// calls: size it to the stack the caller runs on. Past it the search stops
+/// with [`RecursionLimit`] and leaves the tree empty (the visitor has seen
+/// the vertices discovered until then).
+pub fn dfs_recursive_into<G: Graph, V: Visitor>(
+    graph: &G,
+    root: Vertex,
+    tree: &mut SearchTree,
+    visitor: &mut V,
+    max_depth: u32,
+) -> Result<(), RecursionLimit> {
+    tree.begin(root);
+    if visitor.discover(root, NO_VERTEX, 0) == Control::Break {
+        return Ok(());
+    }
+    match explore(graph, root, 0, tree, visitor, max_depth) {
+        Step::TooDeep => {
+            tree.reset();
+            Err(RecursionLimit { max_depth })
+        }
+        Step::Done | Step::Break => Ok(()),
+    }
+}
+
+/// How a recursive call ended.
+enum Step {
+    /// Every descendant explored.
+    Done,
+    /// The visitor stopped the search.
+    Break,
+    /// The next call would have passed `max_depth`.
+    TooDeep,
+}
+
+/// Visits the unreached neighbours of `v` (at `depth`), each by a call.
+fn explore<G: Graph, V: Visitor>(
+    graph: &G,
+    v: Vertex,
+    depth: u32,
+    tree: &mut SearchTree,
+    visitor: &mut V,
+    max_depth: u32,
+) -> Step {
+    for w in graph.neighbors(v) {
+        if tree.mark(w) {
+            // Recorded before the limit check, so a reset forgets it too.
+            tree.level[w as usize] = depth + 1;
+            tree.parent[w as usize] = v;
+            tree.order.push(w);
+            if depth >= max_depth {
+                return Step::TooDeep;
+            }
+            if visitor.discover(w, v, depth + 1) == Control::Break {
+                return Step::Break;
+            }
+            match explore(graph, w, depth + 1, tree, visitor, max_depth) {
+                Step::Done => {}
+                stop => return stop,
+            }
+        }
+    }
+    visitor.finish(v);
+    Step::Done
 }

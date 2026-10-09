@@ -1,6 +1,7 @@
 //! Graph algorithms, generic over any [`Graph`](crate::graph::Graph).
 //!
-//! * [`bfs`] / [`dfs`] — traversals that build a [`SearchTree`] and report to a [`Visitor`].
+//! * [`bfs`] / [`dfs`] — traversals that build a [`SearchTree`] and report to a [`Visitor`];
+//!   DFS written both ways, iterative and recursive ([`DfsKind`], [`dfs_recursive`]).
 //! * [`distance`] / [`eccentricity`] — shortest-path queries built on BFS.
 //! * [`dijkstra`] / [`shortest_path`] — shortest paths on weighted graphs, one
 //!   algorithm over three interchangeable [`Frontier`]s (vector, heap, lazy heap).
@@ -29,5 +30,6 @@ pub use shortest_path::{
 };
 pub use stats::{DegreeStats, WeightStats, degree_stats, weight_stats};
 pub use traversal::{
-    Control, SearchTree, UNREACHED, Visitor, bfs, bfs_into, bfs_with, dfs, dfs_into, dfs_with,
+    Control, DfsKind, RecursionLimit, SearchTree, UNREACHED, Visitor, bfs, bfs_into, bfs_with, dfs,
+    dfs_into, dfs_recursive, dfs_recursive_into, dfs_recursive_with, dfs_with,
 };
