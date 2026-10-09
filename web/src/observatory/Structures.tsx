@@ -87,11 +87,11 @@ export function storedStripHeight(): number {
 
 /** The most chips a queue or stack draws; the middle of a longer one is a count. */
 const MAX_CHIPS = 96;
-/** Vertices up to which the vector is drawn whole, one cell per vertex. */
-const VECTOR_WHOLE = 120;
 /** Entries asked of a frontier: a heap's first five levels, or vector cells. */
 const HEAP_LEVELS = 5;
 export const FRONTIER_LIMIT = 240;
+/** A discovery rank's "not reached". */
+const UNREACHED = 0xffffffff;
 
 /** A level's colour: the canvas ramp, the origin's blue to the far end's cyan. */
 function rampColour(level: number, depth: number): string {
@@ -197,21 +197,13 @@ export default function Structures({
     );
   } else if (search?.kind === 'dijkstra') {
     title = search.frontier === 'vector' ? s.titles.vector : s.titles.heap;
-    const lowered = new Set(frontier?.relaxed ?? []);
     body =
       frontier === undefined ? null : frontier === null ? (
         <p className={styles.empty}>{s.tooLarge}</p>
       ) : search.frontier === 'vector' ? (
-        <VectorView
-          t={t}
-          search={search}
-          step={step}
-          view={frontier}
-          lowered={lowered}
-          link={link}
-        />
+        <VectorView t={t} search={search} view={frontier} link={link} title={title} />
       ) : (
-        <HeapView t={t} view={frontier} lowered={lowered} link={link} />
+        <HeapView t={t} search={search} view={frontier} link={link} title={title} />
       );
   }
 
@@ -228,12 +220,6 @@ export default function Structures({
       }}
     >
       <StripHandle label={s.resize} height={height} columnRef={columnRef} onCommit={onResize} />
-      {search?.kind === 'dijkstra' && (
-        <header className={styles.head}>
-          <span className={`label ${styles.title}`}>{title}</span>
-          <DijkstraHead t={t} search={search} step={step} view={frontier ?? null} />
-        </header>
-      )}
       <div className={styles.body}>{body}</div>
     </section>
   );
@@ -264,10 +250,6 @@ interface Link {
   hovered: number;
   onHover: (v: number) => void;
   onSelect: (v: number) => void;
-}
-
-function Gap({ count }: { count: number }) {
-  return <span className={`mono ${styles.gap}`}>+{formatInt(count)}</span>;
 }
 
 // ---- BFS's queue and DFS's stack --------------------------------------------
@@ -356,110 +338,7 @@ function ArrayView({
   const slotKey = (v: number) => (peek ? `c${v}` : String(v));
   const colour = (v: number) => rampColour(search.levels[v], search.depth);
 
-  // Where every cell sat at the previous step (layout positions, which
-  // offsetLeft/Top give without the slides' transforms), to slide it from
-  // there. Only a new step or a new size moves anything; a hover or a
-  // replay frame that stays on the same step does not.
-  const last = useRef<{ of: StructureSearch | null; at: Map<string, Place> }>({
-    of: null,
-    at: new Map(),
-  });
-  useLayoutEffect(() => {
-    const frame = boxRef.current;
-    if (!frame) return;
-    const motion = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const fresh = last.current.of !== search;
-    const origin = frame.getBoundingClientRect();
-    const at = places(frame);
-    const slot = [...at.values()].find((place) => place.role === 'current') ?? null;
-    if (motion && !fresh) {
-      for (const [key, place] of at) {
-        const before = last.current.at.get(key);
-        const el = place.el;
-        const square = peek && place.role === 'current' ? at.get(key.slice(1)) : undefined;
-        if (!before && square) {
-          // The top just pushed is the vertex analysed: the circle grows
-          // out of its square.
-          place.el.animate(
-            [
-              {
-                transform: `translate(${square.x - place.x}px, ${square.y - place.y}px) scale(${cell / size})`,
-                transformOrigin: '0 0',
-                borderRadius: '0px',
-                opacity: 0,
-              },
-              { transform: 'none', transformOrigin: '0 0', borderRadius: '50%', opacity: 1 },
-            ],
-            { duration: 460, easing: EASE },
-          );
-        } else if (before) {
-          const [dx, dy] = travel(place, before, origin);
-          // Out of the queue into the analysing slot: the square grows into
-          // the circle, from the queue cell's corner and size.
-          const morph = place.role === 'current' && before.role === 'queue';
-          if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-            el.animate(
-              morph
-                ? [
-                    {
-                      transform: `translate(${dx}px, ${dy}px) scale(${cell / size})`,
-                      transformOrigin: '0 0',
-                      borderRadius: '0px',
-                    },
-                    { transform: 'none', transformOrigin: '0 0', borderRadius: '50%' },
-                  ]
-                : [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
-              { duration: 460, easing: EASE },
-            );
-          }
-        } else {
-          el.animate(
-            [
-              // A stack's cells come in on the left (the top), a queue's
-              // at the back.
-              { opacity: 0, transform: `translateX(${peek ? -cell / 2 : cell / 2}px)` },
-              { opacity: 1, transform: 'none' },
-            ],
-            { duration: 360, easing: EASE },
-          );
-        }
-      }
-      // The cells gone since the previous step: the vertex analysed before
-      // leaves to the left; a vertex dequeued with nothing new to enqueue
-      // passes through the analysing cell on its way out; a frame popped
-      // lifts off the stack.
-      for (const [key, before] of last.current.at) {
-        if (at.has(key) || before.el.isConnected) continue;
-        const ghost = haunt(frame, before);
-        if (peek && before.role !== 'current') {
-          ghost.animate(
-            [
-              { opacity: 1, transform: 'none' },
-              { opacity: 0, transform: `translateY(${-cell}px)` },
-            ],
-            { duration: 380, easing: EASE },
-          ).onfinish = () => ghost.remove();
-          continue;
-        }
-        const to: Place | null = before.role === 'current' ? null : slot;
-        const dx = to ? to.x - before.x : -size;
-        const dy = to ? to.y - before.y : 0;
-        ghost.animate(
-          [
-            { opacity: 1, transform: 'none', transformOrigin: '0 0' },
-            {
-              opacity: 0,
-              transform: `translate(${dx}px, ${dy}px)${to ? ` scale(${size / cell})` : ''}`,
-              transformOrigin: '0 0',
-              ...(to ? { borderRadius: '50%' } : {}),
-            },
-          ],
-          { duration: 460, easing: EASE },
-        ).onfinish = () => ghost.remove();
-      }
-    }
-    last.current = { of: search, at };
-  }, [search, step, size, cell, room, peek]);
+  useFlip(boxRef, search, step, peek ? STACK_MOTION : QUEUE_MOTION, cell, size, String(room));
 
   return (
     <div ref={boxRef} className={styles.queue} style={cellVars({ size, cell, side })}>
@@ -565,23 +444,35 @@ function cellVars({ size, cell, side }: { size: number; cell: number; side: numb
 interface Place {
   x: number;
   y: number;
+  /** Its width, to scale a cell into another of another size. */
+  w: number;
   el: HTMLElement;
   role: string;
 }
 
-/** Every sliding cell in `frame` by key, where the layout puts it
-    (offsetLeft/Top leave the slides' transforms out). */
+/** Every sliding cell in `frame` by key, where the layout puts it within
+    the frame (offsets leave the slides' transforms out, and are summed up
+    through any positioned box between, like the heap's tree). */
 function places(frame: HTMLElement): Map<string, Place> {
   const at = new Map<string, Place>();
   for (const el of frame.querySelectorAll<HTMLElement>('[data-flip]')) {
-    at.set(el.dataset.flip ?? '', {
-      x: el.offsetLeft,
-      y: el.offsetTop,
-      el,
-      role: el.dataset.role ?? '',
-    });
+    let x = 0;
+    let y = 0;
+    for (let e: HTMLElement | null = el; e && e !== frame;) {
+      x += e.offsetLeft;
+      y += e.offsetTop;
+      e = e.offsetParent as HTMLElement | null;
+    }
+    at.set(el.dataset.flip ?? '', { x, y, w: el.offsetWidth, el, role: el.dataset.role ?? '' });
   }
   return at;
+}
+
+/** The slides running on a cell (not its CSS animations, like a flash). */
+function slides(el: HTMLElement): Animation[] {
+  return el
+    .getAnimations()
+    .filter((a) => !(a instanceof CSSAnimation) && !(a instanceof CSSTransition));
 }
 
 /** How far a cell has to slide back to show where it was `before`, and
@@ -591,12 +482,13 @@ function travel(place: Place, before: Place, origin: DOMRect): [number, number] 
   const el = place.el;
   let rx = 0;
   let ry = 0;
-  if (before.el === el && el.getAnimations().length) {
+  const running = slides(el);
+  if (before.el === el && running.length) {
     const r = el.getBoundingClientRect();
     rx = r.left - origin.left - place.x;
     ry = r.top - origin.top - place.y;
   }
-  el.getAnimations().forEach((a) => a.cancel());
+  running.forEach((a) => a.cancel());
   return [before.x - place.x + rx, before.y - place.y + ry];
 }
 
@@ -614,6 +506,141 @@ function haunt(frame: HTMLElement, before: Place): HTMLElement {
   return ghost;
 }
 
+/** Round cells: the analysing circle and the heap's nodes. */
+const ROUND = new Set(['current', 'node']);
+
+/** A cell turning into the analysing circle: from where `from` is (dx, dy
+    away), its size and its shape. */
+function grow(dx: number, dy: number, from: Place, to: Place, fade: boolean): Keyframe[] {
+  return [
+    {
+      transform: `translate(${dx}px, ${dy}px) scale(${from.w / Math.max(to.w, 1)})`,
+      transformOrigin: '0 0',
+      borderRadius: ROUND.has(from.role) ? '50%' : '0px',
+      ...(fade ? { opacity: 0 } : {}),
+    },
+    {
+      transform: 'none',
+      transformOrigin: '0 0',
+      borderRadius: '50%',
+      ...(fade ? { opacity: 1 } : {}),
+    },
+  ];
+}
+
+/** How a structure's cells move when the step changes. */
+interface Motion {
+  /** The key of the cell a new analysing circle grows out of, when the
+      vertex analysed stays in the structure (the stack's top, the vector's
+      slot); the circle is keyed `c` + vertex then. */
+  source?: (key: string) => string | undefined;
+  /** Where a new cell comes in from, as a transform. */
+  enter: (cell: number) => string;
+  /** Where a cell gone goes: through the analysing cell (a queue's
+      vertex dequeued with nothing to enqueue), up off the structure (a
+      frame popped), or nowhere, fading where it was. */
+  leave: 'slot' | 'lift' | 'fade';
+}
+
+const circleOf = (key: string) => (key.startsWith('c') ? key.slice(1) : undefined);
+const QUEUE_MOTION: Motion = { enter: (cell) => `translateX(${cell / 2}px)`, leave: 'slot' };
+const STACK_MOTION: Motion = {
+  source: circleOf,
+  enter: (cell) => `translateX(${-cell / 2}px)`,
+  leave: 'lift',
+};
+const VECTOR_MOTION: Motion = { source: circleOf, enter: () => 'scale(0.8)', leave: 'fade' };
+const HEAP_MOTION: Motion = { enter: () => 'scale(0.6)', leave: 'fade' };
+
+/** Slides every cell of `boxRef` from where it sat at the previous step
+    (FLIP). Only a new step or a new layout moves anything; a hover or a
+    replay frame that stays on the same step does not. The vertex the step
+    analyses glides (or grows) into the analysing circle, the one analysed
+    before leaves to the left, and the rest follow `motion`. */
+function useFlip(
+  boxRef: RefObject<HTMLElement | null>,
+  search: StructureSearch,
+  step: number,
+  motion: Motion,
+  cell: number,
+  size: number,
+  layout: string,
+) {
+  const last = useRef<{ of: StructureSearch | null; at: Map<string, Place> }>({
+    of: null,
+    at: new Map(),
+  });
+  useLayoutEffect(() => {
+    const frame = boxRef.current;
+    if (!frame) return;
+    const moving = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const fresh = last.current.of !== search;
+    const origin = frame.getBoundingClientRect();
+    const at = places(frame);
+    const slot = [...at.values()].find((place) => place.role === 'current') ?? null;
+    if (moving && !fresh) {
+      for (const [key, place] of at) {
+        const before = last.current.at.get(key);
+        const el = place.el;
+        const from =
+          !before && place.role === 'current' && motion.source
+            ? at.get(motion.source(key) ?? '')
+            : undefined;
+        if (from) {
+          el.animate(grow(from.x - place.x, from.y - place.y, from, place, true), {
+            duration: 460,
+            easing: EASE,
+          });
+        } else if (before) {
+          const [dx, dy] = travel(place, before, origin);
+          if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+            el.animate(
+              place.role === 'current' && before.role !== 'current'
+                ? grow(dx, dy, before, place, false)
+                : [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+              { duration: 460, easing: EASE },
+            );
+          }
+        } else {
+          el.animate(
+            [
+              { opacity: 0, transform: motion.enter(cell) },
+              { opacity: 1, transform: 'none' },
+            ],
+            { duration: 360, easing: EASE },
+          );
+        }
+      }
+      for (const [key, before] of last.current.at) {
+        if (at.has(key) || before.el.isConnected) continue;
+        const ghost = haunt(frame, before);
+        const leave = before.role === 'current' ? 'left' : motion.leave;
+        const to = leave === 'slot' ? slot : null;
+        const end: Keyframe =
+          leave === 'left'
+            ? { transform: `translateX(${-size}px)` }
+            : leave === 'lift'
+              ? { transform: `translateY(${-cell}px)` }
+              : to
+                ? {
+                    transform: `translate(${to.x - before.x}px, ${to.y - before.y}px) scale(${size / Math.max(before.w, 1)})`,
+                    borderRadius: '50%',
+                  }
+                : { transform: 'scale(0.6)' };
+        const pivot = leave === 'fade' ? '50% 50%' : '0 0';
+        ghost.animate(
+          [
+            { opacity: 1, transform: 'none', transformOrigin: pivot },
+            { opacity: 0, transformOrigin: pivot, ...end },
+          ],
+          { duration: leave === 'lift' ? 380 : 460, easing: EASE },
+        ).onfinish = () => ghost.remove();
+      }
+    }
+    last.current = { of: search, at };
+  }, [boxRef, search, step, motion, cell, size, layout]);
+}
+
 /** A cell of the array: a square in its vertex's level colour (the circle
     of the analysing slot when `role` is 'current'). */
 function QueueCell({
@@ -622,6 +649,7 @@ function QueueCell({
   link,
   colour,
   role,
+  state,
   title,
   children,
 }: {
@@ -630,7 +658,9 @@ function QueueCell({
   flip?: string;
   link: Link;
   colour: string;
-  role: 'current' | 'queue' | 'stack';
+  role: 'current' | 'queue' | 'stack' | 'array';
+  /** The heap array's root ('next') or an estimate just lowered. */
+  state?: 'next' | 'lowered';
   title?: string;
   children?: ReactNode;
 }) {
@@ -640,6 +670,7 @@ function QueueCell({
       className={`mono ${styles.queueCell}`}
       data-flip={flip}
       data-role={role}
+      data-state={state}
       data-hot={link.hovered === v || undefined}
       style={{ '--chip': colour } as CSSProperties}
       title={title}
@@ -714,191 +745,239 @@ function useFrontier(
   return state?.of === search ? state.view : undefined;
 }
 
-/** One estimate lowered by a settle, as `4: ∞ → 3`. */
-function lowering(v: number, before: number, after: number): string {
-  return `${v}: ${Number.isFinite(before) ? formatWeight(before) : '∞'} → ${formatWeight(after)}`;
+/** An estimate a settle lowered, as `∞ → 3`. */
+function lowering(before: number, after: number): string {
+  return `${Number.isFinite(before) ? formatWeight(before) : '∞'} → ${formatWeight(after)}`;
 }
 
-function DijkstraHead({
-  t,
-  search,
-  step,
-  view,
-}: {
-  t: Strings;
-  search: StructureSearch;
-  step: number;
-  view: FrontierView | null;
-}) {
-  const s = t.structures;
-  const v = search.order[step];
-  const distance = search.distances ? search.distances[v] : 0;
-  const lowered =
-    view && view.step === step
-      ? Array.from(view.relaxed, (w, i) => lowering(w, view.previous[i], view.lowered[i]))
-      : [];
-  const shown = lowered.slice(0, 6);
-  return (
-    <>
-      <span className={`mono ${styles.op}`}>
-        {s.ops.settle(String(v), formatWeight(distance))}
-        {' · '}
-        {lowered.length
-          ? s.ops.lower(shown.join(', ') + (lowered.length > shown.length ? ', …' : ''))
-          : s.ops.nothingLowered}
-      </span>
-      <span className={`mono ${styles.meta}`}>
-        {view ? s.size.dijkstra(formatInt(view.total)) : ''} ·{' '}
-        {s.step(formatInt(step + 1), formatInt(search.span))}
-      </span>
-    </>
-  );
+/** What a settle lowered: vertex → its `before → after`. */
+function loweredBy(view: FrontierView): Map<number, string> {
+  const lowered = new Map<number, string>();
+  view.relaxed.forEach((v, i) => lowered.set(v, lowering(view.previous[i], view.lowered[i])));
+  return lowered;
 }
 
-/** The course's vector: one slot per vertex. Each step the scan sweeps the
-    slots and lands on the vertex it settles; the slots it lowered flash. */
+/** The vector's slots the strip draws: every one when they fit, otherwise
+    the ones holding an estimate (and the one just settled) with the runs
+    between them counted, and past `room` the rest as one count. */
+function vectorCells(n: number, room: number, held: number[]): (number | { gap: number })[] {
+  if (n <= room) return Array.from({ length: n }, (_, i) => i + 1);
+  const cells: (number | { gap: number })[] = [];
+  let previous = 0;
+  for (const v of held.sort((a, b) => a - b)) {
+    if (v === previous) continue;
+    if (cells.length >= room - 2) break;
+    if (v > previous + 1) cells.push({ gap: v - previous - 1 });
+    cells.push(v);
+    previous = v;
+  }
+  if (previous < n) cells.push({ gap: n - previous });
+  return cells;
+}
+
+/** The course's vector, in the queue's layout: one glued slot per vertex
+    (its number over its estimate), centred, and the vertex the step
+    settles in the analysing circle with its distance under it. Each step
+    a blue wash sweeps the slots (the scan for the minimum) and the circle
+    grows out of the slot it lands on, which turns grey, settled; the
+    estimates the settle lowered flash. */
 function VectorView({
   t,
   search,
-  step,
   view,
-  lowered,
   link,
+  title,
 }: {
   t: Strings;
   search: StructureSearch;
-  step: number;
   view: FrontierView;
-  lowered: Set<number>;
   link: Link;
+  title: string;
 }) {
   const s = t.structures;
+  const boxRef = useRef<HTMLDivElement>(null);
+  const { size, cell, side, room } = cellSizes(useBox(boxRef));
+  const step = view.step;
   const n = search.ranks.length - 1;
-  const settledNow = search.order[step];
+  const current = search.order[step];
   const estimate = new Map<number, number>();
   view.vertices.forEach((v, i) => estimate.set(v, view.estimates[i]));
-  const settled = (v: number) => search.ranks[v] !== 0xffffffff && search.ranks[v] <= step;
+  const lowered = loweredBy(view);
+  const settled = (v: number) => search.ranks[v] !== UNREACHED && search.ranks[v] <= step;
+  const distance = (v: number) => (search.distances ? search.distances[v] : 0);
+  const cells = vectorCells(n, room, [...view.vertices, current]);
+  useFlip(boxRef, search, step, VECTOR_MOTION, cell, size, String(room));
 
-  // Every slot of a small graph; on a large one only the slots that hold an
-  // estimate, in vertex order, with the runs of empty ones between counted.
-  let cells: (number | { gap: number })[];
-  if (n <= VECTOR_WHOLE) {
-    cells = Array.from({ length: n }, (_, i) => i + 1);
-  } else {
-    cells = [];
-    let previous = 0;
-    for (const v of [...view.vertices, settledNow].sort((a, b) => a - b)) {
-      if (v === previous) continue;
-      if (v > previous + 1) cells.push({ gap: v - previous - 1 });
-      cells.push(v);
-      previous = v;
-    }
-    if (previous < n) cells.push({ gap: n - previous });
-  }
   return (
-    <div className={styles.vector}>
-      {n > VECTOR_WHOLE && (
-        <span className={`mono ${styles.note}`}>
-          {s.slots(formatInt(view.total), formatInt(n))}
-        </span>
-      )}
-      {/* Keyed by step: the sweep starts over on every settle. */}
-      <ol key={step} className={styles.cells} style={{ '--cells': cells.length } as CSSProperties}>
-        {cells.map((cell, i) => {
-          if (isGap(cell)) {
+    <div ref={boxRef} className={styles.queue} style={cellVars({ size, cell, side })}>
+      <span className={`label ${styles.slotLabel} ${styles.queueLabel}`}>{s.analysing}</span>
+      <div className={styles.slotCell}>
+        <QueueCell
+          key={`c${current}`}
+          v={current}
+          flip={`c${current}`}
+          link={link}
+          colour={rampColour(search.levels[current], search.depth)}
+          role="current"
+        />
+      </div>
+      <span className={`mono ${styles.slotNote}`}>
+        {s.distance(formatWeight(distance(current)))}
+      </span>
+      <span className={`label ${styles.queueTitle}`}>{title}</span>
+      <div className={styles.queueGroup}>
+        {/* Keyed by step: the sweep starts over on every settle. */}
+        <ol
+          key={step}
+          className={styles.queueCells}
+          style={{ '--cells': cells.length } as CSSProperties}
+        >
+          {cells.map((item, i) => {
+            if (isGap(item)) {
+              return (
+                <li key={`gap-${i}`} className={`mono ${styles.queueGap}`}>
+                  +{formatInt(item.gap)}
+                </li>
+              );
+            }
+            const v = item;
+            const value = estimate.get(v);
+            const done = settled(v);
+            const state =
+              v === current
+                ? 'just'
+                : lowered.has(v)
+                  ? 'lowered'
+                  : done
+                    ? 'settled'
+                    : value !== undefined
+                      ? 'open'
+                      : 'empty';
             return (
-              <li key={`gap-${i}`} className={styles.cellGap}>
-                <Gap count={cell.gap} />
+              <li key={v} style={{ '--i': i } as CSSProperties}>
+                <button
+                  type="button"
+                  className={`mono ${styles.queueCell} ${styles.slot}`}
+                  data-flip={v}
+                  data-role="slot"
+                  data-state={state}
+                  data-hot={link.hovered === v || undefined}
+                  onPointerEnter={() => link.onHover(v)}
+                  onPointerLeave={() => link.onHover(0)}
+                  onFocus={() => link.onHover(v)}
+                  onBlur={() => link.onHover(0)}
+                  onClick={() => link.onSelect(v)}
+                  title={
+                    lowered.get(v) ??
+                    (state === 'settled' ? s.settled : state === 'empty' ? s.unreached : undefined)
+                  }
+                >
+                  <small>{v}</small>
+                  <span>
+                    {done
+                      ? formatWeight(distance(v))
+                      : value !== undefined
+                        ? formatWeight(value)
+                        : '∞'}
+                  </span>
+                </button>
               </li>
             );
-          }
-          const v = cell;
-          const value = estimate.get(v);
-          const isSettled = settled(v);
-          const state =
-            v === settledNow
-              ? 'just'
-              : lowered.has(v)
-                ? 'lowered'
-                : isSettled
-                  ? 'settled'
-                  : value !== undefined
-                    ? 'open'
-                    : 'empty';
-          return (
-            <li key={v} style={{ '--i': i } as CSSProperties}>
-              <button
-                type="button"
-                className={`mono ${styles.cell}`}
-                data-state={state}
-                data-hot={link.hovered === v || undefined}
-                onPointerEnter={() => link.onHover(v)}
-                onPointerLeave={() => link.onHover(0)}
-                onClick={() => link.onSelect(v)}
-                title={
-                  state === 'settled' ? s.settled : state === 'empty' ? s.unreached : undefined
-                }
-              >
-                <small>{v}</small>
-                <span>
-                  {isSettled && search.distances
-                    ? formatWeight(search.distances[v])
-                    : value !== undefined
-                      ? formatWeight(value)
-                      : '∞'}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
+          })}
+        </ol>
+      </div>
+      <p className={styles.queueSize}>
+        {s.openSize}: <span className="mono">{formatInt(view.total)}</span>
+      </p>
     </div>
   );
 }
 
-/** The binary heap as the tree it is (index 0 at the top, the children of
-    `i` at `2i + 1` and `2i + 2`) over the array that stores it. Nodes are
-    keyed by vertex, so a sift slides them between places. */
+/** The binary heap in the queue's layout: the tree it is (index 0 at the
+    top, the children of `i` at `2i + 1` and `2i + 2`) over the array that
+    stores it, as glued cells with their indices, and the vertex the step
+    settles in the analysing circle with its distance under it. Nodes and
+    cells are keyed by vertex, so a sift slides them between places and
+    the root popped glides into the circle. */
 function HeapView({
   t,
+  search,
   view,
-  lowered,
   link,
+  title,
 }: {
   t: Strings;
+  search: StructureSearch;
   view: FrontierView;
-  lowered: Set<number>;
   link: Link;
+  title: string;
 }) {
   const s = t.structures;
   const boxRef = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState({ width: 600, height: 160 });
-  useLayoutEffect(() => {
-    const el = boxRef.current;
-    if (!el) return;
-    const measure = () => setBox({ width: el.clientWidth, height: el.clientHeight });
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+  const treeRef = useRef<HTMLDivElement>(null);
+  const box = useBox(boxRef);
+  const tree = useBox(treeRef);
+  const { size, side } = cellSizes(box);
+  // Nodes and array cells share one size, smaller than the queue's: the
+  // tree needs the height.
+  const unit = Math.round(Math.max(26, Math.min(36, box.height / 7)));
+  const room = Math.max(
+    5,
+    Math.min(63, Math.floor((box.width - 2 * (side + GUTTER) - 90) / (unit + 1))),
+  );
+  const step = view.step;
+  const current = search.order[step];
+  const lowered = loweredBy(view);
+  const distance = search.distances ? search.distances[current] : 0;
 
-  const ROW = 46;
-  const levels = Math.max(1, Math.min(HEAP_LEVELS, Math.floor((box.height - 18) / ROW)));
+  const row = unit + 22;
+  const levels = Math.max(
+    1,
+    Math.min(HEAP_LEVELS, Math.floor((tree.height - unit - 14) / row) + 1),
+  );
   const count = Math.min(view.vertices.length, 2 ** levels - 1);
   const deeper = view.total - count;
   const place = (i: number): [number, number] => {
     const depth = Math.floor(Math.log2(i + 1));
     const first = 2 ** depth - 1;
-    const slots = 2 ** depth;
-    return [((i - first + 0.5) / slots) * box.width, 18 + depth * ROW];
+    return [((i - first + 0.5) / 2 ** depth) * tree.width, unit / 2 + depth * row];
   };
   const nodes = Array.from({ length: count }, (_, i) => i);
+  const shown = Math.min(view.vertices.length, room);
+  const stateOf = (i: number, v: number) =>
+    i === 0 ? 'next' : lowered.has(v) ? 'lowered' : undefined;
+  useFlip(
+    boxRef,
+    search,
+    step,
+    HEAP_MOTION,
+    unit,
+    size,
+    `${room}:${levels}:${tree.width}:${tree.height}`,
+  );
 
   return (
-    <div className={styles.heap}>
-      <div ref={boxRef} className={styles.tree}>
-        <svg width={box.width} height={box.height} aria-hidden="true">
+    <div
+      ref={boxRef}
+      className={styles.heapBox}
+      style={{ ...cellVars({ size, cell: unit, side }), '--unit': `${unit}px` } as CSSProperties}
+    >
+      <div className={styles.heapSide}>
+        <span className={`label ${styles.slotLabel}`}>{s.analysing}</span>
+        <div className={styles.slotCell}>
+          <QueueCell
+            key={current}
+            v={current}
+            link={link}
+            colour={rampColour(search.levels[current], search.depth)}
+            role="current"
+          />
+        </div>
+        <span className={`mono ${styles.slotNote}`}>{s.distance(formatWeight(distance))}</span>
+      </div>
+      <span className={`label ${styles.heapTitle}`}>{title}</span>
+      <div ref={treeRef} className={styles.tree}>
+        <svg width={tree.width} height={tree.height} aria-hidden="true">
           {nodes.slice(1).map((i) => {
             const [x1, y1] = place((i - 1) >> 1);
             const [x2, y2] = place(i);
@@ -915,15 +994,19 @@ function HeapView({
               key={v}
               type="button"
               className={`mono ${styles.node}`}
-              data-state={i === 0 ? 'next' : lowered.has(v) ? 'lowered' : undefined}
+              data-flip={v}
+              data-role="node"
+              data-state={stateOf(i, v)}
               data-hot={link.hovered === v || undefined}
-              style={{ transform: `translate(${x}px, ${y}px)` }}
+              style={{ left: x - unit / 2, top: y - unit / 2 }}
               onPointerEnter={() => link.onHover(v)}
               onPointerLeave={() => link.onHover(0)}
+              onFocus={() => link.onHover(v)}
+              onBlur={() => link.onHover(0)}
               onClick={() => link.onSelect(v)}
-              title={i === 0 ? s.next : undefined}
+              title={i === 0 ? s.next : lowered.get(v)}
             >
-              <span className={styles.nodeVertex}>{v}</span>
+              {v}
               <span className={styles.nodeEstimate}>{formatWeight(view.estimates[i])}</span>
             </button>
           );
@@ -932,29 +1015,33 @@ function HeapView({
           <span className={`mono ${styles.deeper}`}>{s.deeper(formatInt(deeper))}</span>
         )}
       </div>
-      <div className={styles.array}>
-        <span className={`label ${styles.arrayLabel}`}>{s.heapArray}</span>
-        <ol className={styles.arrayCells}>
-          {Array.from(view.vertices.subarray(0, Math.min(view.vertices.length, 63)), (v, i) => (
-            <li
-              key={`${i}-${v}`}
-              className={`mono ${styles.arrayCell}`}
-              data-state={i === 0 ? 'next' : lowered.has(v) ? 'lowered' : undefined}
-              data-hot={link.hovered === v || undefined}
-              onPointerEnter={() => link.onHover(v)}
-              onPointerLeave={() => link.onHover(0)}
-            >
-              <small>{i}</small>
-              <span>{v}</span>
+      <div className={styles.heapArray}>
+        <span className={`label ${styles.end}`}>{s.heapArray}</span>
+        <ol className={styles.queueCells}>
+          {Array.from(view.vertices.subarray(0, shown), (v, i) => (
+            <li key={v} className={styles.indexed}>
+              <QueueCell
+                v={v}
+                flip={`a${v}`}
+                link={link}
+                colour="var(--accent)"
+                role="array"
+                state={stateOf(i, v)}
+                title={i === 0 ? s.next : lowered.get(v)}
+              />
+              <small className="mono">{i}</small>
             </li>
           ))}
-          {view.total > 63 && (
-            <li>
-              <Gap count={view.total - 63} />
+          {view.total > shown && (
+            <li key="gap" className={`mono ${styles.queueGap}`}>
+              +{formatInt(view.total - shown)}
             </li>
           )}
         </ol>
       </div>
+      <p className={styles.heapSize}>
+        {s.heapSize}: <span className="mono">{formatInt(view.total)}</span>
+      </p>
     </div>
   );
 }

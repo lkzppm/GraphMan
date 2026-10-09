@@ -39,36 +39,6 @@
   }
 }
 
-.head {
-  flex: none;
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-  min-width: 0;
-  padding: 12px 18px 8px;
-}
-
-.title {
-  flex: none;
-  color: var(--accent);
-}
-
-.op {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--fg);
-}
-
-.meta {
-  flex: none;
-  font-size: 11px;
-  color: var(--fg-3);
-}
-
 .body {
   position: relative;
   flex: 1;
@@ -85,33 +55,6 @@
   line-height: 1.55;
   color: var(--fg-3);
   text-align: center;
-}
-
-.note {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 11px;
-  color: var(--fg-3);
-}
-
-/* Things coming in. `scale`, not `transform`: a heap node's place is its
-   transform. */
-@keyframes chipIn {
-  from {
-    opacity: 0;
-    scale: 0.6;
-  }
-}
-
-.gap {
-  display: inline-grid;
-  place-items: center;
-  height: 30px;
-  padding: 0 8px;
-  border: 1px dashed var(--border-2);
-  border-radius: 15px;
-  font-size: 11px;
-  color: var(--fg-3);
 }
 
 /* ---- BFS's queue and DFS's stack: an array of glued cells, centred ------- */
@@ -268,56 +211,73 @@
   color: var(--fg-3);
 }
 
-/* ---- Dijkstra's vector: one slot per vertex ------------------------------- */
+/* ---- Dijkstra: the vector and the heap, in the queue's layout ------------ */
 
-.vector {
-  min-height: 100%;
+/* Under the analysing circle: the distance its settle made final. */
+.slotNote {
+  grid-column: 1;
+  grid-row: 3;
+  align-self: start;
+  justify-self: center;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--fg-3);
+  white-space: nowrap;
 }
 
-.cells {
-  --scan: 0.42s;
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.cellGap {
-  display: flex;
-  align-items: center;
-}
-
-.cell {
+/* A slot of the vector: the vertex over its estimate. Open estimates are
+   blue, settled slots grey with their distance, the rest empty (∞). */
+.slot {
   position: relative;
   display: flex;
   flex-direction: column;
+  gap: 2px;
+  min-width: var(--cell);
+  width: auto;
+  padding: 0 4px;
+  line-height: 1;
+  font-size: calc(var(--cell) * 0.28);
   align-items: center;
   justify-content: center;
-  min-width: 46px;
-  height: 38px;
-  padding: 0 6px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  font-size: 11.5px;
-  color: var(--fg-2);
-  transition:
-    border-color 0.2s var(--ease),
-    background 0.2s var(--ease);
 }
 
-.cell small {
-  font-size: 9px;
+.slot small {
+  font-size: calc(var(--cell) * 0.22);
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.slot[data-state='empty'] {
+  background: var(--bg-2);
   color: var(--fg-3);
 }
 
+.slot[data-state='settled'] {
+  background: var(--border);
+  color: var(--fg-2);
+}
+
+.slot[data-state='lowered'] {
+  animation: flash 0.6s var(--ease) var(--scan) backwards;
+}
+
+/* Where the scan lands: the vertex this step settles, settled now. */
+.slot[data-state='just'] {
+  background: var(--border);
+  color: var(--fg);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
 /* The scan: every slot lights in turn, the whole row in --scan. */
-.cell::after {
+.queueCells:has(.slot) {
+  --scan: 0.42s;
+}
+
+.slot::after {
   content: '';
   position: absolute;
-  inset: -1px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  inset: 0;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
   opacity: 0;
   animation: scan 0.18s linear both;
   animation-delay: calc(var(--scan) * var(--i, 0) / max(var(--cells, 1), 1));
@@ -330,71 +290,54 @@
   }
 }
 
-.cell[data-state='empty'] {
-  color: var(--fg-3);
-}
-
-.cell[data-state='open'] {
-  border-color: color-mix(in srgb, var(--accent) 40%, white);
-  color: var(--accent);
-}
-
-.cell[data-state='settled'] {
-  background: var(--bg-2);
-  color: var(--fg-3);
-}
-
-.cell[data-state='lowered'] {
-  border-color: var(--accent);
-  color: var(--accent);
-  animation: flash 0.6s var(--ease) var(--scan) backwards;
-}
-
-/* Where the scan lands: the vertex this step settles. */
-.cell[data-state='just'] {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-  animation: land 0.3s var(--ease-spring) var(--scan) backwards;
-}
-
-.cell[data-state='just'] small {
-  color: rgb(255 255 255 / 0.75);
-}
-
-@keyframes land {
-  from {
-    background: var(--bg);
-    color: var(--accent);
-    scale: 0.9;
-  }
-}
-
 @keyframes flash {
   from {
-    background: color-mix(in srgb, var(--accent) 22%, white);
+    background: color-mix(in srgb, var(--accent) 30%, white);
   }
 }
 
-.cell:hover,
-.cell[data-hot] {
-  border-color: var(--fg);
+/* The heap: the analysing column beside the tree, the array under it, the
+   size under that. */
+.heapBox {
+  --unit: 30px;
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--side) minmax(0, 1fr) var(--side);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  row-gap: 8px;
+  height: 100%;
+  min-height: 170px;
+  padding: 2px var(--gutter) 0;
 }
 
-/* ---- Dijkstra's heap: the tree over its array ------------------------------ */
-
-.heap {
+.heapSide {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  align-self: center;
+  justify-self: center;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 10px;
-  height: 100%;
-  min-height: 0;
+}
+
+.heapSide .slotNote {
+  margin-top: 0;
+}
+
+.heapTitle {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  font-size: 11px;
+  color: var(--accent);
 }
 
 .tree {
+  grid-column: 2;
+  grid-row: 2;
   position: relative;
-  flex: 1;
-  min-height: 60px;
+  min-height: 0;
 }
 
 .tree svg {
@@ -408,42 +351,33 @@
   stroke-width: 1.5;
 }
 
-/* A node is centred on its place; moving between places is a slide. */
+/* A node sits on its place (left/top), so a sift is a FLIP slide. */
 .node {
   position: absolute;
-  top: -15px;
-  left: -15px;
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: var(--unit);
+  height: var(--unit);
   border-radius: 50%;
   background: var(--accent);
   color: #fff;
-  font-size: 11px;
+  font-size: calc(var(--unit) * 0.36);
   font-weight: 500;
   box-shadow: 0 0 0 2px var(--bg);
-  transition:
-    transform 0.45s var(--ease),
-    box-shadow 0.2s var(--ease);
-  animation: chipIn 0.35s var(--ease-spring) backwards;
-}
-
-.nodeVertex {
-  line-height: 1;
+  transition: box-shadow 0.2s var(--ease);
 }
 
 .nodeEstimate {
   position: absolute;
-  top: 32px;
+  top: calc(100% + 3px);
   font-size: 10px;
   font-weight: 400;
   color: var(--fg-2);
   white-space: nowrap;
 }
 
+/* The root, next to leave, and the estimates the settle lowered. */
 .node[data-state='next'] {
-  background: var(--level-0, var(--accent));
   box-shadow:
     0 0 0 2px var(--bg),
     0 0 0 4px var(--accent);
@@ -470,58 +404,53 @@
   color: var(--fg-3);
 }
 
-.array {
-  flex: none;
+.heapArray {
+  grid-column: 2;
+  grid-row: 3;
+  justify-self: center;
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 14px;
   min-width: 0;
 }
 
-.arrayLabel {
-  flex: none;
-  font-size: 10px;
-  color: var(--fg-3);
+.heapArray .end {
+  line-height: var(--cell);
 }
 
-.arrayCells {
-  list-style: none;
-  display: flex;
-  gap: 2px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.arrayCell {
-  flex: none;
+/* An array cell over its index. */
+.indexed {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 30px;
-  padding: 2px 4px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 11px;
-  color: var(--fg-2);
-  animation: chipIn 0.3s var(--ease) backwards;
+  gap: 3px;
 }
 
-.arrayCell small {
-  font-size: 8.5px;
+.indexed small {
+  font-size: 9px;
   color: var(--fg-3);
 }
 
-.arrayCell[data-state='next'] {
-  border-color: var(--accent);
+.queueCell[data-state='next'] {
+  box-shadow: inset 0 0 0 2px var(--level-0, var(--fg));
+}
+
+.queueCell[data-state='lowered'] {
+  animation: flash 0.6s var(--ease) backwards;
+}
+
+.heapSize {
+  grid-column: 2;
+  grid-row: 4;
+  justify-self: center;
+  padding-bottom: 4px;
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.heapSize span {
   color: var(--accent);
-}
-
-.arrayCell[data-state='lowered'] {
-  border-color: color-mix(in srgb, var(--accent) 45%, white);
-}
-
-.arrayCell[data-hot] {
-  border-color: var(--fg);
+  font-weight: 500;
 }
 
 /* ---- the drag handle on the top edge --------------------------------------- */
@@ -592,16 +521,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .node,
-  .arrayCell,
-  .cell::after,
-  .cell[data-state='just'],
-  .cell[data-state='lowered'],
+  .slot::after,
+  .slot[data-state='lowered'],
+  .queueCell[data-state='lowered'],
   .strip {
     animation: none;
-  }
-
-  .node {
-    transition: none;
   }
 }
