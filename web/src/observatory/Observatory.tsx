@@ -425,55 +425,84 @@ export default function Observatory() {
     rendererRef.current?.setCamera(camera);
   }, []);
 
-  const fit = useCallback(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !renderer.hasGraph) return;
-    const positions = renderer.positionsMirror;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (let i = 2; i < positions.length; i += 2) {
-      const x = positions[i];
-      const y = positions[i + 1];
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-    if (!Number.isFinite(minX)) return;
-    const [w, h] = renderer.cssSize;
-    const bw = Math.max(maxX - minX, 1);
-    const bh = Math.max(maxY - minY, 1);
-    const zoom = Math.min((w * 0.86) / bw, (h * 0.86) / bh, 40);
-    applyCamera({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, zoom });
-  }, [applyCamera]);
-  useEffect(() => {
-    fitRef.current = fit;
-  }, [fit]);
+  /** Where the running glide is heading (`null` when the camera is still),
+      so a zoom click during a glide builds on it rather than on the
+      half-way camera. */
+  const glideTarget = useRef<Camera | null>(null);
 
-  /** Eases the camera towards `target` over a few frames (restarts on each call). */
+  /** Eases the camera towards `target` (restarts on each call): about a
+      quarter second whatever the frame rate, the zoom eased on a log scale
+      so zooming in and out feel the same. */
   const glideTo = useCallback(
     (target: Camera) => {
       cancelAnimationFrame(glideFrame.current);
-      const step = () => {
+      glideTarget.current = target;
+      let last = performance.now();
+      const step = (now: number) => {
+        const k = 1 - Math.exp(-(now - last) / 70);
+        last = now;
         const c = cameraRef.current;
         const next = {
-          x: c.x + (target.x - c.x) * 0.18,
-          y: c.y + (target.y - c.y) * 0.18,
-          zoom: c.zoom + (target.zoom - c.zoom) * 0.18,
+          x: c.x + (target.x - c.x) * k,
+          y: c.y + (target.y - c.y) * k,
+          zoom: c.zoom * Math.pow(target.zoom / c.zoom, k),
         };
-        applyCamera(next);
         const settled =
-          Math.abs(target.x - next.x) < 0.05 &&
-          Math.abs(target.y - next.y) < 0.05 &&
-          Math.abs(target.zoom - next.zoom) < 0.0005;
-        if (!settled) glideFrame.current = requestAnimationFrame(step);
+          Math.abs(target.x - next.x) * next.zoom < 0.25 &&
+          Math.abs(target.y - next.y) * next.zoom < 0.25 &&
+          Math.abs(Math.log(target.zoom / next.zoom)) < 0.002;
+        applyCamera(settled ? target : next);
+        if (settled) glideTarget.current = null;
+        else glideFrame.current = requestAnimationFrame(step);
       };
       glideFrame.current = requestAnimationFrame(step);
     },
     [applyCamera],
   );
+
+  /** Stops a running glide where it is. */
+  const stopGlide = useCallback(() => {
+    cancelAnimationFrame(glideFrame.current);
+    glideTarget.current = null;
+  }, []);
+
+  /** Frames the whole graph: gliding when asked for (button, F, double
+      click), at once while the layout settles under auto-fit. */
+  const fit = useCallback(
+    (smooth = true) => {
+      const renderer = rendererRef.current;
+      if (!renderer || !renderer.hasGraph) return;
+      const positions = renderer.positionsMirror;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (let i = 2; i < positions.length; i += 2) {
+        const x = positions[i];
+        const y = positions[i + 1];
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+      if (!Number.isFinite(minX)) return;
+      const [w, h] = renderer.cssSize;
+      const bw = Math.max(maxX - minX, 1);
+      const bh = Math.max(maxY - minY, 1);
+      const zoom = Math.min((w * 0.86) / bw, (h * 0.86) / bh, 40);
+      const target = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, zoom };
+      if (smooth) {
+        glideTo(target);
+      } else {
+        stopGlide();
+        applyCamera(target);
+      }
+    },
+    [applyCamera, glideTo, stopGlide],
+  );
+  useEffect(() => {
+    fitRef.current = () => fit(false);
+  }, [fit]);
 
   /** Glides the camera to frame the vertices `keep` accepts, filling `fill` of the view. */
   const fitVertices = useCallback(
@@ -789,7 +818,7 @@ export default function Observatory() {
         // The mirror is filled synchronously by load(); fit on the next frame
         // so the canvas has its size, then follow the simulation.
         autoFit.current = true;
-        requestAnimationFrame(fit);
+        requestAnimationFrame(() => fit(false));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         setPending(null);
@@ -1170,7 +1199,7 @@ export default function Observatory() {
     const renderer = rendererRef.current;
     if (!renderer) return;
     autoFit.current = false;
-    cancelAnimationFrame(glideFrame.current);
+    stopGlide();
     const g = gesture.current;
     if (event.pointerType === 'touch') {
       g.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -1335,7 +1364,7 @@ export default function Observatory() {
     const stage = stageRef.current;
     if (!stage) return;
     autoFit.current = false;
-    cancelAnimationFrame(glideFrame.current);
+    stopGlide();
     if (followRef.current) setFollow(false);
     const camera = cameraRef.current;
     const factor = Math.exp(-event.deltaY * 0.0015);
@@ -1435,14 +1464,14 @@ export default function Observatory() {
     return () => window.removeEventListener('resize', onResize);
   }, [meta]);
 
-  /** Zooms around the centre of the stage. */
+  /** Zooms around the centre of the stage, gliding; clicks in a row add up. */
   const zoomBy = useCallback(
     (factor: number) => {
       autoFit.current = false;
-      const camera = cameraRef.current;
-      applyCamera({ ...camera, zoom: Math.min(80, Math.max(0.005, camera.zoom * factor)) });
+      const from = glideTarget.current ?? cameraRef.current;
+      glideTo({ ...from, zoom: Math.min(80, Math.max(0.005, from.zoom * factor)) });
     },
-    [applyCamera],
+    [glideTo],
   );
 
   const toggleFullscreen = () => {
@@ -2462,7 +2491,7 @@ export default function Observatory() {
                 <IconButton label={t.zoomOut} onClick={() => zoomBy(1 / 1.4)}>
                   <Minus size={15} />
                 </IconButton>
-                <IconButton label={t.fit} onClick={fit}>
+                <IconButton label={t.fit} onClick={() => fit()}>
                   <Maximize2 size={15} />
                 </IconButton>
                 {!phone && (

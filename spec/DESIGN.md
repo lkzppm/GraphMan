@@ -310,7 +310,11 @@ The stage carries floating clusters: a help button top left that opens a
 controls popover (the same `kbd` cheat sheet as the empty sidebar, plus the
 stage gestures; closes on Esc, outside click or the button), layout tools
 top right (simulation on/off, reheat, vertex numbers, follow), view tools
-bottom right (zoom in/out, fit, full screen), the legend bottom left. Vertex numbers are a 2D canvas over
+bottom right (zoom in/out, fit, full screen), the legend bottom left.
+The camera never jumps on a request: zoom buttons (clicks in a row add
+up), fit (button, F, double click) and follow glide over about a quarter
+second, the zoom eased on a log scale; the wheel and pinch stay direct, and
+only the auto-fit while a new layout settles moves the camera at once. Vertex numbers are a 2D canvas over
 the WebGPU one, drawn only when discs are at least 5 px. On a weighted
 graph the same canvas draws each edge's weight at its middle, in a small
 pill (background fill, grey hairline, 10 px mono grey text), under the
