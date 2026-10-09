@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CircleDashed,
   CircleHelp,
   Download,
@@ -24,7 +25,6 @@ import {
   MemoryStick,
   Minimize2,
   Minus,
-  PanelBottom,
   Pause,
   Play,
   Plus,
@@ -277,14 +277,14 @@ const SIDEBAR_MIN = 280;
 const SIDEBAR_MAX = 560;
 const STAGE_MIN = 400;
 const SIDEBAR_KEY = 'graphman.sidebar-width';
-/** Whether the structure strip under the canvas is open (open by default). */
+/** Whether the structure strip under the canvas is open (closed by default). */
 const STRUCTURES_KEY = 'graphman.structures';
 
 function storedStructuresOpen(): boolean {
   try {
-    return localStorage.getItem(STRUCTURES_KEY) !== 'closed';
+    return localStorage.getItem(STRUCTURES_KEY) === 'open';
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -2564,23 +2564,6 @@ export default function Observatory() {
                   >
                     <Hash size={15} />
                   </IconButton>
-                  {!phone && (
-                    <IconButton
-                      label={structuresOpen ? t.structures.hide : t.structures.show}
-                      pressed={structuresOpen}
-                      onClick={() => {
-                        const next = !structuresOpen;
-                        setStructuresOpen(next);
-                        try {
-                          localStorage.setItem(STRUCTURES_KEY, next ? 'open' : 'closed');
-                        } catch {
-                          // No storage: the choice lasts for this visit.
-                        }
-                      }}
-                    >
-                      <PanelBottom size={15} />
-                    </IconButton>
-                  )}
                   <IconButton
                     label={follow ? t.stopFollowing : t.follow}
                     pressed={follow}
@@ -2657,6 +2640,37 @@ export default function Observatory() {
                   </div>
                 )}
               </div>
+
+              {/* The structure strip's toggle, bottom centre, once a search ran */}
+              {search && !phone && (
+                <div className={`${styles.floating} ${styles.floatingBottomCenter}`}>
+                  <button
+                    type="button"
+                    className={styles.structuresToggle}
+                    aria-pressed={structuresOpen}
+                    aria-label={structuresOpen ? t.structures.hide : t.structures.show}
+                    title={structuresOpen ? t.structures.hide : t.structures.show}
+                    onClick={() => {
+                      const next = !structuresOpen;
+                      setStructuresOpen(next);
+                      try {
+                        localStorage.setItem(STRUCTURES_KEY, next ? 'open' : 'closed');
+                      } catch {
+                        // No storage: the choice lasts for this visit.
+                      }
+                    }}
+                  >
+                    <ChevronUp size={14} className={styles.structuresChevron} aria-hidden="true" />
+                    <span className="label">
+                      {search.kind === 'bfs'
+                        ? t.structures.titles.bfs
+                        : search.kind === 'dfs'
+                          ? t.structures.titles.dfs
+                          : t.frontier}
+                    </span>
+                  </button>
+                </div>
+              )}
 
               {/* View tools, bottom right */}
               <div className={`${styles.floating} ${styles.floatingBottomRight}`}>
@@ -2744,7 +2758,7 @@ export default function Observatory() {
           )}
         </div>
 
-        {meta && structuresOpen && !phone && (
+        {meta && search && structuresOpen && !phone && (
           <Structures
             t={t}
             search={search}
