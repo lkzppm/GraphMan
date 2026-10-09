@@ -262,9 +262,10 @@ with the arrow keys (Shift for bigger steps). Phones keep the bottom sheet.
 
 Under the canvas, the **structure strip** shows the data structure of the
 search on it at the replay's step. It exists only once a search has run:
-a pill at the bottom centre of the canvas (a chevron and the structure's
-name, Fila / Pilha / Fila de prioridade; blue and the chevron turned down
-while open) opens and closes it. Closed by default, the choice remembered;
+a square icon button at the bottom centre of the canvas, like the other
+canvas tools (same hover lift and glow, pressed while open), opens and
+closes it; its icon names the structure (a row of cards for the queue,
+layers for the stack, brackets for the vector, a tree for the heap). Closed by default, the choice remembered;
 not on phones. Its top
 edge resizes it like the sidebar's (a horizontal grip pill in the middle,
 `row-resize`, 120–560 px and at least 220 px of canvas left, remembered,
@@ -272,7 +273,8 @@ double click resets, arrow keys nudge). A header line names the structure
 (tracked blue label: Fila, Pilha, Fila de prioridade · vetor / heap
 binário), says what the step did in mono ("desempilha 8, 4 · empilha 6",
 "fixa 5 em 1,5 · baixa 8: 4 → 3,25") and, in grey, the size and the step;
-for BFS the header keeps only the queue's size. BFS's queue is an array:
+BFS has no header: the queue's size is written under the queue,
+"Tamanho da fila: N" in grey with N in blue mono. BFS's queue is an array:
 square cells in the level colours, sized from the strip's height (34 to
 64 px), glued by a 1 px seam (rounded only at its two ends, a wider seam
 where the level changes), between its "início" and "fim" labels and centred in the strip
