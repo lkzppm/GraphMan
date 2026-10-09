@@ -1,6 +1,8 @@
 'use client';
 
 import {
+  ArrowDown01,
+  ArrowDownNarrowWide,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -47,6 +49,7 @@ import {
   type ChangeEvent,
   type DragEvent,
   type PointerEvent as ReactPointerEvent,
+  type CSSProperties,
   type ReactNode,
   type WheelEvent as ReactWheelEvent,
 } from 'react';
@@ -2039,6 +2042,7 @@ export default function Observatory() {
                       t={t}
                       root={search.root}
                       settled={search.settled}
+                      ranks={search.ranks}
                       distances={search.distances}
                       unreached={(meta?.vertices ?? 0) - search.settled.length}
                       target={search.target}
@@ -3399,6 +3403,7 @@ function DistanceList({
   t,
   root,
   settled,
+  ranks,
   distances,
   unreached,
   target,
@@ -3410,6 +3415,8 @@ function DistanceList({
   root: number;
   /** Settled vertices, closest first, the origin included. */
   settled: Uint32Array;
+  /** Settle rank of each vertex (UNREACHED if not settled). */
+  ranks: Uint32Array;
   distances: Float64Array;
   unreached: number;
   target: number;
@@ -3419,10 +3426,17 @@ function DistanceList({
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ top: 0, height: 0 });
+  /** Closest first (the settle order), or by vertex number. */
+  const [by, setBy] = useState<'distance' | 'vertex'>('distance');
   // The origin is rank 0; the rows are everyone else.
   const count = Math.max(0, settled.length - 1);
   const farthest = count ? distances[settled[count]] : 0;
   const current = Math.round(reveal);
+  const byVertex = useMemo(() => (by === 'vertex' ? settled.slice(1).sort() : null), [by, settled]);
+  /** The vertex on row `i`. */
+  const rowVertex = (i: number) => (byVertex ? byVertex[i] : settled[i + 1]);
+  // The index column fits the largest vertex number, the same on every row.
+  const indexWidth = `calc(${String(distances.length - 1).length}ch + 12px)`;
 
   useEffect(() => {
     const list = listRef.current;
@@ -3434,22 +3448,23 @@ function DistanceList({
     return () => observer.disconnect();
   }, []);
 
-  // Keep the row the replay is on in view.
+  // Keep the row the replay is on in view (in settle order, where it moves
+  // down the list; by vertex it would jump about).
   useEffect(() => {
     const list = listRef.current;
-    if (!list || current < 1) return;
+    if (!list || current < 1 || by !== 'distance') return;
     const y = (current - 1) * DISTANCE_ROW;
     if (y < list.scrollTop) list.scrollTop = y;
     else if (y + DISTANCE_ROW > list.scrollTop + list.clientHeight)
       list.scrollTop = y + DISTANCE_ROW - list.clientHeight;
-  }, [current]);
+  }, [current, by]);
 
   const first = Math.max(0, Math.floor(view.top / DISTANCE_ROW) - 4);
   const last = Math.min(count, Math.ceil((view.top + view.height) / DISTANCE_ROW) + 4);
   const rows = [];
   for (let i = first; i < last; i++) {
-    const rank = i + 1;
-    const v = settled[rank];
+    const v = rowVertex(i);
+    const rank = ranks[v];
     const d = distances[v];
     rows.push(
       <button
@@ -3482,13 +3497,25 @@ function DistanceList({
     >
       <div className={styles.chartHeader}>
         <span className={`label ${styles.tileLabel}`}>{t.distancesFrom(String(root))}</span>
-        <span className={styles.tileHint}>
-          {unreached > 0 ? t.unreachedCount(formatInt(unreached)) : t.nearestFirst}
+        <span className={styles.chartTools}>
+          {unreached > 0 && (
+            <span className={styles.tileHint}>{t.unreachedCount(formatInt(unreached))}</span>
+          )}
+          <button
+            type="button"
+            className={styles.sortButton}
+            aria-label={by === 'distance' ? t.sortByVertex : t.sortByDistance}
+            title={by === 'distance' ? t.sortByVertex : t.sortByDistance}
+            onClick={() => setBy((b) => (b === 'distance' ? 'vertex' : 'distance'))}
+          >
+            {by === 'distance' ? <ArrowDownNarrowWide size={13} /> : <ArrowDown01 size={13} />}
+          </button>
         </span>
       </div>
       <div
         ref={listRef}
         className={styles.distList}
+        style={{ '--index-width': indexWidth } as CSSProperties}
         onScroll={(event) =>
           setView({ top: event.currentTarget.scrollTop, height: event.currentTarget.clientHeight })
         }
