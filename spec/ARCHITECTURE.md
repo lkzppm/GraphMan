@@ -95,8 +95,15 @@ Design decisions worth presenting:
    in the same order and build identical `ShortestPathTree`s, which the
    tests enforce on every representation. A negative weight is a typed
    `NegativeWeight` error ("not implemented yet", as the course asks).
-   Dijkstra reports to the same `Visitor` as the traversals (`settle`), and
-   `shortest_path` is a Dijkstra with a visitor that stops at the target.
+   Dijkstra reports to the same `Visitor` as the traversals (`settle`, and
+   `relax` for every estimate it lowers), and `shortest_path` is a Dijkstra
+   with a visitor that stops at the target. `Frontier::entries` reads a
+   frontier as stored (the heap's array, the vector's slots by vertex, the
+   lazy heap's stale copies flagged); only drawings use it. The wasm side's
+   `frontierAt(root, frontier, step, limit)` replays a run to just after one
+   settle with a frontier wrapper that copies the library's frontier instead
+   of popping, which is how the observatory draws the real heap at any step
+   without a second Dijkstra or a model of one.
 
 Features: `mmap` (memory-mapped file loading and anonymous edge store),
 `parallel` (rayon), `serde` (serialisable results). The core has no CLI or

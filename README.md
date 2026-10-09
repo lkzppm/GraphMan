@@ -33,7 +33,7 @@ network), and a graph with a negative weight is refused, not answered wrongly.
 | `graphman` | `crates/graphman` | The library: `Graph` and `Weighted` traits, adjacency list / bitset matrix / CSR (weighted or not), traversals with visitors, components, four diameter strategies, Dijkstra over three frontiers, vertex names, memory metrics. |
 | `graphman` CLI | `crates/graphman-cli` | One subcommand per assignment feature (`info`, `bfs`, `dfs`, `distance`, `diameter`, `components`, `dijkstra`), plus `bench`, `memory`, `generate` and `study` (the case-study runner). |
 | `graphman-wasm` | `crates/graphman-wasm` | The library compiled to WebAssembly for the browser. |
-| Site | `web/` | Next.js, bilingual (Portuguese by default, English by a switch), phone-ready: the landing page, the library page with runnable examples, the seven case-study questions drawn, the presentation deck, and the observatory: drop a graph file, drag its vertices, pick an origin and watch BFS/DFS unfold on the GPU (vgpu / WebGPU). |
+| Site | `web/` | Next.js, bilingual (Portuguese by default, English by a switch), phone-ready: the landing page, the library page with runnable examples, the seven case-study questions drawn, the presentation deck, and the observatory: drop a graph file, drag its vertices, pick an origin and watch BFS, DFS or Dijkstra unfold on the GPU (vgpu / WebGPU), with the queue, stack or heap it uses drawn under the canvas, step by step. |
 
 ## Quick start
 
