@@ -24,6 +24,7 @@ import {
   Orbit,
   Rows3,
   Shapes,
+  Tag,
   Maximize2,
   MemoryStick,
   Minimize2,
@@ -37,6 +38,7 @@ import {
   Scan,
   Trash2,
   Upload,
+  Users,
   Waypoints,
   Weight,
   X,
@@ -60,9 +62,12 @@ import {
 } from 'react';
 import { formatBytes, formatCompact, formatInt, formatMs, formatWeight } from '@/lib/format';
 import {
+  NAMED_SAMPLE,
+  NAMED_SAMPLE_NAMES,
   UNWEIGHTED_SAMPLE,
   WEIGHTED_SAMPLE,
   loadGraphman,
+  looksLikeNames,
   UNREACHED,
   type Graph,
   type GraphmanModule,
@@ -131,7 +136,26 @@ interface Pending {
   memory: Memory;
   /** The wasm edge list; `build` consumes it, so it is used exactly once. */
   parsed: Parsed;
+  /** A names file that came with the graph, read once the graph is built. */
+  names: NamesFile | null;
 }
+
+/** A names file (`index,name` per line), as read from the visitor's disk. */
+interface NamesFile {
+  name: string;
+  bytes: Uint8Array;
+}
+
+/** The names the loaded graph has: which file, and how many it named. */
+interface NamesInfo {
+  file: string;
+  count: number;
+}
+
+/** How many suggestions the origin and target fields offer. */
+const NAME_SUGGESTIONS = 6;
+/** Past this many vertices on screen, names are not written beside them. */
+const NAME_LABELS = 400;
 
 /** What each representation of a graph costs, and the cap on all of them. */
 interface Memory {
@@ -177,6 +201,9 @@ interface GraphMeta {
 }
 
 type SearchKindName = 'bfs' | 'dfs' | 'dijkstra';
+/** The built-in examples behind the empty sidebar's "Examples" tile. */
+const EXAMPLES = ['plain', 'weighted', 'named'] as const;
+type Example = (typeof EXAMPLES)[number];
 /** How Dijkstra keeps its estimates: the course's two versions. */
 type FrontierName = 'vector' | 'heap';
 /** How DFS is written: with an explicit stack, or one call per level. */
@@ -367,6 +394,19 @@ const FORMAT_LINES: readonly (readonly [string, string])[] = [
 ];
 const FORMAT_NOTES = ['vertices', 'edge', 'weight'] as const;
 
+/** The names example's first lines as `[index, name]`, with their notes. */
+const NAMES_LINES: readonly (readonly [string, string])[] = [
+  ['1', 'Edsger W. Dijkstra'],
+  ['2', 'Alan M. Turing'],
+  ['5', 'Éva Tardos'],
+  ['…', ''],
+];
+const NAMES_NOTES = ['names', 'nameLine', 'namesDrop'] as const;
+const FORMAT_SLIDES = ['graph', 'names'] as const;
+type FormatSlide = (typeof FORMAT_SLIDES)[number];
+/** The format card turns to its next file this often, unless held. */
+const FORMAT_SLIDE_MS = 6000;
+
 export default function Observatory() {
   const t = useT().observatory;
   const tRef = useRef(t);
@@ -412,6 +452,30 @@ export default function Observatory() {
   >({});
   const [diameterBusy, setDiameterBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /** The loaded graph's names, if a names file came with it. */
+  const [names, setNames] = useState<NamesInfo | null>(null);
+  /** Names fetched from the library, kept: labels ask for them every frame. */
+  const nameCache = useRef(new Map<number, string | null>());
+  const namesInputRef = useRef<HTMLInputElement>(null);
+  /** The name of `v`, or `null` without names or when the file skips `v`. */
+  const nameOf = useCallback(
+    (v: number): string | null => {
+      if (!names || !v) return null;
+      const cache = nameCache.current;
+      let name = cache.get(v);
+      if (name === undefined) {
+        name = graphRef.current?.name(v) ?? null;
+        cache.set(v, name);
+      }
+      return name;
+    },
+    [names],
+  );
+  const nameOfRef = useRef(nameOf);
+  nameOfRef.current = nameOf;
+  const named = names !== null;
+  /** A vertex as the visitor reads it: its name when it has one. */
+  const vertexLabel = (v: number) => nameOf(v) ?? String(v);
   const [fullscreen, setFullscreen] = useState(false);
   /** The controls popover, top left of the stage. */
   const metaRef = useRef<GraphMeta | null>(null);
@@ -827,6 +891,23 @@ export default function Observatory() {
     setReveal(0);
     setPlaying(false);
     setHelpOpen(false);
+    setNames(null);
+    nameCache.current.clear();
+  }, []);
+
+  /** Reads a names file into the loaded graph; a bad file is a notice, and
+      the graph stays as it was. */
+  const attachNames = useCallback((graph: Graph, file: NamesFile) => {
+    try {
+      const count = graph.setNames(file.bytes);
+      nameCache.current.clear();
+      setNames({ file: file.name, count });
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setNotice(tRef.current.names.couldNotRead(file.name, message));
+      return false;
+    }
   }, []);
 
   /**
@@ -853,6 +934,9 @@ export default function Observatory() {
         const graph = waiting.parsed.build(reprKind(wasm, choice));
         setPending(null);
         graphRef.current = graph;
+        nameCache.current.clear();
+        const named = waiting.names !== null && attachNames(graph, waiting.names);
+        if (!named) setNames(null);
         const stats = graph.degreeStats();
         const weightStats = graph.weightStats();
         const weights = weightStats
@@ -929,7 +1013,7 @@ export default function Observatory() {
         setDiameterResults({});
         setSelected(0);
         setHovered(0);
-        setRootInput('1');
+        setRootInput(named ? (graph.name(1) ?? '1') : '1');
         setReveal(0);
         setPlaying(false);
         setSimulate(willSimulate);
@@ -949,7 +1033,7 @@ export default function Observatory() {
         setStatus({ kind: 'ready' });
       }
     },
-    [fit],
+    [fit, attachNames],
   );
 
   /**
@@ -958,7 +1042,7 @@ export default function Observatory() {
    * those only exist once the file has been read.
    */
   const parseBytes = useCallback(
-    async (name: string, bytes: Uint8Array) => {
+    async (name: string, bytes: Uint8Array, names: NamesFile | null = null) => {
       const wasm = wasmRef.current;
       if (!wasm) return;
       setStatus({ kind: 'parsing', name });
@@ -983,6 +1067,7 @@ export default function Observatory() {
           parseMs,
           memory,
           parsed,
+          names,
         });
         setStatus({ kind: 'ready' });
       } catch (error) {
@@ -994,28 +1079,66 @@ export default function Observatory() {
     [clearGraph],
   );
 
-  const loadFile = useCallback(
-    async (file: File) => {
-      if (file.size > MAX_FILE_BYTES) {
+  /** A names file on its own: into the open graph, or the one waiting. */
+  const addNames = useCallback(
+    (file: NamesFile) => {
+      setNotice(null);
+      const graph = graphRef.current;
+      const waiting = pendingRef.current;
+      if (graph) attachNames(graph, file);
+      else if (waiting) setPending({ ...waiting, names: file });
+      else setNotice(tRef.current.names.needGraph);
+    },
+    [attachNames],
+  );
+
+  /**
+   * Loads what the visitor dropped or picked: a graph file, a names file, or
+   * both at once. A names file on its own goes to the graph already open
+   * (or waiting for its representation).
+   */
+  const loadFiles = useCallback(
+    async (files: File[]) => {
+      const large = files.find((file) => file.size > MAX_FILE_BYTES);
+      if (large) {
         setNotice(
-          tRef.current.tooLarge(file.name, formatBytes(file.size), formatBytes(MAX_FILE_BYTES)),
+          tRef.current.tooLarge(large.name, formatBytes(large.size), formatBytes(MAX_FILE_BYTES)),
         );
         return;
       }
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      await parseBytes(file.name, bytes);
+      const read = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name,
+          bytes: new Uint8Array(await file.arrayBuffer()),
+        })),
+      );
+      const namesFile = read.find((file) => looksLikeNames(file.bytes)) ?? null;
+      const graphFile = read.find((file) => file !== namesFile);
+      if (graphFile) {
+        await parseBytes(graphFile.name, graphFile.bytes, namesFile);
+      } else if (namesFile) {
+        addNames(namesFile);
+      }
     },
-    [parseBytes],
+    [parseBytes, addNames],
   );
 
-  /** Opens the built-in example, without its weights or with them. */
+  /** Opens a built-in example: without weights, with them, or with names. */
   const loadExample = useCallback(
-    (which: 'plain' | 'weighted' = 'plain') => {
+    (which: Example = 'plain') => {
+      const encode = (text: string) => new TextEncoder().encode(text);
+      if (which === 'named') {
+        void parseBytes('collaboration.txt', encode(NAMED_SAMPLE), {
+          name: 'collaboration_names.txt',
+          bytes: encode(NAMED_SAMPLE_NAMES),
+        });
+        return;
+      }
       const [name, text] =
         which === 'weighted'
           ? ['sample_weighted.txt', WEIGHTED_SAMPLE]
           : ['sample.txt', UNWEIGHTED_SAMPLE];
-      void parseBytes(name, new TextEncoder().encode(text));
+      void parseBytes(name, encode(text));
     },
     [parseBytes],
   );
@@ -1057,16 +1180,24 @@ export default function Observatory() {
   }, [clearGraph]);
 
   const onFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) void loadFile(file);
+    const files = Array.from(event.target.files ?? []);
+    if (files.length) void loadFiles(files);
     event.target.value = '';
+  };
+
+  /** The "add a names file" picker: whatever is picked is read as names. */
+  const onNamesChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    addNames({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
   };
 
   const onDrop = (event: DragEvent) => {
     event.preventDefault();
     setDragOver(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file) void loadFile(file);
+    const files = Array.from(event.dataTransfer.files ?? []);
+    if (files.length) void loadFiles(files);
   };
 
   // ---- searches --------------------------------------------------------------
@@ -1376,8 +1507,8 @@ export default function Observatory() {
     if (!diameter || diameter.value === 0) return;
     setKind('bfs');
     setMode('distance');
-    setRootInput(String(diameter.from));
-    setTargetInput(String(diameter.to));
+    setRootInput(vertexLabel(diameter.from));
+    setTargetInput(vertexLabel(diameter.to));
     setDiameterOpen(false);
     runSearch('bfs', diameter.from, diameter.to);
     setPathOnly(true);
@@ -1523,8 +1654,9 @@ export default function Observatory() {
       }
       // In distance mode, with an origin already chosen, a click on another
       // vertex picks the target; otherwise it picks the origin.
-      if (mode === 'distance' && rootValid && g.vertex !== root) setTargetInput(String(g.vertex));
-      else setRootInput(String(g.vertex));
+      if (mode === 'distance' && rootValid && g.vertex !== root) {
+        setTargetInput(vertexLabel(g.vertex));
+      } else setRootInput(vertexLabel(g.vertex));
     }
     // A click on the background (a pan that never moved) clears the selection.
     if (
@@ -1836,24 +1968,68 @@ export default function Observatory() {
       const fontSize = Math.min(11, Math.round(radius * 1.05));
       ctx.font = `500 ${fontSize}px ${mono}`;
       ctx.fillStyle = '#ffffff';
-      let drawn = 0;
-      for (let v = 1, i = 2; i < positions.length && drawn < 3000; v++, i += 2) {
+      const shown: number[] = [];
+      for (let v = 1, i = 2; i < positions.length && shown.length < 3000; v++, i += 2) {
         const x = sx(v);
         const y = sy(v);
         if (x < -20 || y < -20 || x > rect.width + 20 || y > rect.height + 20) continue;
         ctx.fillText(String(v), x, y + 0.5);
-        drawn += 1;
+        shown.push(v);
+      }
+
+      // With a names file, each name beside its vertex, on a halo of the
+      // background so edges do not cross it; only while few are on screen.
+      if (!named || shown.length > NAME_LABELS) return;
+      const nameOfNow = nameOfRef.current;
+      ctx.font = `500 ${Math.max(10, fontSize)}px ${style.getPropertyValue('--font-sans')}`;
+      ctx.textAlign = 'left';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = style.getPropertyValue('--bg');
+      ctx.fillStyle = style.getPropertyValue('--fg-2');
+      for (const v of shown) {
+        const name = nameOfNow(v);
+        if (!name) continue;
+        const x = sx(v) + radius + 5;
+        const y = sy(v) + 0.5;
+        ctx.strokeText(name, x, y);
+        ctx.fillText(name, x, y);
       }
     };
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
-  }, [meta, showLabels, showWeights]);
+  }, [meta, showLabels, showWeights, named]);
 
   // ---- derived -----------------------------------------------------------
 
-  const root = Number.parseInt(rootInput, 10);
+  /** The vertex a field holds: its number, or with names loaded a name,
+      exactly as written or else the first vertex whose name matches. */
+  const resolveVertex = useCallback(
+    (text: string): number => {
+      const typed = text.trim();
+      if (/^\d+$/.test(typed)) return Number(typed);
+      const graph = graphRef.current;
+      if (!names || !graph || !typed) return Number.NaN;
+      return graph.vertexNamed(typed) ?? graph.searchNames(typed, 1)[0] ?? Number.NaN;
+    },
+    [names],
+  );
+  /** Up to a few vertices whose names match what a field holds. */
+  const suggestNames = useCallback(
+    (text: string): { vertex: number; name: string }[] => {
+      const typed = text.trim();
+      const graph = graphRef.current;
+      if (!names || !graph || !typed || /^\d+$/.test(typed)) return [];
+      return Array.from(graph.searchNames(typed, NAME_SUGGESTIONS), (vertex) => ({
+        vertex,
+        name: nameOf(vertex) ?? String(vertex),
+      }));
+    },
+    [names, nameOf],
+  );
+  const root = useMemo(() => resolveVertex(rootInput), [resolveVertex, rootInput]);
   const rootValid = meta !== null && Number.isInteger(root) && root >= 1 && root <= meta.vertices;
-  const target = Number.parseInt(targetInput, 10);
+  const target = useMemo(() => resolveVertex(targetInput), [resolveVertex, targetInput]);
   const targetValid =
     meta !== null && Number.isInteger(target) && target >= 1 && target <= meta.vertices;
   /** Whether the run button has what the current mode needs. */
@@ -1866,10 +2042,21 @@ export default function Observatory() {
     mode === 'distance'
       ? t.runDistance(
           kindLabel,
-          rootValid ? String(root) : t.theOrigin,
-          targetValid ? String(target) : t.theTarget,
+          rootValid ? vertexLabel(root) : t.theOrigin,
+          targetValid ? vertexLabel(target) : t.theTarget,
         )
-      : t.runFrom(kindLabel, rootValid ? String(root) : t.theOrigin);
+      : t.runFrom(kindLabel, rootValid ? vertexLabel(root) : t.theOrigin);
+
+  /** Drops the names; fields holding a name go back to its number. */
+  const removeNames = () => {
+    const graph = graphRef.current;
+    if (!graph) return;
+    if (rootValid) setRootInput(String(root));
+    if (targetValid) setTargetInput(String(target));
+    graph.setNames(new Uint8Array());
+    nameCache.current.clear();
+    setNames(null);
+  };
 
   const hoverInfo = useMemo(() => {
     if (!hovered || !meta) return null;
@@ -1909,9 +2096,17 @@ export default function Observatory() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".txt,text/plain"
+        accept=".txt,.csv,text/plain"
+        multiple
         hidden
         onChange={onFileChange}
+      />
+      <input
+        ref={namesInputRef}
+        type="file"
+        accept=".txt,.csv,text/plain"
+        hidden
+        onChange={(event) => void onNamesChange(event)}
       />
       <SidebarHandle
         label={t.resizeSidebar}
@@ -2003,6 +2198,34 @@ export default function Observatory() {
                 >
                   <MemoryStick size={14} />
                 </button>
+              </div>
+              <div className={styles.namesRow}>
+                <Tag size={12} aria-hidden="true" />
+                {names ? (
+                  <>
+                    <span className={`mono ${styles.namesFile}`} title={names.file}>
+                      {names.file}
+                    </span>
+                    <span className={styles.namesCount}>{t.names.count(names.count)}</span>
+                    <button
+                      type="button"
+                      className={styles.namesRemove}
+                      aria-label={t.names.remove}
+                      title={t.names.remove}
+                      onClick={removeNames}
+                    >
+                      <X size={12} />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.namesAdd}
+                    onClick={() => namesInputRef.current?.click()}
+                  >
+                    {t.names.add}
+                  </button>
+                )}
               </div>
               <Swap view={memoryOpen ? 'memory' : componentsOpen ? 'components' : 'summary'}>
                 {memoryOpen ? (
@@ -2152,41 +2375,35 @@ export default function Observatory() {
                 )}
               </div>
               <div className={styles.searchRow}>
-                <div className={styles.field}>
-                  <label htmlFor="root">{t.origin}</label>
-                  <input
-                    id="root"
-                    className={`mono ${styles.input}`}
-                    inputMode="numeric"
-                    value={rootInput}
-                    onChange={(event) => setRootInput(event.target.value)}
-                    onBlur={() => {
-                      if (rootValid) {
-                        setSelected(root);
-                        rendererRef.current?.setSelected(root);
-                      }
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') run();
-                    }}
-                    placeholder={t.originPlaceholder}
-                  />
-                </div>
+                <VertexField
+                  id="root"
+                  label={t.origin}
+                  value={rootInput}
+                  onChange={setRootInput}
+                  onBlur={() => {
+                    if (rootValid) {
+                      setSelected(root);
+                      rendererRef.current?.setSelected(root);
+                    }
+                  }}
+                  onEnter={run}
+                  placeholder={names ? t.namePlaceholder : t.originPlaceholder}
+                  named={names !== null}
+                  suggest={suggestNames}
+                  suggestionsLabel={t.names.suggestions}
+                />
                 {mode === 'distance' && (
-                  <div className={styles.field}>
-                    <label htmlFor="target">{t.target}</label>
-                    <input
-                      id="target"
-                      className={`mono ${styles.input}`}
-                      inputMode="numeric"
-                      value={targetInput}
-                      onChange={(event) => setTargetInput(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') run();
-                      }}
-                      placeholder={t.targetPlaceholder}
-                    />
-                  </div>
+                  <VertexField
+                    id="target"
+                    label={t.target}
+                    value={targetInput}
+                    onChange={setTargetInput}
+                    onEnter={run}
+                    placeholder={names ? t.namePlaceholder : t.targetPlaceholder}
+                    named={names !== null}
+                    suggest={suggestNames}
+                    suggestionsLabel={t.names.suggestions}
+                  />
                 )}
                 <button
                   type="button"
@@ -2251,7 +2468,7 @@ export default function Observatory() {
                       onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
                       onPick={(v) => {
                         setMode('distance');
-                        setTargetInput(String(v));
+                        setTargetInput(vertexLabel(v));
                         runSearch('dijkstra', search.root, v);
                       }}
                     />
@@ -2295,7 +2512,7 @@ export default function Observatory() {
                   </div>
                 </div>
               ) : (
-                <p className={styles.hint}>{t.searchHint}</p>
+                <p className={styles.hint}>{names ? t.searchHintNamed : t.searchHint}</p>
               )}
             </Panel>
 
@@ -2514,18 +2731,7 @@ export default function Observatory() {
                         ? t.parsing(status.name)
                         : t.drop}
                   </span>
-                  <div className={`mono ${styles.format}`} aria-label={t.fileFormat}>
-                    <span className={styles.formatName}>sample.txt</span>
-                    {FORMAT_LINES.map(([edge, weight], i) => (
-                      <Fragment key={edge}>
-                        <span>{edge}</span>
-                        <span className={styles.formatWeight}>{weight}</span>
-                        <span className={styles.formatNote}>
-                          {FORMAT_NOTES[i] ? t.format[FORMAT_NOTES[i]] : ''}
-                        </span>
-                      </Fragment>
-                    ))}
-                  </div>
+                  <FormatSlider t={t} />
                 </div>
               )}
             </div>
@@ -2590,30 +2796,38 @@ export default function Observatory() {
                       </IconButton>
                     </div>
                   )}
-                  <p className={`mono ${styles.path}`} aria-label={t.path}>
-                    {search.path ? (
-                      pathSteps(search.path).map((step, i, all) => (
-                        <Fragment key={i}>
-                          {i > 0 && <span className={styles.pathArrow}>→</span>}
-                          {step === '…' ? (
-                            <span className={styles.pathGap}>{step}</span>
-                          ) : (
-                            <span
-                              className={styles.pathBall}
-                              style={{
-                                // The canvas gradient: the origin's blue to the destination's green.
-                                background: `color-mix(in srgb, var(--accent) ${Math.round(100 - (100 * i) / Math.max(all.length - 1, 1))}%, var(--target))`,
-                              }}
-                            >
-                              {step}
-                            </span>
-                          )}
-                        </Fragment>
-                      ))
-                    ) : (
-                      <span className={styles.pathGap}>{t.noPath}</span>
+                  <div className={styles.pathStack}>
+                    <p className={`mono ${styles.path}`} aria-label={t.path}>
+                      {search.path ? (
+                        pathSteps(Array.from(search.path, String)).map((step, i, all) => (
+                          <Fragment key={i}>
+                            {i > 0 && <span className={styles.pathArrow}>→</span>}
+                            {step === '…' ? (
+                              <span className={styles.pathGap}>{step}</span>
+                            ) : (
+                              <span
+                                className={styles.pathBall}
+                                title={nameOf(Number(step)) ?? undefined}
+                                style={{
+                                  // The canvas gradient: the origin's blue to the destination's green.
+                                  background: `color-mix(in srgb, var(--accent) ${Math.round(100 - (100 * i) / Math.max(all.length - 1, 1))}%, var(--target))`,
+                                }}
+                              >
+                                {step}
+                              </span>
+                            )}
+                          </Fragment>
+                        ))
+                      ) : (
+                        <span className={styles.pathGap}>{t.noPath}</span>
+                      )}
+                    </p>
+                    {names && search.path && (
+                      <p className={styles.pathNames} aria-label={t.names.pathNames}>
+                        {pathSteps(Array.from(search.path, vertexLabel)).join(' → ')}
+                      </p>
                     )}
-                  </p>
+                  </div>
                 </div>
               )}
 
@@ -2802,7 +3016,11 @@ export default function Observatory() {
                     <span className={styles.swatchDim} /> {t.theRest}
                   </>
                 ) : selected ? (
-                  t.originVertex(selected)
+                  nameOf(selected) ? (
+                    t.originNamed(nameOf(selected) ?? '')
+                  ) : (
+                    t.originVertex(selected)
+                  )
                 ) : (
                   t.chooseOrigin
                 )}
@@ -2820,6 +3038,7 @@ export default function Observatory() {
               }
               role="status"
             >
+              {nameOf(hovered) && <span className={styles.tooltipName}>{nameOf(hovered)}</span>}
               <span className="mono">{t.vertex(hovered)}</span>
               <span>{t.degree(hoverInfo.degree)}</span>
               {search &&
@@ -2886,9 +3105,8 @@ export default function Observatory() {
   );
 }
 
-/** The path as labels, the middle elided past ten vertices. */
-function pathSteps(path: Uint32Array): string[] {
-  const all = Array.from(path, String);
+/** The path's labels, the middle elided past ten vertices. */
+function pathSteps(all: string[]): string[] {
   if (all.length <= 10) return all;
   return [...all.slice(0, 4), '…', ...all.slice(-4)];
 }
@@ -2982,7 +3200,7 @@ function Choice<T extends string>({
   );
 }
 
-/** The two built-in samples, behind the "Examples" tile of the empty
+/** The built-in samples, behind the "Examples" tile of the empty
     sidebar. A click turns the tile itself into the choice (its two faces
     share one grid cell, so it keeps its size); a click outside or Esc turns
     it back. */
@@ -2993,7 +3211,7 @@ function ExamplesMenu({
 }: {
   t: ReturnType<typeof useT>['observatory'];
   disabled: boolean;
-  onPick: (which: 'plain' | 'weighted') => void;
+  onPick: (which: Example) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -3042,11 +3260,12 @@ function ExamplesMenu({
         aria-label={t.examples}
         inert={!open}
       >
-        {(['plain', 'weighted'] as const).map((which) => (
+        {EXAMPLES.map((which) => (
           <button
             key={which}
             type="button"
             className={styles.examplesChoice}
+            title={t.samples[which].hint}
             onClick={() => {
               setOpen(false);
               onPick(which);
@@ -3054,18 +3273,207 @@ function ExamplesMenu({
           >
             {which === 'plain' ? (
               <Waypoints size={16} aria-hidden="true" />
-            ) : (
+            ) : which === 'weighted' ? (
               <Weight size={16} aria-hidden="true" />
+            ) : (
+              <Users size={16} aria-hidden="true" />
             )}
-            <span className={styles.menuText}>
-              <span>{t.samples[which].label}</span>
-              {/* The counts on two short lines, so the tile keeps its width. */}
-              {t.samples[which].hint.split(' · ').map((part) => (
-                <span key={part} className={styles.menuHint}>
-                  {part}
+            {/* Three choices fill the tile: the counts live in the title. */}
+            <span className={styles.menuText}>{t.samples[which].label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The origin or target field: a vertex number, or with a names file a name,
+ * with the matching names offered under it (arrows to move, Enter or a click
+ * to take one). Enter with no list open runs the search.
+ */
+function VertexField({
+  id,
+  label,
+  value,
+  onChange,
+  onBlur,
+  onEnter,
+  placeholder,
+  named,
+  suggest,
+  suggestionsLabel,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  onEnter: () => void;
+  placeholder: string;
+  named: boolean;
+  suggest: (text: string) => { vertex: number; name: string }[];
+  suggestionsLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const suggestions = useMemo(() => (open ? suggest(value) : []), [open, suggest, value]);
+  // A name typed in full needs no list.
+  const shown = suggestions.length === 1 && suggestions[0].name === value.trim() ? [] : suggestions;
+  const listId = `${id}-names`;
+
+  const take = (name: string) => {
+    onChange(name);
+    setOpen(false);
+  };
+
+  return (
+    <div className={`${styles.field} ${styles.vertexField}`}>
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        className={`mono ${styles.input}`}
+        inputMode={named ? 'text' : 'numeric'}
+        autoComplete="off"
+        spellCheck={false}
+        role={named ? 'combobox' : undefined}
+        aria-expanded={named ? shown.length > 0 : undefined}
+        aria-controls={named ? listId : undefined}
+        value={value}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setOpen(true);
+          setActive(0);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => {
+          setOpen(false);
+          onBlur?.();
+        }}
+        onKeyDown={(event) => {
+          if (shown.length && event.key === 'ArrowDown') {
+            event.preventDefault();
+            setActive((i) => (i + 1) % shown.length);
+          } else if (shown.length && event.key === 'ArrowUp') {
+            event.preventDefault();
+            setActive((i) => (i - 1 + shown.length) % shown.length);
+          } else if (event.key === 'Escape') {
+            setOpen(false);
+          } else if (event.key === 'Enter') {
+            if (shown.length) take(shown[Math.min(active, shown.length - 1)].name);
+            else onEnter();
+          }
+        }}
+        placeholder={placeholder}
+      />
+      {shown.length > 0 && (
+        <ul id={listId} className={styles.suggestions} role="listbox" aria-label={suggestionsLabel}>
+          {shown.map(({ vertex, name }, i) => (
+            <li
+              key={vertex}
+              role="option"
+              aria-selected={i === active}
+              data-active={i === active || undefined}
+              // Before the input's blur, so the click lands.
+              onPointerDown={(event) => {
+                event.preventDefault();
+                take(name);
+              }}
+              onPointerEnter={() => setActive(i)}
+            >
+              <span>{name}</span>
+              <span className="mono">{vertex}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The empty stage's format card, a small slider over two files: the graph
+ * (an edge per line, the weight optional) and the names that may come with
+ * it. It turns by itself while left alone; the tabs under it pick a file.
+ */
+function FormatSlider({ t }: { t: Strings }) {
+  const [slide, setSlide] = useState<FormatSlide>('graph');
+  const [held, setHeld] = useState(false);
+
+  useEffect(() => {
+    if (held || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // Restarted by every turn, so a picked file stays its full time.
+    const timer = setTimeout(
+      () => setSlide((current) => (current === 'graph' ? 'names' : 'graph')),
+      FORMAT_SLIDE_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [held, slide]);
+
+  return (
+    <div
+      className={styles.formatSlider}
+      role="group"
+      aria-label={t.fileFormat}
+      onPointerEnter={() => setHeld(true)}
+      onPointerLeave={() => setHeld(false)}
+      onFocus={() => setHeld(true)}
+      onBlur={() => setHeld(false)}
+    >
+      <div className={styles.formatViewport}>
+        <div className={styles.formatTrack} data-slide={slide}>
+          <div
+            className={`mono ${styles.format}`}
+            aria-label={t.formatSlides.graph}
+            inert={slide !== 'graph'}
+          >
+            <span className={styles.formatName}>sample.txt</span>
+            {FORMAT_LINES.map(([edge, weight], i) => (
+              <Fragment key={edge}>
+                <span>{edge}</span>
+                <span className={styles.formatWeight}>{weight}</span>
+                <span className={styles.formatNote}>
+                  {FORMAT_NOTES[i] ? t.format[FORMAT_NOTES[i]] : ''}
                 </span>
-              ))}
-            </span>
+              </Fragment>
+            ))}
+          </div>
+          <div
+            className={`mono ${styles.format} ${styles.formatNames}`}
+            aria-label={t.formatSlides.names}
+            inert={slide !== 'names'}
+          >
+            <span className={styles.formatName}>sample_names.txt</span>
+            {NAMES_LINES.map(([index, name], i) => (
+              <Fragment key={index}>
+                <span>
+                  {index}
+                  {name && (
+                    <>
+                      <span className={styles.formatComma}>,</span>
+                      <span className={styles.formatLabel}>{name}</span>
+                    </>
+                  )}
+                </span>
+                <span className={styles.formatNote}>
+                  {NAMES_NOTES[i] ? t.format[NAMES_NOTES[i]] : ''}
+                </span>
+              </Fragment>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className={styles.formatTabs} role="tablist" aria-label={t.fileFormat}>
+        {FORMAT_SLIDES.map((which) => (
+          <button
+            key={which}
+            type="button"
+            role="tab"
+            aria-selected={slide === which}
+            className={styles.formatTab}
+            onClick={() => setSlide(which)}
+          >
+            {t.formatSlides[which]}
           </button>
         ))}
       </div>

@@ -303,7 +303,7 @@ export const pt: Dictionary = {
       ['← →', 'avança um vértice / componente'],
       ['↑ ↓', 'avança um nível'],
       ['esc', 'limpa a origem / componente'],
-      ['soltar arquivo', 'carrega um grafo'],
+      ['soltar arquivo', 'carrega um grafo (e seus nomes)'],
     ],
     layouts: {
       force: { label: 'Forças', hint: 'molas e repulsão' },
@@ -315,6 +315,13 @@ export const pt: Dictionary = {
       vertices: '// vértices',
       edge: '// uma aresta por linha',
       weight: '// peso, opcional',
+      names: '// vértice, nome',
+      nameLine: '// um vértice por linha',
+      namesDrop: '// solte junto com o grafo',
+    },
+    formatSlides: {
+      graph: 'Arquivo do grafo',
+      names: 'Arquivo de nomes',
     },
     graph: 'Grafo',
     loadFile: 'Carregar um arquivo de grafo',
@@ -350,6 +357,7 @@ export const pt: Dictionary = {
     clearSearch: 'Limpar a busca',
     origin: 'Origem',
     originPlaceholder: 'clique um vértice',
+    namePlaceholder: 'número ou nome',
     traversal: 'Algoritmo',
     theOrigin: 'a origem',
     runFrom: (kind: string, root: string) => `Rodar ${kind} a partir de ${root}`,
@@ -397,6 +405,8 @@ export const pt: Dictionary = {
     play: 'Tocar',
     progress: 'Progresso da descoberta',
     searchHint: 'Clique um vértice na tela para torná-lo a origem, ou digite seu número.',
+    searchHintNamed:
+      'Clique um vértice na tela para torná-lo a origem, ou digite seu número ou um nome.',
     diameter: 'Diâmetro',
     method: 'Método',
     bfsBudget: 'Orçamento de BFS',
@@ -409,10 +419,11 @@ export const pt: Dictionary = {
     diameterHint: 'Escolha um método e calcule o mais longo dos caminhos mínimos.',
     showDiameterPath: (from: string, to: string) => `Desenhar o caminho de ${from} até ${to}`,
     examples: 'Exemplos',
-    examplesHint: 'Com ou sem pesos',
+    examplesHint: 'Com pesos, nomes ou simples',
     samples: {
       plain: { label: 'Sem pesos', hint: '10 vértices · 15 arestas' },
       weighted: { label: 'Com pesos', hint: '10 vértices · 15 arestas' },
+      named: { label: 'Com nomes', hint: '14 vértices · nomes' },
     },
     openFile: 'Abrir um arquivo',
     openFileHint: '.txt · formato da disciplina',
@@ -486,6 +497,7 @@ export const pt: Dictionary = {
     component: (n: number) => `componente ${n}`,
     theRest: 'o resto',
     originVertex: (v: number) => `Origem: vértice ${v}`,
+    originNamed: (name: string) => `Origem: ${name}`,
     chooseOrigin: 'Clique um vértice para escolher a origem',
     vertex: (v: number) => `vértice ${v}`,
     degree: (d: number) => `grau ${d}`,
@@ -493,6 +505,17 @@ export const pt: Dictionary = {
     dismiss: 'Fechar',
     couldNotLoad: (name: string, message: string) =>
       `Não foi possível carregar ${name}: ${message}`,
+    names: {
+      add: 'Adicionar um arquivo de nomes',
+      remove: 'Remover os nomes',
+      count: (n: number) => (n === 1 ? '1 nome' : `${n} nomes`),
+      needGraph:
+        'Um arquivo de nomes acompanha um grafo: carregue o grafo antes, ou solte os dois arquivos juntos.',
+      couldNotRead: (name: string, message: string) =>
+        `Não foi possível ler os nomes em ${name}: ${message}`,
+      suggestions: 'Nomes encontrados',
+      pathNames: 'O caminho por nome',
+    },
     tooLarge: (name: string, size: string, limit: string) =>
       `${name} tem ${size}; o observatório aceita arquivos de até ${limit}.`,
     distribution: 'Distribuição',
