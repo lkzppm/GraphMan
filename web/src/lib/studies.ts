@@ -1,6 +1,7 @@
 // Types of studies/results.json (crates/graphman-cli/src/report.rs), synced
 // into src/data by scripts/sync-data.mjs.
 import results from '@/data/results.json';
+import weightedResults from '@/data/weighted.json';
 
 export type Representation = 'adjacency_list' | 'adjacency_matrix' | 'csr';
 export type DiameterMethod = 'exact' | 'i_fub' | 'bounds' | 'sweep';
@@ -104,3 +105,74 @@ export interface GraphStudy {
 export const studies: GraphStudy[] = (results as GraphStudy[])
   .slice()
   .sort((a, b) => a.vertices - b.vertices || a.edges - b.edges);
+
+// Types of studies/weighted/results.json (the Part 2 study, `WeightedStudy`
+// in crates/graphman-cli/src/report.rs), synced into src/data as weighted.json.
+
+export type FrontierKind = 'vector' | 'heap' | 'lazy_heap';
+
+export interface WeightStats {
+  min: number;
+  max: number;
+  mean: number;
+  negative: number;
+}
+
+export interface PathAnswer {
+  from: number;
+  to: number;
+  /** `null` when `to` is in another component. */
+  distance: number | null;
+  /** From `from` to `to`, both included; empty when unreached. */
+  path: number[];
+  from_name?: string;
+  to_name?: string;
+  /** With a names file, the path's vertices by name. */
+  names?: string[];
+}
+
+export interface PartialRun {
+  root: number;
+  settled: number;
+  reachable: number;
+  elapsed_ms: number;
+  /** The cut run's time scaled to its root's whole component. */
+  estimated_ms: number;
+}
+
+export interface FrontierStudy {
+  frontier: FrontierKind;
+  requested_runs: number;
+  budget_s: number;
+  /** The runs that finished; `null` when none did. */
+  timing: Timing | null;
+  budget_exhausted: boolean;
+  partial: PartialRun | null;
+}
+
+export interface WeightedStudy {
+  name: string;
+  file: string;
+  /** The vertex-name file, for the collaboration network. */
+  names_file: string | null;
+  vertices: number;
+  edges: number;
+  parse_ms: number;
+  weights: WeightStats | null;
+  representation: Representation;
+  /** The library's refusal when an edge is negative. */
+  refusal: string | null;
+  paths: PathAnswer[];
+  frontiers: FrontierStudy[];
+  machine?: Machine;
+}
+
+/** The weighted course graphs, smallest first, then the named network. */
+export const weightedStudies: WeightedStudy[] = (weightedResults as WeightedStudy[])
+  .slice()
+  .sort(
+    (a, b) =>
+      Number(a.names_file !== null) - Number(b.names_file !== null) ||
+      a.vertices - b.vertices ||
+      a.edges - b.edges,
+  );

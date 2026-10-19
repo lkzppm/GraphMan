@@ -566,7 +566,13 @@ export const pt: Dictionary = {
     hint: '← → para navegar · F tela cheia',
     slides: {
       cover: {
-        eyebrow: 'cos 242 · teoria dos grafos · ufrj 2026/2 · parte 1',
+        eyebrow: 'cos 242 · teoria dos grafos · ufrj 2026/2',
+        parts: ['Parte 1', 'Parte 2'],
+        partsLabel: 'Qual parte do trabalho',
+        topics: [
+          'representações · BFS e DFS · componentes · diâmetro',
+          'pesos · Dijkstra · vetor e heap · nomes',
+        ],
         authors: ['Lucas Pacheco', 'Rogério Santana'],
         stack: ['Rust 2024', 'WebAssembly', 'WebGPU · vgpu', 'Next.js', 'Vercel'],
       },
@@ -634,6 +640,101 @@ export const pt: Dictionary = {
         url: 'graphman-ufrj.vercel.app',
         scan: 'aponte a câmera',
         thanks: 'Obrigado',
+      },
+      part2: {
+        weights: {
+          eyebrow: '01',
+          title: 'Pesos',
+          input: {
+            label: 'entrada',
+            name: 'figura 1',
+            hint: 'uma terceira coluna, qualquer número real',
+          },
+          normalise: { name: 'EdgeList', hint: 'uma duplicata fica com o menor peso' },
+          arrays: {
+            label: 'Csr, e uma coluna ao lado',
+            offsets: 'offsets',
+            targets: 'targets',
+            weights: 'weights',
+          },
+          notes: [
+            {
+              title: 'Graph nunca lê o peso',
+              caption: '// BFS e DFS rodam iguais num grafo com pesos',
+            },
+            {
+              title: 'Weighted: Graph',
+              caption: '// pares (vizinho, peso); um grafo sem pesos responde 1',
+            },
+            {
+              title: 'Uma recusa, não uma resposta errada',
+              caption: '// 3 4 −9.5: Dijkstra devolve NegativeWeight',
+            },
+          ],
+        },
+        frontiers: {
+          eyebrow: '02',
+          title: 'Um Dijkstra, três fronteiras',
+          driver: '// o algoritmo é escrito uma vez; a fronteira guarda as estimativas',
+          items: [
+            {
+              name: 'VectorFrontier',
+              title: 'Vetor',
+              cost: 'O(n² + m)',
+              caption: '// pop_min percorre todas as estimativas',
+            },
+            {
+              name: 'HeapFrontier',
+              title: 'Heap, decrease-key',
+              cost: 'O((n + m) log n)',
+              caption: '// position[v] acha a entrada, que sobe no heap',
+            },
+            {
+              name: 'LazyHeapFrontier',
+              title: 'Heap preguiçoso',
+              cost: 'O(m log m)',
+              caption: '// uma estimativa menor entra de novo, a antiga é pulada',
+            },
+          ],
+          ties: '// empates vão para o menor vértice: as três constroem a mesma árvore',
+        },
+        timing: {
+          eyebrow: '03',
+          title: 'Vetor contra heap',
+          columns: {
+            graph: 'Grafo',
+            size: 'Tamanho',
+            time: 'Dijkstra médio',
+            ratio: 'Vetor / heap',
+          },
+          legend: [
+            { key: 'vector', label: 'vetor' },
+            { key: 'heap', label: 'heap' },
+            { key: 'lazy_heap', label: 'heap preguiçoso' },
+          ],
+          estimated: (time: string) => `≈ ${time}`,
+          machine: (cpu: string, memory: string) =>
+            `${cpu}, ${memory}. Média de um Dijkstra de fonte única a partir de fontes aleatórias, em CSR, sem leitura nem escrita. Uma barra tracejada é uma estimativa: o orçamento acabou e a execução interrompida foi escalada para a sua componente.`,
+          pending:
+            'Os grafos com pesos da disciplina ainda não foram rodados: `graphman study` preenche esta tabela.',
+          cta: 'Abrir os estudos de caso',
+        },
+        paths: {
+          eyebrow: '04',
+          title: 'Caminhos mínimos',
+          graphs: {
+            label: 'A partir do vértice 10',
+            caption: '// distância até 20, 30, 40, 50 e 60',
+          },
+          network: {
+            label: 'Rede de colaboração',
+            caption: '// a partir de Edsger W. Dijkstra, nomes com a grafia exata',
+          },
+          unreached: 'sem caminho',
+          hops: (n: number) => (n === 1 ? '1 aresta' : `${n} arestas`),
+          pending: 'Preenchido por `graphman study` quando os arquivos da disciplina rodarem.',
+        },
+        observatory: '05',
       },
     },
   },

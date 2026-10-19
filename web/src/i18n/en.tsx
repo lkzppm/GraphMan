@@ -562,7 +562,13 @@ export const en = {
     hint: '← → to move · F full screen',
     slides: {
       cover: {
-        eyebrow: 'cos 242 · graph theory · ufrj 2026/2 · part 1',
+        eyebrow: 'cos 242 · graph theory · ufrj 2026/2',
+        parts: ['Part 1', 'Part 2'],
+        partsLabel: 'Which part of the project',
+        topics: [
+          'representations · BFS and DFS · components · diameter',
+          'weights · Dijkstra · vector and heap · names',
+        ],
         authors: ['Lucas Pacheco', 'Rogério Santana'],
         stack: ['Rust 2024', 'WebAssembly', 'WebGPU · vgpu', 'Next.js', 'Vercel'],
       },
@@ -630,6 +636,94 @@ export const en = {
         url: 'graphman-ufrj.vercel.app',
         scan: 'point your camera',
         thanks: 'Thank you',
+      },
+      part2: {
+        weights: {
+          eyebrow: '01',
+          title: 'Weights',
+          input: { label: 'input', name: 'figure 1', hint: 'a third column, any real number' },
+          normalise: { name: 'EdgeList', hint: 'a duplicate keeps its smallest weight' },
+          arrays: {
+            label: 'Csr, and a column beside it',
+            offsets: 'offsets',
+            targets: 'targets',
+            weights: 'weights',
+          },
+          notes: [
+            {
+              title: 'Graph never reads it',
+              caption: '// BFS and DFS run unchanged on a weighted graph',
+            },
+            {
+              title: 'Weighted: Graph',
+              caption: '// (neighbour, weight) pairs; an unweighted graph answers 1',
+            },
+            {
+              title: 'A refusal, not a wrong answer',
+              caption: '// 3 4 −9.5: Dijkstra returns NegativeWeight',
+            },
+          ],
+        },
+        frontiers: {
+          eyebrow: '02',
+          title: 'One Dijkstra, three frontiers',
+          driver: '// the driver is written once; a frontier keeps the estimates',
+          items: [
+            {
+              name: 'VectorFrontier',
+              title: 'Vector',
+              cost: 'O(n² + m)',
+              caption: '// pop_min scans every estimate',
+            },
+            {
+              name: 'HeapFrontier',
+              title: 'Heap, decrease-key',
+              cost: 'O((n + m) log n)',
+              caption: '// position[v] finds the entry, which sifts up',
+            },
+            {
+              name: 'LazyHeapFrontier',
+              title: 'Lazy heap',
+              cost: 'O(m log m)',
+              caption: '// a lower estimate is pushed again, the stale one skipped',
+            },
+          ],
+          ties: '// ties go to the smaller vertex: the three build the same tree',
+        },
+        timing: {
+          eyebrow: '03',
+          title: 'Vector against heap',
+          columns: {
+            graph: 'Graph',
+            size: 'Size',
+            time: 'Mean Dijkstra',
+            ratio: 'Vector / heap',
+          },
+          legend: [
+            { key: 'vector', label: 'vector' },
+            { key: 'heap', label: 'heap' },
+            { key: 'lazy_heap', label: 'lazy heap' },
+          ],
+          estimated: (time: string) => `≈ ${time}`,
+          machine: (cpu: string, memory: string) =>
+            `${cpu}, ${memory}. Mean of one single-source Dijkstra from random sources on CSR, reading and writing excluded. A dashed bar is an estimate: the budget ran out and the cut run was scaled to its component.`,
+          pending:
+            "The course's weighted graphs have not been run yet: `graphman study` fills this sheet.",
+          cta: 'Open the case studies',
+        },
+        paths: {
+          eyebrow: '04',
+          title: 'Shortest paths',
+          graphs: { label: 'From vertex 10', caption: '// distance to 20, 30, 40, 50 and 60' },
+          network: {
+            label: 'Collaboration network',
+            caption: '// from Edsger W. Dijkstra, names matched exactly',
+          },
+          unreached: 'no path',
+          hops: (n: number) => (n === 1 ? '1 edge' : `${n} edges`),
+          pending: 'Filled by `graphman study` once the course files are run.',
+        },
+        observatory: '05',
       },
     },
   },
