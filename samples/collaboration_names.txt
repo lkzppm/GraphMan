@@ -1,0 +1,14 @@
+1,Edsger W. Dijkstra
+2,Alan M. Turing
+3,J. B. Kruskal
+4,Jon M. Kleinberg
+5,Éva Tardos
+6,Daniel R. Figueiredo
+7,Ana Souza
+8,Bruno Lima
+9,Carla Mendes
+10,Diego Rocha
+11,Elisa Prado
+12,Fábio Nunes
+13,Gabriela Torres
+14,Hugo Martins

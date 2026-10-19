@@ -70,7 +70,7 @@ export interface GraphBuffers {
 }
 
 export interface SearchBuffers {
-  kind: 'bfs' | 'dfs';
+  kind: 'bfs' | 'dfs' | 'dijkstra';
   levels: Uint32Array;
   ranks: Uint32Array;
   parents: Uint32Array;
@@ -627,7 +627,7 @@ export class Renderer {
       this.levels.write(bytes(search.levels));
       this.ranks.write(bytes(search.ranks));
       this.parents.write(bytes(search.parents));
-      this.viewValues.mode = search.kind === 'bfs' ? 1 : 2;
+      this.viewValues.mode = search.kind === 'dfs' ? 2 : 1;
       this.viewValues.maxLevel = Math.max(search.depth, 1);
     } else {
       this.viewValues.mode = 0;

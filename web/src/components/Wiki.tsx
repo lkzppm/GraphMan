@@ -7,12 +7,16 @@ import {
   SAMPLE_EDGES,
   SAMPLE_POSITIONS,
   SAMPLE_TEXT,
+  SAMPLE_WEIGHTED_TEXT,
+  SAMPLE_WEIGHTS,
   TWO_COMPONENT_EDGES,
   TWO_COMPONENT_POSITIONS,
   UNREACHED,
   bfs,
   components,
   dfs,
+  dijkstra,
+  pathTo,
   shortestPath,
 } from '@/lib/sample';
 import Code from './Code';
@@ -37,6 +41,10 @@ type ChapterId =
   | 'visitors'
   | 'distance'
   | 'diameter'
+  | 'weights'
+  | 'dijkstra'
+  | 'frontiers'
+  | 'names'
   | 'cli';
 
 /** Every chapter and the source file it documents. */
@@ -48,6 +56,10 @@ const CHAPTERS: { id: ChapterId; source: string }[] = [
   { id: 'visitors', source: 'src/algo/traversal.rs' },
   { id: 'distance', source: 'src/algo/distance.rs' },
   { id: 'diameter', source: 'src/algo/diameter.rs' },
+  { id: 'weights', source: 'src/graph/mod.rs' },
+  { id: 'dijkstra', source: 'src/algo/shortest_path.rs' },
+  { id: 'frontiers', source: 'src/algo/frontier.rs' },
+  { id: 'names', source: 'src/io/names.rs' },
   { id: 'cli', source: '../graphman-cli/src/main.rs' },
 ];
 
@@ -63,6 +75,7 @@ const COMMANDS = [
   'graphman bfs graphs/grafo_1.txt --from 1 --repr csr',
   'graphman distance graphs/grafo_1.txt --pair 10 20 --pair 10 30',
   'graphman diameter graphs/grafo_1.txt --method bounds --budget 60',
+  'graphman dijkstra samples/weighted_100.txt --from 10 --to 20 30 --frontier heap',
   'graphman study graphs/grafo_1.txt --out studies',
 ];
 
@@ -91,6 +104,24 @@ const BFS_FILE = [
   ...Array.from({ length: N }, (_, i) => `${i + 1} ${BFS.parents[i + 1]} ${BFS.levels[i + 1]}`),
 ];
 const FLOW_FILES = ['grafo.txt', 'grafo.bfs-1.txt'];
+
+// The weighted chapters: Dijkstra from 1 on the weighted sample, against
+// the BFS, whose path to 5 has fewer edges and more weight.
+const DIJKSTRA = dijkstra(N, SAMPLE_EDGES, SAMPLE_WEIGHTS, 1);
+const DIJKSTRA_PATH_5 = pathTo(DIJKSTRA.parents, 1, 5);
+const BFS_PATH_5 = shortestPath(N, SAMPLE_EDGES, 1, 5);
+/** The farthest vertex: the last one settled (ShortestPathTree::last_settled). */
+const FARTHEST = DIJKSTRA.order[DIJKSTRA.order.length - 1];
+
+/** The names example's file and what VertexNames answers on it, as in the
+    Rust block (and its asserts, which cargo test runs). */
+const NAMES_FILE = ['1,Edsger W. Dijkstra', '2,Alan M. Turing', '3,Éva Tardos'];
+const NAME_LOOKUPS: [string, string][] = [
+  ['vertex("Edsger W. Dijkstra")', 'Some(1)'],
+  ['name(3)', 'Some("Éva Tardos")'],
+  ['search("eva tardos", 5)', '[3]'],
+  ['vertex("Eva Tardos")', 'None'],
+];
 const FLOW_COMMAND = 'graphman bfs grafo.txt --from 1';
 
 export default function Wiki({ examples }: { examples: Record<string, string> }) {
@@ -144,7 +175,9 @@ export default function Wiki({ examples }: { examples: Record<string, string> })
         aria-label={l.contents}
         data-hidden={hidden || undefined}
       >
-        <ol style={{ '--progress': STOPS.indexOf(active) } as CSSProperties}>
+        <ol
+          style={{ '--progress': STOPS.indexOf(active), '--stops': STOPS.length } as CSSProperties}
+        >
           {STOPS.map((id, i) => (
             <li key={id}>
               <a href={`#${id}`} data-active={active === id || undefined}>
@@ -230,7 +263,47 @@ export default function Wiki({ examples }: { examples: Record<string, string> })
             </Figure>
           </Chapter>
 
-          <Chapter meta={chapter('cli')} index={8}>
+          <Chapter meta={chapter('weights')} index={8}>
+            {code('weights')}
+            <WeightedTextToGraph />
+          </Chapter>
+
+          <Chapter meta={chapter('dijkstra')} index={9}>
+            {code('dijkstra')}
+            <div className={styles.split}>
+              <Figure legend={l.chapters.dijkstra.bfs}>
+                <GraphFigure
+                  edges={SAMPLE_EDGES}
+                  positions={SAMPLE_POSITIONS}
+                  weights={SAMPLE_WEIGHTS}
+                  path={BFS_PATH_5}
+                  marks={[1, 5]}
+                />
+              </Figure>
+              <Figure legend={l.chapters.dijkstra.dijkstra}>
+                <GraphFigure
+                  edges={SAMPLE_EDGES}
+                  positions={SAMPLE_POSITIONS}
+                  weights={SAMPLE_WEIGHTS}
+                  path={DIJKSTRA_PATH_5}
+                  marks={[1, 5]}
+                />
+              </Figure>
+            </div>
+          </Chapter>
+
+          <Chapter meta={chapter('frontiers')} index={10}>
+            <Table rows={l.chapters.frontiers.table} />
+            {code('frontiers')}
+            <Settles />
+          </Chapter>
+
+          <Chapter meta={chapter('names')} index={11}>
+            {code('names')}
+            <Names />
+          </Chapter>
+
+          <Chapter meta={chapter('cli')} index={12}>
             <Flow steps={l.chapters.cli.flow} />
             <ol className={styles.commands}>
               {COMMANDS.map((command, i) => (
@@ -305,6 +378,107 @@ function TextToGraph() {
       <div className={styles.piece}>
         <span className={`label ${styles.pieceLabel}`}>{t.hero.figure.graph}</span>
         <GraphFigure edges={SAMPLE_EDGES} positions={SAMPLE_POSITIONS} />
+      </div>
+    </div>
+  );
+}
+
+/** The weighted sample as its file and as the graph, each edge with its
+    weight: the start chapter's figure with a third column. */
+function WeightedTextToGraph() {
+  const c = useT().library.chapters.weights;
+  return (
+    <div className={styles.textToGraph}>
+      <div className={styles.piece}>
+        <span className={`label ${styles.pieceLabel}`}>{c.file}</span>
+        <ol className={`mono ${styles.file}`}>
+          {SAMPLE_WEIGHTED_TEXT.trim()
+            .split('\n')
+            .map((line, i) => (
+              <li key={i} data-count={i === 0 || undefined}>
+                {line}
+              </li>
+            ))}
+        </ol>
+      </div>
+      <span className={styles.normaliseArrow} aria-hidden="true">
+        →
+      </span>
+      <div className={styles.piece}>
+        <span className={`label ${styles.pieceLabel}`}>{c.graph}</span>
+        <GraphFigure edges={SAMPLE_EDGES} positions={SAMPLE_POSITIONS} weights={SAMPLE_WEIGHTS} />
+      </div>
+    </div>
+  );
+}
+
+/** Dijkstra's settle calls beside its tree: the same order from every
+    frontier, the balls shaded by distance, the farthest vertex ringed. */
+function Settles() {
+  const c = useT().library.chapters.frontiers;
+  const max = DIJKSTRA.distances[FARTHEST];
+  return (
+    <div className={styles.sequence}>
+      <div className={styles.piece}>
+        <span className={`label ${styles.pieceLabel}`}>{c.state}</span>
+        <GraphFigure
+          edges={SAMPLE_EDGES}
+          positions={SAMPLE_POSITIONS}
+          weights={SAMPLE_WEIGHTS}
+          levels={DIJKSTRA.distances}
+          parents={DIJKSTRA.parents}
+          marks={[FARTHEST]}
+          notes={DIJKSTRA.distances.map((d, v) => (v === 0 ? '' : String(d)))}
+        />
+      </div>
+      <div className={styles.piece}>
+        <span className={`label ${styles.pieceLabel}`}>{c.sequence}</span>
+        <ol className={styles.calls}>
+          {DIJKSTRA.order.map((v, i) => (
+            <li key={v} data-last={i === DIJKSTRA.order.length - 1 || undefined}>
+              <span
+                className={`mono ${styles.callBall}`}
+                style={{ background: levelColour(DIJKSTRA.distances[v], max) }}
+              >
+                {v}
+              </span>
+              <span className={`mono ${styles.callText}`}>
+                settle({v}, {DIJKSTRA.parents[v]}, {DIJKSTRA.distances[v]})
+              </span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+/** The names file, and what VertexNames answers on it. */
+function Names() {
+  const c = useT().library.chapters.names;
+  return (
+    <div className={styles.textToGraph}>
+      <div className={styles.piece}>
+        <span className={`label ${styles.pieceLabel}`}>{c.file}</span>
+        <ol className={`mono ${styles.file}`}>
+          {NAMES_FILE.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ol>
+      </div>
+      <span className={styles.normaliseArrow} aria-hidden="true">
+        →
+      </span>
+      <div className={styles.piece}>
+        <span className={`label ${styles.pieceLabel}`}>{c.answers}</span>
+        <dl className={`mono ${styles.lookups}`}>
+          {NAME_LOOKUPS.map(([call, answer]) => (
+            <div key={call}>
+              <dt>{call}</dt>
+              <dd>{answer}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
     </div>
   );

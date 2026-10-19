@@ -113,12 +113,18 @@ export default function Nav() {
               );
             })}
           </nav>
-          <div className={styles.language} role="group" aria-label={t.nav.language}>
+          <div
+            className={styles.language}
+            role="group"
+            aria-label={t.nav.language}
+            data-locale={locale}
+          >
+            <span className={styles.languageThumb} aria-hidden="true" />
             {(['pt', 'en'] as const).map((code) => (
               <button
                 key={code}
                 type="button"
-                className={locale === code ? styles.languageActive : styles.languageButton}
+                className={styles.languageButton}
                 aria-pressed={locale === code}
                 onClick={() => setLocale(code)}
               >
@@ -132,9 +138,9 @@ export default function Nav() {
             target="_blank"
             rel="noreferrer"
             aria-label={t.nav.source}
+            title={t.nav.source}
           >
             <BrandIcon icon={siGithub} size={18} />
-            <span>GitHub</span>
           </a>
           <button
             type="button"

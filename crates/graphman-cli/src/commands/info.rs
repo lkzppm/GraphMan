@@ -3,7 +3,7 @@
 use crate::load::{GraphArgs, output_path};
 use crate::ui::{self, Ui};
 use anyhow::{Context, Result};
-use graphman::algo::{Components, degree_stats};
+use graphman::algo::{Components, degree_stats, weight_stats};
 use graphman::{dispatch, io::write_summary};
 use std::fs::File;
 use std::path::PathBuf;
@@ -23,7 +23,8 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
     ui.title("info");
     let graph = args.graph.load(ui)?;
     let start = Instant::now();
-    let (stats, components) = dispatch!(&graph, g => (degree_stats(g), Components::compute(g)));
+    let (stats, weights, components) =
+        dispatch!(&graph, g => (degree_stats(g), weight_stats(g), Components::compute(g)));
     ui.step(&format!(
         "degrees and components in {}",
         ui::duration(start.elapsed())
@@ -33,6 +34,14 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
     ui.kv("degree min/max", format!("{} / {}", stats.min, stats.max));
     ui.kv("degree mean", format!("{:.3}", stats.mean));
     ui.kv("degree median", format!("{:.1}", stats.median));
+    if let Some(weights) = weights {
+        ui.kv(
+            "weight min/max",
+            format!("{} / {}", ui::weight(weights.min), ui::weight(weights.max)),
+        );
+        ui.kv("weight mean", ui::weight(weights.mean));
+        ui.kv("negative weights", weights.negative);
+    }
     ui.kv(
         "components",
         format!(

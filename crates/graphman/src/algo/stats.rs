@@ -1,6 +1,6 @@
-//! Degree statistics.
+//! Degree and weight statistics.
 
-use crate::graph::Graph;
+use crate::graph::{Graph, Weight, Weighted};
 
 /// Minimum, maximum, mean and median degree.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -55,4 +55,43 @@ pub fn degree_stats<G: Graph>(graph: &G) -> DegreeStats {
         mean,
         median,
     }
+}
+
+/// Minimum, maximum and mean edge weight, and how many edges are negative.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct WeightStats {
+    /// Smallest weight.
+    pub min: Weight,
+    /// Largest weight.
+    pub max: Weight,
+    /// Average weight over the `m` edges.
+    pub mean: Weight,
+    /// Number of edges with a negative weight.
+    pub negative: usize,
+}
+
+/// Computes [`WeightStats`] in `O(n + m)`; `None` for a graph without a
+/// weight column or without edges.
+pub fn weight_stats<G: Weighted>(graph: &G) -> Option<WeightStats> {
+    if !graph.is_weighted() || graph.edge_count() == 0 {
+        return None;
+    }
+    let (mut min, mut max, mut sum, mut negative) =
+        (Weight::INFINITY, Weight::NEG_INFINITY, 0.0, 0);
+    for u in graph.vertices() {
+        // Each edge once, from its smaller endpoint.
+        for (_, weight) in graph.weighted_neighbors(u).filter(|&(v, _)| v > u) {
+            min = min.min(weight);
+            max = max.max(weight);
+            sum += weight;
+            negative += usize::from(weight < 0.0);
+        }
+    }
+    Some(WeightStats {
+        min,
+        max,
+        mean: sum / graph.edge_count() as Weight,
+        negative,
+    })
 }

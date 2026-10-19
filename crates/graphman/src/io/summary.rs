@@ -1,10 +1,12 @@
 //! The summary file required by the assignment ("Saída").
 
-use crate::algo::{Components, DegreeStats};
-use crate::graph::Graph;
+use crate::algo::{Components, DegreeStats, weight_stats};
+use crate::graph::Weighted;
 use std::io::{self, Write};
 
-/// Writes vertex/edge counts, degree statistics and the connected components.
+/// Writes vertex/edge counts, degree statistics and the connected components;
+/// for a weighted graph also the smallest, largest and mean weight and the
+/// number of negative edges.
 ///
 /// ```text
 /// vertices 5
@@ -17,7 +19,7 @@ use std::io::{self, Write};
 /// # component size vertices...
 /// 1 5 1 2 3 4 5
 /// ```
-pub fn write_summary<W: Write, G: Graph>(
+pub fn write_summary<W: Write, G: Weighted>(
     mut w: W,
     graph: &G,
     degrees: &DegreeStats,
@@ -29,6 +31,12 @@ pub fn write_summary<W: Write, G: Graph>(
     writeln!(w, "degree_max {}", degrees.max)?;
     writeln!(w, "degree_mean {:.3}", degrees.mean)?;
     writeln!(w, "degree_median {:.1}", degrees.median)?;
+    if let Some(weights) = weight_stats(graph) {
+        writeln!(w, "weight_min {}", weights.min)?;
+        writeln!(w, "weight_max {}", weights.max)?;
+        writeln!(w, "weight_mean {:.6}", weights.mean)?;
+        writeln!(w, "weight_negative {}", weights.negative)?;
+    }
     writeln!(w, "components {}", components.count())?;
     writeln!(w, "# component size vertices...")?;
     let mut w = io::BufWriter::new(w);

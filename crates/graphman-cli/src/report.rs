@@ -1,7 +1,7 @@
 //! Serialisable results of benchmarks and case studies.
 
-use graphman::algo::{DegreeStats, DiameterMethod};
-use graphman::{Representation, Vertex};
+use graphman::algo::{DegreeStats, DiameterMethod, FrontierKind, WeightStats};
+use graphman::{Representation, Vertex, Weight, WeightedEdge};
 use serde::{Deserialize, Serialize};
 
 /// Summary statistics of repeated timings, in milliseconds.
@@ -74,12 +74,35 @@ pub struct MemoryReport {
     pub error: Option<String>,
 }
 
+impl MemoryReport {
+    /// A representation whose memory was not measured in this run: only
+    /// its computed size is known.
+    pub fn unmeasured(representation: Representation, required_bytes: usize) -> Self {
+        Self {
+            representation,
+            feasible: true,
+            required_bytes,
+            accounted_bytes: None,
+            baseline_resident_bytes: None,
+            resident_bytes: None,
+            footprint_bytes: None,
+            peak_resident_bytes: None,
+            build_ms: None,
+            error: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepresentationStudy {
     pub representation: Representation,
     pub memory: MemoryReport,
     pub bfs: Option<Timing>,
+    /// The iterative DFS.
     pub dfs: Option<Timing>,
+    /// The recursive DFS (absent in studies made before it was timed).
+    #[serde(default)]
+    pub dfs_recursive: Option<Timing>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,7 +121,7 @@ pub struct DistanceAnswer {
     pub distance: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ComponentsAnswer {
     pub count: usize,
     pub largest: usize,
@@ -158,9 +181,88 @@ pub struct GraphStudy {
     pub degree: DegreeStats,
     pub representations: Vec<RepresentationStudy>,
     pub parents: Vec<ParentAnswer>,
+    /// Whether the recursive DFS built exactly the iterative DFS's tree from
+    /// every root of `parents` (absent in studies made before it was checked).
+    #[serde(default)]
+    pub dfs_recursive_identical: Option<bool>,
     pub distances: Vec<DistanceAnswer>,
     pub components: ComponentsAnswer,
     pub diameters: Vec<DiameterAnswer>,
+    pub machine: MachineInfo,
+    pub generated_at_unix: u64,
+}
+
+/// One answer of the Part 2 path question: the distance from the source to
+/// a target and the shortest path between them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathAnswer {
+    pub from: Vertex,
+    pub to: Vertex,
+    /// `None` when `to` is in another component.
+    pub distance: Option<Weight>,
+    /// The vertices from `from` to `to`, both included; empty when unreached.
+    pub path: Vec<Vertex>,
+    /// With a names file: the names of `from` and `to`, and of the path's vertices.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub names: Option<Vec<String>>,
+}
+
+/// The only run of a frontier that the budget cut short, kept when no run
+/// finished, so the cost of one run can still be estimated.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PartialRun {
+    pub root: Vertex,
+    /// Vertices settled before the budget ran out.
+    pub settled: usize,
+    /// Vertices the run would have settled (the root's component).
+    pub reachable: usize,
+    pub elapsed_ms: f64,
+    /// `elapsed_ms` scaled to the whole component. Every settle of the
+    /// vector frontier scans all `n` estimates, so its cost per settle is
+    /// flat and the scaling is close to exact.
+    pub estimated_ms: f64,
+}
+
+/// The mean time of one single-source Dijkstra with one frontier.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrontierStudy {
+    pub frontier: FrontierKind,
+    /// The runs asked for (`--runs`), each from a distinct random source.
+    pub requested_runs: usize,
+    /// Wall-clock budget for all the runs, in seconds.
+    pub budget_s: f64,
+    /// The runs that finished; `None` when none did.
+    pub timing: Option<Timing>,
+    /// Whether the budget ran out before every requested run finished.
+    pub budget_exhausted: bool,
+    pub partial: Option<PartialRun>,
+}
+
+/// Everything the Part 2 case study measures for one weighted graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WeightedStudy {
+    pub name: String,
+    pub file: String,
+    /// The vertex-name file, for the collaboration network.
+    pub names_file: Option<String>,
+    pub vertices: usize,
+    pub edges: usize,
+    pub self_loops_dropped: usize,
+    pub duplicates_dropped: usize,
+    pub parse_ms: f64,
+    /// `None` for a file without weights (every edge then weighs 1).
+    pub weights: Option<WeightStats>,
+    /// The representation Dijkstra ran on.
+    pub representation: Representation,
+    /// The library's refusal when an edge is negative; nothing else is measured then.
+    pub refusal: Option<String>,
+    pub negative_edge: Option<WeightedEdge>,
+    pub paths: Vec<PathAnswer>,
+    pub frontiers: Vec<FrontierStudy>,
     pub machine: MachineInfo,
     pub generated_at_unix: u64,
 }

@@ -56,9 +56,11 @@ pub fn measure(
         "RSS after parse",
         memory::resident_bytes().map_or("n/a".into(), ui::bytes),
     );
-    let required = args
-        .repr
-        .required_bytes(edges.vertex_count(), edges.edge_count());
+    let required = args.repr.required_bytes(
+        edges.vertex_count(),
+        edges.edge_count(),
+        edges.is_weighted(),
+    );
     let start = Instant::now();
     match args.repr.build_within(&edges, args.budget()) {
         Ok(graph) => {

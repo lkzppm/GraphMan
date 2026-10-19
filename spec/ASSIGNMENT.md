@@ -1,4 +1,4 @@
-# Assignment — Part 1 (COS 242, 2026/2)
+# Assignment, Part 1 (COS 242, 2026/2)
 
 Source: `docs/trabalho-P1.pdf` (Portuguese) and `docs/Enunciado.md` (the
 presentation announcement). This is a faithful English summary.
@@ -63,3 +63,88 @@ results; measure only the algorithm (clock before and after).
 The bitset adjacency matrix needs `(n+1)²/8` bytes: 12.5 MB (graph 1),
 312 MB (graph 2), 17.6 GB (graphs 3–4), 2.9 TB (graphs 5–6). On the 16 GB
 development machine only graphs 1 and 2 fit, which is itself a result.
+
+---
+
+# Assignment, Part 2 (COS 242, 2026/2)
+
+Source: `docs/trabalho-P2.pdf` (Portuguese, released 2026-10-08). This is a
+faithful English summary; the design that answers it is `spec/PHASE2.md`.
+
+## Deliverables
+
+- Same pair of students. The new features go **into the Part 1 library**,
+  not into a separate program.
+- A **report** of at most 5 pages with the design and implementation
+  decisions, the case-study results and the source-code URL.
+- An **8-minute presentation** of implementation details and results.
+
+## Required library features
+
+1. **Weighted graphs.** Represent and manipulate *undirected* graphs whose
+   edges carry real-valued weights. How the library is extended is our
+   decision (and a thing to present). The input file gains a third column,
+   the weight, which may be any floating-point number, negative included.
+   The handout's Figure 1 (vertex count, then `u v w` per line):
+
+   ```
+   5
+   1 2 0.1
+   2 5 0.2
+   5 3 5
+   3 4 -9.5
+   4 5 2.3
+   1 5 1
+   ```
+
+2. **Distance and shortest paths.** From any source vertex, the distance to
+   every other vertex and the shortest paths themselves (the spanning tree
+   induced by the search). If every weight is non-negative, use
+   **Dijkstra**; otherwise the library must *report that shortest paths
+   with negative weights are not implemented yet* (a clear refusal, not a
+   wrong answer and not a crash).
+
+3. **Dijkstra, two ways.** (1) a plain **vector** of distance estimates
+   (extract-min is a linear scan); (2) a **heap** of estimates. The heap may
+   be our own or a library's, but it must support **efficient key
+   modification** (decrease-key); the handout calls this out explicitly.
+   The handout also asks *not to write Dijkstra twice*: abstract how
+   estimates are stored, updated and how the minimum is extracted, and run
+   one algorithm over both.
+
+## Case-study questions
+
+For each **weighted course graph** (published on the course website):
+
+1. Distance and shortest path from vertex **10** to vertices **20, 30, 40,
+   50, 60**, in a table.
+2. **Mean time** of one single-source Dijkstra (source to all vertices),
+   vector vs heap: pick `k` random sources (e.g. `k = 100`), time the total,
+   report the sample mean, in a table comparing both implementations across
+   the graphs.
+
+For the **collaboration network** of Computer Science researchers (also on
+the website; an edge weight is inversely proportional to the number of
+co-authored papers, so a small weight means close collaborators):
+
+3. Distance and shortest path from **Edsger W. Dijkstra** to **Alan M.
+   Turing**, **J. B. Kruskal**, **Jon M. Kleinberg**, **Éva Tardos** and
+   **Daniel R. Figueiredo**. Names must be matched with exactly this
+   spelling to find the vertex indices, so the network ships with a
+   vertex-name file that the library has to read.
+
+**Timing rule** (carried over from Part 1): measure the algorithm only, not
+parsing or writing results.
+
+## Open points (until the files are downloaded)
+
+- File names, sizes and whether the weighted graphs are the Part 1 graphs
+  with weights added. If they are, `n` reaches 4.8M and the **vector**
+  Dijkstra is `O(n²)` per source, about 2.3·10¹³ scan steps per run on
+  graphs 5 and 6: 100 runs are out of reach and the table must say so
+  honestly (time budget, smaller `k`, flagged cell), like the Part 1
+  matrix memory refusals.
+- The vertex-name file's format (likely `index,name` per line) and its
+  encoding (UTF-8 is needed for `Éva`).
+- Duplicate edges and self-loops in weighted files: whether they occur, and
+  which weight a duplicate keeps (see `spec/PHASE2.md`, section 3).

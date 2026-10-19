@@ -39,7 +39,10 @@ export interface RepresentationStudy {
   representation: Representation;
   memory: MemoryReport;
   bfs: Timing | null;
+  /** The iterative DFS. */
   dfs: Timing | null;
+  /** The recursive DFS; absent in studies made before it was timed. */
+  dfs_recursive?: Timing | null;
 }
 
 export interface ParentAnswer {
@@ -90,6 +93,8 @@ export interface GraphStudy {
   degree: DegreeStats;
   representations: RepresentationStudy[];
   parents: ParentAnswer[];
+  /** Whether the recursive DFS built the iterative DFS's tree from every root. */
+  dfs_recursive_identical?: boolean | null;
   distances: DistanceAnswer[];
   components: ComponentsAnswer;
   diameters: DiameterAnswer[];

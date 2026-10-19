@@ -106,3 +106,17 @@ pub fn duration(d: Duration) -> String {
         format!("{:.1} min", ms / 60_000.0)
     }
 }
+
+/// A distance or weight for people: at most six decimals, trailing zeros
+/// dropped (`9.736` rather than `9.735999999999999`). Files keep the exact value.
+pub fn weight(w: f64) -> String {
+    if w.is_infinite() {
+        return "∞".into();
+    }
+    let text = format!("{w:.6}");
+    let text = text.trim_end_matches('0').trim_end_matches('.');
+    match text {
+        "-0" => "0".into(),
+        other => other.into(),
+    }
+}

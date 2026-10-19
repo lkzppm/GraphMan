@@ -47,6 +47,59 @@ Useful knobs: `--runs 100` (searches per representation), `--seed 42`,
 this many vertices), `--diameter-budget <seconds>` (per exact method; when it
 runs out the best lower bound so far is recorded and flagged).
 
+`--only` runs some sections and keeps the rest of the graph's previous JSON,
+so one table can be refreshed without repeating an hour of diameter. The
+Part 1 sections are `memory`, `searches` (BFS, iterative DFS and recursive
+DFS means), `trees` (the parents, plus a check that the recursive DFS built
+the iterative one's tree), `distances`, `components` and `diameter`:
+
+```
+./target/release/graphman study graphs/grafo_*.txt --out studies --only searches,trees
+```
+
+## Weighted graphs (Part 2)
+
+The weighted course files are not out yet; until they are, `samples/` has
+the handout's figures, a 100-vertex weighted graph and a synthetic named
+network (see `samples/README.md`), and `graphman generate --like
+graphs/grafo_N.txt --weights 0:1 -o grafo_W_N.txt` puts random weights on a
+Part 1 graph. The mechanisms:
+
+```
+graphman dijkstra G --from 10 --to 20 30 40 50 60 --frontier heap     # tree file + paths
+graphman bench G --algo dijkstra --frontier vector -n 100            # mean per source
+graphman dijkstra R --names R_names.txt --from "Edsger W. Dijkstra" --to "Alan M. Turing"
+```
+
+The vector frontier is `O(n²)` per source: fine up to grafo_2's 50 000
+vertices, about 16 s per source at 375 000 and hours at 4.8M.
+
+The study runner answers the Part 2 questions on any weighted file (a
+weighted file gets the Part 2 sections, `paths` and `frontiers`, by
+default; `--only` picks either):
+
+```
+./target/release/graphman study graphs/weighted/*.txt --out studies --dijkstra-budget 600
+./target/release/graphman study R.txt --names R_names.txt --out studies --only paths \
+    --from "Edsger W. Dijkstra" \
+    --to "Alan M. Turing" "J. B. Kruskal" "Jon M. Kleinberg" "Éva Tardos" "Daniel R. Figueiredo"
+```
+
+- `paths`: one Dijkstra from `--from` (default 10), then the distance and
+  path to each of `--to` (default 20 30 40 50 60). Ids or exact names.
+- `frontiers`: the mean of one single-source Dijkstra per frontier
+  (`--frontiers vector,heap,lazy-heap`) over `--runs` sources drawn with the
+  Part 1 seed, on `--dijkstra-repr csr`. Each frontier has
+  `--dijkstra-budget` seconds: when they run out, the cell keeps the runs
+  that finished and says so; when none finished, the run that was cut short
+  gives an estimate (its time scaled to its root's component, close to exact
+  for the vector, whose every step scans all `n` estimates). Rerunning one
+  frontier (`--only frontiers --frontiers vector`) keeps the others.
+
+Results go to `studies/weighted/<name>.json`, merged into
+`studies/weighted/results.json` and a "Part 2" block of `studies/RESULTS.md`.
+A file with a negative weight records the library's refusal instead.
+
 ## Web app
 
 ```

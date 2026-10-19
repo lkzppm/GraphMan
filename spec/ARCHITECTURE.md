@@ -6,19 +6,22 @@
 
 ```
 src/lib.rs            crate docs and re-exports
-src/graph/            Graph trait, Build trait, MemoryBudget, AnyGraph + dispatch!
-  adjacency_list.rs   Vec<Vec<Vertex>>            O(n + m) words
-  csr.rs              offsets + targets arrays     O(n + m) words, contiguous
-  adjacency_matrix.rs packed bitset, n×n bits      O(n²) bits, BitRow iterator
+src/graph/            Graph + Weighted traits, Build trait, MemoryBudget, AnyGraph + dispatch!
+  adjacency_list.rs   Vec<Vec<Vertex>> (+ Vec<Vec<Weight>>)   O(n + m) words
+  csr.rs              offsets + targets (+ weights) arrays     O(n + m) words, contiguous
+  adjacency_matrix.rs packed bitset, n×n bits (+ n×n weights)  O(n²) bits, BitRow iterator
 src/io/
-  edge_list.rs        parser for the course format → normalised EdgeList
-  summary.rs          the "output" file (counts, degree stats, components)
+  edge_list.rs        parser for the course format (`u v` or `u v weight`) → normalised EdgeList
+  names.rs            VertexNames: index ⇄ name for named networks
+  summary.rs          the "output" file (counts, degree and weight stats, components)
 src/algo/
   traversal.rs        SearchTree, Visitor, bfs*, dfs*
   distance.rs         distance (BFS with early exit), eccentricity
   components.rs       Components (largest first, deterministic numbering)
   diameter.rs         Exact, IFub, Bounds (Takes–Kosters), Sweep; cancellable
-  stats.rs            DegreeStats (counting-sort median)
+  frontier.rs         Frontier trait: VectorFrontier, HeapFrontier, LazyHeapFrontier
+  shortest_path.rs    ShortestPathTree, dijkstra*, shortest_path*, NegativeWeight
+  stats.rs            DegreeStats (counting-sort median), WeightStats
   layout.rs           radial layout derived from a search tree (O(n))
 src/metrics/memory.rs process RSS / footprint / peak / total memory (macOS, Linux)
 ```
@@ -40,8 +43,15 @@ Design decisions worth presenting:
 3. **Traversals are observable.** `bfs_into`/`dfs_into` take a `Visitor`
    (discover / level_complete / finish, all defaulted) and return `Control`
    to stop early. `distance` is a BFS with a `StopAt` visitor; anything else (frame
-   capture, cancellation) is another listener. DFS is iterative with a stack of neighbour
-   iterators, so it produces the recursive tree with O(depth) memory.
+   capture, cancellation) is another listener. DFS comes both ways
+   (`DfsKind`): `dfs_into` is iterative with a stack of neighbour
+   iterators, so it produces the recursive tree with O(depth) memory and no
+   recursion; `dfs_recursive_into` is the textbook recursion, one call per
+   level, and takes a `max_depth` it refuses to pass (`RecursionLimit`)
+   instead of overflowing the stack. Tests hold them to identical trees and
+   events. The CLI runs the recursive one on a thread whose stack is sized
+   from n (about 100 bytes per call measured, 512 reserved); the browser
+   caps it at 2,500 levels (V8 overflows past about 5,150) and says so.
 4. **Nothing is allocated twice.** `SearchTree::reset` only touches the
    vertices the previous search reached, so thousands of BFS runs (the
    diameter algorithms) cost no allocations and no O(n) clears. The tree
@@ -62,6 +72,39 @@ Design decisions worth presenting:
    cancellable through the progress callback and then reports a flagged lower
    bound, which is how the study handles the 4.8M-vertex graphs.
 
+7. **Weights are a column.** A file is weighted when its first edge line
+   has a third column (then every line must). Weights are `f64`
+   (`graphman::Weight`) and live *beside* each representation's adjacency:
+   a `weights` array parallel to the CSR `targets`, a parallel row per
+   vertex in the list, an `(n+1)²` table beside the matrix bitset. `Graph`
+   never reads them, so BFS/DFS on a weighted graph read the same bytes as
+   on the unweighted one; the `Weighted` trait (`weighted_neighbors`,
+   `weight`, `is_weighted`, `negative_edge`) does, and answers `1` for every
+   edge of an unweighted graph, which makes hop counts the unit-weight case
+   (tests check Dijkstra against BFS on it). Normalisation keeps the
+   smallest weight of a repeated edge and records the first negative edge,
+   so a refusal costs `O(1)`.
+8. **The frontier is a strategy.** Dijkstra is one function
+   (`dijkstra_into`) over a `Frontier` trait (`reset`, `decrease`,
+   `pop_min`): `VectorFrontier` (the course's vector: a linear scan for the
+   minimum, written as eight independent lanes so the compiler vectorises
+   it, still `O(n)` per extraction), `HeapFrontier` (an indexed binary heap
+   with decrease-key, written here) and `LazyHeapFrontier` (`BinaryHeap`
+   with stale entries, what most libraries do, as a yardstick). All three
+   break ties on the smaller vertex and relaxation is strict, so they settle
+   in the same order and build identical `ShortestPathTree`s, which the
+   tests enforce on every representation. A negative weight is a typed
+   `NegativeWeight` error ("not implemented yet", as the course asks).
+   Dijkstra reports to the same `Visitor` as the traversals (`settle`, and
+   `relax` for every estimate it lowers), and `shortest_path` is a Dijkstra
+   with a visitor that stops at the target. `Frontier::entries` reads a
+   frontier as stored (the heap's array, the vector's slots by vertex, the
+   lazy heap's stale copies flagged); only drawings use it. The wasm side's
+   `frontierAt(root, frontier, step, limit)` replays a run to just after one
+   settle with a frontier wrapper that copies the library's frontier instead
+   of popping, which is how the observatory draws the real heap at any step
+   without a second Dijkstra or a model of one.
+
 Features: `mmap` (memory-mapped file loading and anonymous edge store),
 `parallel` (rayon), `serde` (serialisable results). The core has no CLI or
 terminal dependencies, which is what lets `graphman-wasm` compile it to
@@ -76,14 +119,21 @@ src/ui.rs             stderr reporter, progress bars, byte/duration formatting
 src/rng.rs            SplitMix64, distinct random roots
 src/report.rs         serde types of every measurement (Timing, MemoryReport, GraphStudy…)
 src/commands/
-  info, bfs/dfs (search.rs), distance, diameter, components   the assignment's features
-  bench      time BFS/DFS from N distinct random roots
+  info, bfs/dfs (search.rs, dfs --recursive), distance, diameter, components   the assignment's features (Part 1)
+  dijkstra   shortest-path tree from one vertex + paths to targets, --frontier, --names (Part 2)
+  bench      time BFS/DFS (--recursive)/Dijkstra from N distinct random roots
   memory     RSS after loading one representation (run in a subprocess by `study`)
-  study      the case-study runner: JSON per graph + merged results.json + RESULTS.md
+  generate   random graphs (optionally weighted, or the edges of a file with --like)
+  study      the case-study runner: JSON per graph + merged results.json + RESULTS.md;
+             Part 1 on unweighted files, Part 2 (study/weighted.rs: paths, frontier
+             timings under a budget) on weighted ones, --only for some sections
 ```
 
 All decorative output goes to stderr; stdout carries results (`--json` where
-available) so the commands compose.
+available) so the commands compose. `distance` follows the graph: hops on an
+unweighted file, weights on a weighted one (`--hops` forces hops). Vertices
+can be given by name with `--names` (`--from "Edsger W. Dijkstra"`); a near
+miss suggests the closest names.
 
 ### `graphman-wasm` (the library in the browser)
 
@@ -94,6 +144,10 @@ class per uploaded file: parse + build a `Csr`, `search(kind, root)` →
 parents / levels / discovery ranks / level sizes / the assignment's text
 output, `distance`, `diameter(kind, bfsBudget)` (cancellable through the
 library's progress callback), degree statistics, components, and
+`dijkstra(root, frontier)` → parents / distances / settle ranks (the
+library's refusal is thrown for negative weights), `weights()` parallel to
+`edges()`, `weightStats()`, `setNames(bytes)` / `name(v)` / `vertexNamed` /
+`searchNames`, and
 `initialLayout()`: a BFS-radial layout per component (rings whose area is
 proportional to the number of vertices on them), components packed largest
 first on concentric rings; and `layout(kind, root)` for the canvas menu —
@@ -214,6 +268,15 @@ renderer does three things:
 With this grafo_2 loads in a quarter of a second and pans, zooms and plays
 a search at 60 fps; grafo_4 (105 MB) the same; grafo_5 (4.8M vertices,
 205 MB) is usable.
+
+Dijkstra is the third search (`graph.dijkstra(root, frontier)`, vector or
+heap). The renderer needs no new path: the TS side turns the distances into
+`levels` (distance bands, the origin at 0, then twelve equal slices up to
+the farthest settled vertex) and uploads them with the settle ranks and
+parents exactly like a BFS tree, so the colour ramp, the reveal sweep, the
+level chart and the distance query (the path comes from `pathTo`) are the
+BFS ones. A negative-weight graph is refused before calling wasm, with a
+localised notice built from `graph.negativeEdge`.
 
 The CPU keeps a mirror of the positions (one `read()` in flight at a time
 while they change) for picking: hover and click scan for the nearest

@@ -52,3 +52,28 @@
   fill: #fff;
   font-weight: 500;
 }
+
+/* A weight on its edge: a halo of the page's white keeps it legible over
+   the line, and it turns blue with a tree or path edge. */
+.weight {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--fg-3);
+  stroke: var(--bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  paint-order: stroke;
+  transition: fill 0.3s var(--ease);
+}
+
+.weight[data-kind] {
+  fill: var(--accent);
+  font-weight: 500;
+}
+
+/* A vertex's note, beside it on the outside: a distance, say. */
+.vertex .note {
+  font-size: 10px;
+  fill: var(--accent);
+  font-weight: 500;
+}

@@ -1,9 +1,11 @@
-//! `graphman bfs` / `graphman dfs`: search trees written to a file.
+//! `graphman bfs` / `graphman dfs`: search trees written to a file. DFS runs
+//! iteratively by default, or recursively with `--recursive` (same tree).
 
+use crate::deep::with_stack_for;
 use crate::load::{GraphArgs, output_path};
 use crate::ui::{self, Ui};
 use anyhow::{Context, Result, ensure};
-use graphman::algo::{bfs, dfs};
+use graphman::algo::{bfs, dfs, dfs_recursive};
 use graphman::{Vertex, dispatch};
 use std::fs::File;
 use std::path::PathBuf;
@@ -36,6 +38,11 @@ pub struct Args {
     /// Output file (default: <graph>.<bfs|dfs>-<root>.txt).
     #[arg(short, long)]
     output: Option<PathBuf>,
+
+    /// DFS only: run the recursive DFS (one call per tree level, on a thread
+    /// with a stack sized for the graph) instead of the iterative one.
+    #[arg(long)]
+    recursive: bool,
 }
 
 pub fn run(args: Args, algorithm: Algorithm, ui: &Ui) -> Result<()> {
@@ -47,14 +54,24 @@ pub fn run(args: Args, algorithm: Algorithm, ui: &Ui) -> Result<()> {
         args.root,
         graph.vertex_count()
     );
+    ensure!(
+        !args.recursive || matches!(algorithm, Algorithm::Dfs),
+        "--recursive applies to dfs only"
+    );
+    let n = graph.vertex_count();
     let start = Instant::now();
     let tree = match algorithm {
         Algorithm::Bfs => dispatch!(&graph, g => bfs(g, args.root)),
+        Algorithm::Dfs if args.recursive => with_stack_for(
+            n,
+            || dispatch!(&graph, g => dfs_recursive(g, args.root, n as u32)),
+        )?,
         Algorithm::Dfs => dispatch!(&graph, g => dfs(g, args.root)),
     };
     ui.step(&format!(
-        "{} from {} in {}: reached {} vertices, depth {}",
+        "{}{} from {} in {}: reached {} vertices, depth {}",
         algorithm.label(),
+        if args.recursive { " (recursive)" } else { "" },
         args.root,
         ui::duration(start.elapsed()),
         tree.reached_count(),

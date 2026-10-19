@@ -1,11 +1,13 @@
 # GraphMan — guide for coding agents
 
 GraphMan is a graph library + CLI in Rust and a web "observatory" in Next.js,
-built for the COS 242 (Graph Theory, UFRJ) course project. Part 1 (this
-repo's current scope) covers undirected graphs: two representations,
-BFS/DFS, distances, diameter, connected components and a benchmark study.
-Parts 2 and 3 will add weighted/directed graphs and flows on top of the same
-core, so keep the `Graph` trait small and the algorithms generic.
+built for the COS 242 (Graph Theory, UFRJ) course project. Part 1 (done)
+covers undirected graphs: two representations, BFS/DFS, distances,
+diameter, connected components and a benchmark study. Part 2 (current
+scope) adds real edge weights and Dijkstra over two interchangeable
+frontiers (vector and decrease-key heap); Part 3 will add direction and
+flows on top of the same core, so keep the `Graph` trait small and the
+algorithms generic.
 
 Everything in the repo is in English. The presentation and report are in
 Portuguese (the course language), but code, comments, docs and commits are
@@ -17,8 +19,8 @@ or slides: a comma, a colon or a full stop takes its place.
 
 ## Read these first
 
-- `spec/ASSIGNMENT.md` — what the course requires (translated summary of
-  `docs/trabalho-P1.pdf`) and the case-study questions.
+- `spec/ASSIGNMENT.md` — what the course requires (translated summaries of
+  `docs/trabalho-P1.pdf` and `docs/trabalho-P2.pdf`) and the case-study questions.
 - `spec/ARCHITECTURE.md` — how the Rust crates and the web app are organised,
   the design decisions worth presenting, and the data formats.
 - `spec/WORKFLOW.md` — git flow, commit style, CI, how to run studies and
@@ -26,6 +28,9 @@ or slides: a comma, a colon or a full stop takes its place.
 - `spec/DESIGN.md` — the design system: white + greys + one blue, tracked
   capitals, mono numbers, accent-edged surfaces, the shakable mark (a
   Golem-inspired voice), canvas colours.
+- `spec/PHASE2.md` — the Part 2 design (weights, the `Frontier` trait behind
+  both Dijkstras, vertex names, the study runner), direction for Part 3, and
+  the planned `petgraph` bridge (test oracle now, shared traits later).
 
 ## Layout
 
@@ -35,6 +40,7 @@ crates/graphman-cli/   `graphman` binary: commands + the case-study runner
 crates/graphman-wasm/  wasm-bindgen bindings of the library for the browser
 web/                   Next.js site: landing page + the observatory (vgpu / WebGPU)
 studies/               case-study outputs (results.json, RESULTS.md, per-graph JSON)
+samples/               small committed graphs (handout figures, weighted, a named network)
 graphs/                course input graphs (gitignored, 100 MB–700 MB each)
 docs/                  course handouts (Portuguese) and the report
 spec/                  project knowledge for humans and agents
@@ -49,6 +55,7 @@ cargo clippy --all-targets -- -D warnings   # must be clean (CI enforces)
 cargo fmt --all
 cargo build --release                       # binary at target/release/graphman
 graphman study graphs/grafo_1.txt --out studies   # case studies → JSON + RESULTS.md
+graphman dijkstra samples/weighted_100.txt --from 10 --to 20 30 --frontier vector
 cd web && pnpm install && pnpm run dev      # builds the wasm, syncs data, starts Next.js
 cd web && pnpm run typecheck && pnpm run lint # must be green (CI enforces)
 ```
@@ -61,8 +68,14 @@ cd web && pnpm run typecheck && pnpm run lint # must be green (CI enforces)
   and `pnpm run lint` green before committing. `web/src/wasm`, `web/public/wasm`
   and `web/src/data` are generated (`pnpm run prepare-assets`), never edited.
 - Vertices are 1-based (`1..=n`, as in the input files); `0` is `NO_VERTEX`.
-- Algorithms are generic over `Graph`; never write an algorithm for one
-  representation. Use `dispatch!` on `AnyGraph` at the CLI boundary only.
+- Algorithms are generic over `Graph` (or `Weighted` when they read
+  weights); never write an algorithm for one representation. Use
+  `dispatch!` on `AnyGraph` at the CLI boundary only.
+- Weights are a column beside the adjacency (`Weight = f64`); `Graph`
+  never reads it, and an unweighted graph answers 1 per edge. Dijkstra is
+  written once (`dijkstra_into`) over a `Frontier`; a new way of keeping
+  estimates is a new `Frontier`, never a second Dijkstra. Every frontier
+  must break ties on the smaller vertex so the trees stay identical.
 - The wasm crate is glue only: no algorithms there, and it must build with
   `default-features = false` (no mmap, no rayon).
 - The observatory computes everything client-side from the uploaded file:
