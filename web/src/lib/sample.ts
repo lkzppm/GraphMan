@@ -128,3 +128,58 @@ export function shortestPath(n: number, edges: Edge[], a: number, b: number): nu
   }
   return path.reverse();
 }
+
+/** The sample's weights, one per edge of SAMPLE_EDGES (the Rust examples'
+    `1 2 0.5`, `1 3 2`...): light enough around 2 that Dijkstra's path from
+    1 to 5 takes three edges where BFS takes two. */
+export const SAMPLE_WEIGHTS = [0.5, 2, 1, 2.5, 1, 0.75];
+
+/** The weighted sample in the course's text format. */
+export const SAMPLE_WEIGHTED_TEXT = `5\n${SAMPLE_EDGES.map(([u, v], i) => `${u} ${v} ${SAMPLE_WEIGHTS[i]}`).join('\n')}\n`;
+
+export interface ShortestPaths {
+  /** Vertices in the order they were settled, by distance. */
+  order: number[];
+  parents: number[];
+  /** Distance per vertex, Infinity when unreached. */
+  distances: number[];
+}
+
+/** Dijkstra as the library runs it: strict relaxation, and the smaller
+    vertex first among equal estimates, so the tree is the library's. */
+export function dijkstra(n: number, edges: Edge[], weights: number[], root: number): ShortestPaths {
+  const rows: [number, number][][] = Array.from({ length: n + 1 }, () => []);
+  edges.forEach(([u, v], i) => {
+    rows[u].push([v, weights[i]]);
+    rows[v].push([u, weights[i]]);
+  });
+  for (const row of rows) row.sort((a, b) => a[0] - b[0]);
+  const distances = new Array<number>(n + 1).fill(Infinity);
+  const parents = new Array<number>(n + 1).fill(0);
+  const settled = new Array<boolean>(n + 1).fill(false);
+  const order: number[] = [];
+  distances[root] = 0;
+  for (;;) {
+    let v = 0;
+    for (let w = 1; w <= n; w++) {
+      if (!settled[w] && distances[w] < Infinity && (v === 0 || distances[w] < distances[v])) v = w;
+    }
+    if (v === 0) break;
+    settled[v] = true;
+    order.push(v);
+    for (const [w, weight] of rows[v]) {
+      if (distances[v] + weight < distances[w]) {
+        distances[w] = distances[v] + weight;
+        parents[w] = v;
+      }
+    }
+  }
+  return { order, parents, distances };
+}
+
+/** The path to `v` in a tree of parents, from its root. */
+export function pathTo(parents: number[], root: number, v: number): number[] {
+  const path = [v];
+  while (path[path.length - 1] !== root) path.push(parents[path[path.length - 1]]);
+  return path.reverse();
+}

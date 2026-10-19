@@ -43,8 +43,15 @@ Design decisions worth presenting:
 3. **Traversals are observable.** `bfs_into`/`dfs_into` take a `Visitor`
    (discover / level_complete / finish, all defaulted) and return `Control`
    to stop early. `distance` is a BFS with a `StopAt` visitor; anything else (frame
-   capture, cancellation) is another listener. DFS is iterative with a stack of neighbour
-   iterators, so it produces the recursive tree with O(depth) memory.
+   capture, cancellation) is another listener. DFS comes both ways
+   (`DfsKind`): `dfs_into` is iterative with a stack of neighbour
+   iterators, so it produces the recursive tree with O(depth) memory and no
+   recursion; `dfs_recursive_into` is the textbook recursion, one call per
+   level, and takes a `max_depth` it refuses to pass (`RecursionLimit`)
+   instead of overflowing the stack. Tests hold them to identical trees and
+   events. The CLI runs the recursive one on a thread whose stack is sized
+   from n (about 100 bytes per call measured, 512 reserved); the browser
+   caps it at 2,500 levels (V8 overflows past about 5,150) and says so.
 4. **Nothing is allocated twice.** `SearchTree::reset` only touches the
    vertices the previous search reached, so thousands of BFS runs (the
    diameter algorithms) cost no allocations and no O(n) clears. The tree
@@ -88,8 +95,15 @@ Design decisions worth presenting:
    in the same order and build identical `ShortestPathTree`s, which the
    tests enforce on every representation. A negative weight is a typed
    `NegativeWeight` error ("not implemented yet", as the course asks).
-   Dijkstra reports to the same `Visitor` as the traversals (`settle`), and
-   `shortest_path` is a Dijkstra with a visitor that stops at the target.
+   Dijkstra reports to the same `Visitor` as the traversals (`settle`, and
+   `relax` for every estimate it lowers), and `shortest_path` is a Dijkstra
+   with a visitor that stops at the target. `Frontier::entries` reads a
+   frontier as stored (the heap's array, the vector's slots by vertex, the
+   lazy heap's stale copies flagged); only drawings use it. The wasm side's
+   `frontierAt(root, frontier, step, limit)` replays a run to just after one
+   settle with a frontier wrapper that copies the library's frontier instead
+   of popping, which is how the observatory draws the real heap at any step
+   without a second Dijkstra or a model of one.
 
 Features: `mmap` (memory-mapped file loading and anonymous edge store),
 `parallel` (rayon), `serde` (serialisable results). The core has no CLI or
@@ -105,12 +119,14 @@ src/ui.rs             stderr reporter, progress bars, byte/duration formatting
 src/rng.rs            SplitMix64, distinct random roots
 src/report.rs         serde types of every measurement (Timing, MemoryReport, GraphStudy…)
 src/commands/
-  info, bfs/dfs (search.rs), distance, diameter, components   the assignment's features (Part 1)
+  info, bfs/dfs (search.rs, dfs --recursive), distance, diameter, components   the assignment's features (Part 1)
   dijkstra   shortest-path tree from one vertex + paths to targets, --frontier, --names (Part 2)
-  bench      time BFS/DFS/Dijkstra from N distinct random roots
+  bench      time BFS/DFS (--recursive)/Dijkstra from N distinct random roots
   memory     RSS after loading one representation (run in a subprocess by `study`)
   generate   random graphs (optionally weighted, or the edges of a file with --like)
-  study      the case-study runner: JSON per graph + merged results.json + RESULTS.md
+  study      the case-study runner: JSON per graph + merged results.json + RESULTS.md;
+             Part 1 on unweighted files, Part 2 (study/weighted.rs: paths, frontier
+             timings under a budget) on weighted ones, --only for some sections
 ```
 
 All decorative output goes to stderr; stdout carries results (`--json` where

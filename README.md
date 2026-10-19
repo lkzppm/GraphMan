@@ -33,7 +33,7 @@ network), and a graph with a negative weight is refused, not answered wrongly.
 | `graphman` | `crates/graphman` | The library: `Graph` and `Weighted` traits, adjacency list / bitset matrix / CSR (weighted or not), traversals with visitors, components, four diameter strategies, Dijkstra over three frontiers, vertex names, memory metrics. |
 | `graphman` CLI | `crates/graphman-cli` | One subcommand per assignment feature (`info`, `bfs`, `dfs`, `distance`, `diameter`, `components`, `dijkstra`), plus `bench`, `memory`, `generate` and `study` (the case-study runner). |
 | `graphman-wasm` | `crates/graphman-wasm` | The library compiled to WebAssembly for the browser. |
-| Site | `web/` | Next.js, bilingual (Portuguese by default, English by a switch), phone-ready: the landing page, the library page with runnable examples, the seven case-study questions drawn, the presentation deck, and the observatory: drop a graph file, drag its vertices, pick an origin and watch BFS/DFS unfold on the GPU (vgpu / WebGPU). |
+| Site | `web/` | Next.js, bilingual (Portuguese by default, English by a switch), phone-ready: the landing page, the library page with runnable examples, the seven case-study questions drawn, the presentation deck, and the observatory: drop a graph file, drag its vertices, pick an origin and watch BFS, DFS or Dijkstra unfold on the GPU (vgpu / WebGPU), with the queue, stack or heap it uses drawn under the canvas, step by step. |
 
 ## Quick start
 
@@ -42,15 +42,18 @@ network), and a graph with a negative weight is refused, not answered wrongly.
 cargo build --release
 ./target/release/graphman info graphs/grafo_1.txt              # summary file
 ./target/release/graphman bfs graphs/grafo_1.txt --from 1      # parent + level of every vertex
+./target/release/graphman dfs graphs/grafo_1.txt --from 1 --recursive   # same tree, the textbook way
 ./target/release/graphman distance graphs/grafo_1.txt --pair 10 20
 ./target/release/graphman diameter graphs/grafo_1.txt -m bounds
 ./target/release/graphman components graphs/grafo_1.txt
 ./target/release/graphman study graphs/grafo_1.txt --out studies   # JSON + RESULTS.md
+./target/release/graphman study graphs/grafo_1.txt --only searches  # refresh one table, keep the rest
 
 # Weighted graphs (Part 2): a third column `u v weight`
 ./target/release/graphman dijkstra samples/weighted_100.txt --from 10 --to 20 30 40 50 60
 ./target/release/graphman dijkstra samples/weighted_100.txt --from 10 --frontier vector
 ./target/release/graphman bench samples/weighted_100.txt --algo dijkstra --frontier heap -n 100
+./target/release/graphman study samples/weighted_100.txt --out studies   # Part 2: paths from 10, mean per frontier
 ./target/release/graphman dijkstra samples/collaboration.txt --names samples/collaboration_names.txt \
     --from "Edsger W. Dijkstra" --to "Alan M. Turing" "Éva Tardos" "Daniel R. Figueiredo"
 ./target/release/graphman generate --like graphs/grafo_1.txt --weights 0:1 -o grafo_W_1.txt

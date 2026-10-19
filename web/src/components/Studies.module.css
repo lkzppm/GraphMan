@@ -210,6 +210,27 @@
   line-height: 1.25;
 }
 
+/* Iterative or recursive DFS, at the end of the chapter's heading. */
+.waySwitch {
+  display: inline-flex;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.waySwitch button {
+  padding: 0;
+  color: var(--fg-3);
+  transition: color 0.15s var(--ease);
+}
+
+.waySwitch button:hover {
+  color: var(--fg);
+}
+
+.waySwitch button[aria-pressed='true'] {
+  color: var(--accent);
+}
+
 /* Switching view keeps every element in place: the numbers inside are
    swapped and fade up, the bars slide to their new length. */
 .swap {

@@ -1,11 +1,11 @@
 {
   "name": "grafo_5",
-  "file": "/Users/lkz/Desktop/Code/GraphMan/graphs/grafo_5.txt",
+  "file": "graphs/grafo_5.txt",
   "vertices": 4843750,
   "edges": 13168911,
   "self_loops_dropped": 7,
   "duplicates_dropped": 10,
-  "parse_ms": 549.483833,
+  "parse_ms": 554.250667,
   "degree": {
     "min": 1,
     "max": 22,
@@ -29,21 +29,30 @@
       },
       "bfs": {
         "runs": 100,
-        "mean_ms": 100.71351670999998,
-        "median_ms": 136.68604200000001,
-        "min_ms": 10.52975,
-        "max_ms": 204.747875,
-        "stddev_ms": 58.373660462808665,
-        "total_ms": 10071.351670999999
+        "mean_ms": 95.18214787000002,
+        "median_ms": 136.822396,
+        "min_ms": 10.313625,
+        "max_ms": 160.015208,
+        "stddev_ms": 54.06487771269566,
+        "total_ms": 9518.214787000003
       },
       "dfs": {
         "runs": 100,
-        "mean_ms": 321.68148801000007,
-        "median_ms": 433.29250049999996,
-        "min_ms": 46.781542,
-        "max_ms": 643.6873330000001,
-        "stddev_ms": 161.29946292811402,
-        "total_ms": 32168.148801000007
+        "mean_ms": 302.62180166999997,
+        "median_ms": 427.34843750000005,
+        "min_ms": 45.974875,
+        "max_ms": 448.31300000000005,
+        "stddev_ms": 149.70026488882286,
+        "total_ms": 30262.180167
+      },
+      "dfs_recursive": {
+        "runs": 100,
+        "mean_ms": 298.42070748000003,
+        "median_ms": 408.57835450000005,
+        "min_ms": 45.723791999999996,
+        "max_ms": 633.739875,
+        "stddev_ms": 151.61805291167533,
+        "total_ms": 29842.070748000006
       }
     },
     {
@@ -61,7 +70,8 @@
         "error": "the adjacency matrix of a graph with 4843750 vertices needs 2932774980476 bytes, over the budget of 17179869184 bytes"
       },
       "bfs": null,
-      "dfs": null
+      "dfs": null,
+      "dfs_recursive": null
     },
     {
       "representation": "csr",
@@ -79,21 +89,30 @@
       },
       "bfs": {
         "runs": 100,
-        "mean_ms": 93.70457043000002,
-        "median_ms": 129.4460205,
-        "min_ms": 10.549625,
-        "max_ms": 163.176292,
-        "stddev_ms": 52.898291033518866,
-        "total_ms": 9370.457043000002
+        "mean_ms": 86.19118909999997,
+        "median_ms": 122.9648535,
+        "min_ms": 10.444749999999999,
+        "max_ms": 145.282708,
+        "stddev_ms": 47.01894597830845,
+        "total_ms": 8619.118909999997
       },
       "dfs": {
         "runs": 100,
-        "mean_ms": 225.59306033000001,
-        "median_ms": 304.367708,
-        "min_ms": 38.760291,
-        "max_ms": 353.184291,
-        "stddev_ms": 104.62611208724992,
-        "total_ms": 22559.306033
+        "mean_ms": 224.62140214000001,
+        "median_ms": 299.27920800000004,
+        "min_ms": 38.7335,
+        "max_ms": 452.279,
+        "stddev_ms": 106.61472557441422,
+        "total_ms": 22462.140214000003
+      },
+      "dfs_recursive": {
+        "runs": 100,
+        "mean_ms": 216.3588671,
+        "median_ms": 285.662917,
+        "min_ms": 35.404417,
+        "max_ms": 405.042291,
+        "stddev_ms": 100.39669864295448,
+        "total_ms": 21635.88671
       }
     }
   ],
@@ -225,6 +244,7 @@
       "level": 607746
     }
   ],
+  "dfs_recursive_identical": true,
   "distances": [
     {
       "from": 10,
@@ -293,5 +313,5 @@
     "total_memory_bytes": 17179869184,
     "threads": 10
   },
-  "generated_at_unix": 1789942797
+  "generated_at_unix": 1791509964
 }

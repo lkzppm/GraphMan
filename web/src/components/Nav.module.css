@@ -140,53 +140,61 @@
   color: var(--accent);
 }
 
-/* The language switch: two small mono tags, the current one in the accent pill. */
+/* The language switch: two small mono tags over one accent pill that
+   slides to the current one. */
 .language {
+  position: relative;
   margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
   padding: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
 
-.languageButton,
-.languageActive {
-  padding: 4px 8px;
+.languageThumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
   border-radius: calc(var(--radius) - 2px);
+  background: var(--accent-muted);
+  transition: transform 0.32s var(--ease);
+}
+
+.language[data-locale='en'] .languageThumb {
+  transform: translateX(100%);
+}
+
+.languageButton {
+  position: relative;
+  padding: 4px 8px;
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: var(--tracking);
   text-transform: uppercase;
   color: var(--fg-2);
-  transition:
-    color 0.2s var(--ease),
-    background 0.2s var(--ease);
+  transition: color 0.25s var(--ease);
 }
 
 .languageButton:hover {
   color: var(--fg);
-  background: var(--bg-3);
 }
 
-.languageActive {
+.languageButton[aria-pressed='true'] {
   color: var(--accent);
-  background: var(--accent-muted);
 }
 
+/* The source link: the GitHub mark alone, a square the bar's height. */
 .github {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
   border: 1px solid var(--border-2);
   border-radius: var(--radius);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: var(--tracking);
-  text-transform: uppercase;
   color: var(--fg);
   transition:
     color 0.2s var(--ease),
@@ -386,17 +394,11 @@
     display: grid;
   }
 
-  .wordmark,
-  .github span {
+  .wordmark {
     display: none;
   }
 
-  .github {
-    padding: 7px 9px;
-  }
-
-  .languageButton,
-  .languageActive {
+  .languageButton {
     padding: 4px 6px;
   }
 }

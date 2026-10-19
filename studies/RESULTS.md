@@ -28,23 +28,25 @@ Machine: macos aarch64 (Apple M5), 10 threads, 17.18 GB RAM. Times exclude readi
 
 | Graph | adjacency list | adjacency matrix | compressed sparse row |
 |---|---:|---:|---:|
-| grafo_1 | 0.439 ms | 2.176 ms | 0.233 ms |
-| grafo_2 | 1.177 ms | 12.095 ms | 0.786 ms |
-| grafo_3 | 4.672 ms | — | 3.450 ms |
-| grafo_4 | 31.631 ms | — | 28.316 ms |
-| grafo_5 | 100.714 ms | — | 93.705 ms |
-| grafo_6 | 194.467 ms | — | 167.902 ms |
+| grafo_1 | 0.386 ms | 1.655 ms | 0.206 ms |
+| grafo_2 | 0.914 ms | 11.580 ms | 0.749 ms |
+| grafo_3 | 4.141 ms | — | 3.538 ms |
+| grafo_4 | 21.310 ms | — | 18.822 ms |
+| grafo_5 | 95.182 ms | — | 86.191 ms |
+| grafo_6 | 192.136 ms | — | 163.465 ms |
 
-## 3. Mean DFS time (100 searches from distinct vertices)
+## 3. Mean DFS time, iterative and recursive (100 searches from distinct vertices)
 
-| Graph | adjacency list | adjacency matrix | compressed sparse row |
-|---|---:|---:|---:|
-| grafo_1 | 0.848 ms | 2.584 ms | 0.562 ms |
-| grafo_2 | 2.749 ms | 16.769 ms | 2.299 ms |
-| grafo_3 | 9.468 ms | — | 6.949 ms |
-| grafo_4 | 33.849 ms | — | 32.970 ms |
-| grafo_5 | 321.681 ms | — | 225.593 ms |
-| grafo_6 | 344.449 ms | — | 266.370 ms |
+The recursive DFS runs on a thread whose stack is sized for a path through every vertex.
+
+| Graph | adjacency list iterative | adjacency list recursive | adjacency matrix iterative | adjacency matrix recursive | compressed sparse row iterative | compressed sparse row recursive |
+|---|---:|---:|---:|---:|---:|---:|
+| grafo_1 | 0.564 ms | 0.287 ms | 2.252 ms | 1.723 ms | 0.516 ms | 0.270 ms |
+| grafo_2 | 2.333 ms | 0.934 ms | 16.363 ms | 13.534 ms | 2.351 ms | 0.872 ms |
+| grafo_3 | 9.249 ms | 7.999 ms | — | — | 7.056 ms | 6.226 ms |
+| grafo_4 | 31.531 ms | 23.328 ms | — | — | 27.990 ms | 20.308 ms |
+| grafo_5 | 302.622 ms | 298.421 ms | — | — | 224.621 ms | 216.359 ms |
+| grafo_6 | 332.415 ms | 301.842 ms | — | — | 269.721 ms | 244.710 ms |
 
 ## 4. Parents in the BFS and DFS trees
 
@@ -88,6 +90,8 @@ Cells read `parent (level)`; `—` means the vertex was not reached.
 | grafo_6 | DFS | 1 | — | — | — |
 | grafo_6 | DFS | 2 | 381031 (154795) | 431008 (58744) | 446011 (268600) |
 | grafo_6 | DFS | 3 | — | — | — |
+
+The recursive DFS built exactly the iterative DFS's tree from every root above.
 
 ## 5. Distances
 

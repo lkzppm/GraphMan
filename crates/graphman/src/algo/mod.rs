@@ -1,6 +1,7 @@
 //! Graph algorithms, generic over any [`Graph`](crate::graph::Graph).
 //!
-//! * [`bfs`] / [`dfs`] — traversals that build a [`SearchTree`] and report to a [`Visitor`].
+//! * [`bfs`] / [`dfs`] — traversals that build a [`SearchTree`] and report to a [`Visitor`];
+//!   DFS written both ways, iterative and recursive ([`DfsKind`], [`dfs_recursive`]).
 //! * [`distance`] / [`eccentricity`] — shortest-path queries built on BFS.
 //! * [`dijkstra`] / [`shortest_path`] — shortest paths on weighted graphs, one
 //!   algorithm over three interchangeable [`Frontier`]s (vector, heap, lazy heap).
@@ -21,7 +22,9 @@ mod traversal;
 pub use components::Components;
 pub use diameter::{Diameter, DiameterMethod, diameter, diameter_with_progress};
 pub use distance::{distance, distance_into, eccentricity, eccentricity_into};
-pub use frontier::{Frontier, FrontierKind, HeapFrontier, LazyHeapFrontier, VectorFrontier};
+pub use frontier::{
+    Frontier, FrontierEntry, FrontierKind, HeapFrontier, LazyHeapFrontier, VectorFrontier,
+};
 pub use layout::{RadialLayout, radial_layout};
 pub use shortest_path::{
     NegativeWeight, Path, ShortestPathTree, dijkstra, dijkstra_into, dijkstra_with, shortest_path,
@@ -29,5 +32,6 @@ pub use shortest_path::{
 };
 pub use stats::{DegreeStats, WeightStats, degree_stats, weight_stats};
 pub use traversal::{
-    Control, SearchTree, UNREACHED, Visitor, bfs, bfs_into, bfs_with, dfs, dfs_into, dfs_with,
+    Control, DfsKind, RecursionLimit, SearchTree, UNREACHED, Visitor, bfs, bfs_into, bfs_with, dfs,
+    dfs_into, dfs_recursive, dfs_recursive_into, dfs_recursive_with, dfs_with,
 };

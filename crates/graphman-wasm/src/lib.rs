@@ -14,9 +14,9 @@
 #![warn(missing_docs, clippy::all)]
 
 use graphman::algo::{
-    self, Components, Control, DegreeStats, DiameterMethod, FrontierKind, HeapFrontier,
-    LazyHeapFrontier, SearchTree, ShortestPathTree, UNREACHED, VectorFrontier, WeightStats,
-    bfs_into, dfs_into, dijkstra_into, radial_layout,
+    self, Components, Control, DegreeStats, DiameterMethod, Frontier, FrontierEntry, FrontierKind,
+    HeapFrontier, LazyHeapFrontier, SearchTree, ShortestPathTree, UNREACHED, VectorFrontier,
+    Visitor, WeightStats, bfs_into, dfs_into, dfs_recursive_into, dijkstra_into, radial_layout,
 };
 use graphman::io::write_summary;
 use graphman::{
@@ -80,6 +80,20 @@ impl From<DiameterKind> for DiameterMethod {
             DiameterKind::Sweep => DiameterMethod::Sweep,
         }
     }
+}
+
+/// How deep the recursive DFS may nest in the browser: one call per tree
+/// level, on a call stack of about a megabyte. V8 (Chrome, Node) runs out
+/// between 5,150 levels (matrix) and 6,175 (list, CSR); half of the lower
+/// one leaves room for the JavaScript already on the stack. Past it the
+/// search refuses rather than trap the instance, and the iterative DFS
+/// answers instead.
+pub const DFS_RECURSION_LIMIT: u32 = 2_500;
+
+/// The deepest tree [`WasmGraph::dfs_recursive`] accepts.
+#[wasm_bindgen(js_name = dfsRecursionLimit)]
+pub fn dfs_recursion_limit() -> u32 {
+    DFS_RECURSION_LIMIT
 }
 
 /// How Dijkstra keeps its distance estimates (the library's `FrontierKind`).
@@ -528,6 +542,122 @@ impl ShortestPathResult {
     }
 }
 
+/// Dijkstra's frontier as it stood right after one settle and the
+/// relaxations it made: what the observatory's structure strip draws.
+#[wasm_bindgen]
+pub struct FrontierSnapshot {
+    vertices: Vec<u32>,
+    estimates: Vec<f64>,
+    stale: Vec<u8>,
+    total: u32,
+    relaxed: Vec<u32>,
+    previous: Vec<f64>,
+    lowered: Vec<f64>,
+}
+
+#[wasm_bindgen]
+impl FrontierSnapshot {
+    /// The first entries as stored: a heap's array in heap order (index 0
+    /// leaves next, the children of `i` are `2i + 1` and `2i + 2`), the
+    /// vector's finite slots by vertex.
+    pub fn vertices(&self) -> Vec<u32> {
+        self.vertices.clone()
+    }
+
+    /// The estimate of each entry of [`vertices`](Self::vertices).
+    pub fn estimates(&self) -> Vec<f64> {
+        self.estimates.clone()
+    }
+
+    /// `1` for a lazy heap's stale entry, `0` otherwise, per entry.
+    pub fn stale(&self) -> Vec<u8> {
+        self.stale.clone()
+    }
+
+    /// How many entries the frontier holds (all of them, past the limit too).
+    #[wasm_bindgen(getter)]
+    pub fn total(&self) -> u32 {
+        self.total
+    }
+
+    /// The vertices whose estimate this settle lowered, in relaxation order.
+    pub fn relaxed(&self) -> Vec<u32> {
+        self.relaxed.clone()
+    }
+
+    /// Their estimates before (`Infinity` when just reached).
+    pub fn previous(&self) -> Vec<f64> {
+        self.previous.clone()
+    }
+
+    /// Their estimates after.
+    pub fn lowered(&self) -> Vec<f64> {
+        self.lowered.clone()
+    }
+}
+
+/// A frontier that runs `inner` until its `stop`-th pop, then copies it
+/// instead of popping and ends the run. Glue: it only delegates and reads.
+struct Probe<F> {
+    inner: F,
+    pops: usize,
+    stop: usize,
+    taken: Option<Vec<FrontierEntry>>,
+}
+
+impl<F: Frontier> Frontier for Probe<F> {
+    fn reset(&mut self, vertex_count: usize) {
+        self.inner.reset(vertex_count);
+        self.pops = 0;
+        self.taken = None;
+    }
+
+    fn decrease(&mut self, v: Vertex, distance: f64) {
+        self.inner.decrease(v, distance);
+    }
+
+    fn pop_min(&mut self) -> Option<(Vertex, f64)> {
+        if self.pops == self.stop {
+            self.taken = Some(self.inner.entries());
+            return None;
+        }
+        self.pops += 1;
+        self.inner.pop_min()
+    }
+
+    fn kind(&self) -> FrontierKind {
+        self.inner.kind()
+    }
+
+    fn entries(&self) -> Vec<FrontierEntry> {
+        self.inner.entries()
+    }
+}
+
+/// Records the estimates lowered by the `step`-th settle (0-based).
+struct Lowered {
+    step: usize,
+    settles: usize,
+    relaxed: Vec<u32>,
+    previous: Vec<f64>,
+    lowered: Vec<f64>,
+}
+
+impl Visitor for Lowered {
+    fn settle(&mut self, _v: Vertex, _parent: Vertex, _distance: f64) -> Control {
+        self.settles += 1;
+        Control::Continue
+    }
+
+    fn relax(&mut self, v: Vertex, _parent: Vertex, previous: f64, distance: f64) {
+        if self.settles == self.step + 1 {
+            self.relaxed.push(v);
+            self.previous.push(previous);
+            self.lowered.push(distance);
+        }
+    }
+}
+
 /// An undirected graph loaded from the course's text format.
 ///
 /// The normalised [`EdgeList`] is kept next to the representation so the
@@ -787,6 +917,25 @@ impl WasmGraph {
         })
     }
 
+    /// Runs the recursive DFS from `root` (the textbook one, one call per
+    /// level), timed like [`search`](Self::search). Returns `undefined` when
+    /// the tree would nest deeper than [`dfsRecursionLimit`](dfs_recursion_limit):
+    /// the browser's stack cannot hold it, and the iterative DFS can.
+    #[wasm_bindgen(js_name = dfsRecursive)]
+    pub fn dfs_recursive(&mut self, root: u32) -> Result<Option<SearchResult>, JsError> {
+        self.check(root)?;
+        let start = now();
+        let outcome = dispatch!(&self.graph, g => {
+            dfs_recursive_into(g, root, &mut self.tree, &mut (), DFS_RECURSION_LIMIT)
+        });
+        let elapsed_ms = now() - start;
+        Ok(outcome.ok().map(|()| SearchResult {
+            kind: SearchKind::Dfs,
+            tree: self.tree.clone(),
+            elapsed_ms,
+        }))
+    }
+
     /// Runs Dijkstra from `root` with the chosen frontier and returns the
     /// tree, timed with `performance.now()`. Throws the library's refusal on
     /// a graph with a negative weight. An unweighted graph counts every edge
@@ -817,6 +966,73 @@ impl WasmGraph {
             frontier,
             tree,
             elapsed_ms,
+        })
+    }
+
+    /// Dijkstra's frontier from `root` right after its `step`-th settle
+    /// (0-based) and the relaxations that settle made, with at most `limit`
+    /// entries copied. The run is replayed to that point: the library's own
+    /// frontier, stopped and read, never a model of it. The vector holds the
+    /// same estimates as the heap at every step, only by vertex, so it is
+    /// replayed with the heap (`O(log n)` a step instead of `O(n)`) and read
+    /// in vertex order.
+    #[wasm_bindgen(js_name = frontierAt)]
+    pub fn frontier_at(
+        &self,
+        root: u32,
+        frontier: FrontierType,
+        step: u32,
+        limit: u32,
+    ) -> Result<FrontierSnapshot, JsError> {
+        self.check(root)?;
+        let n = self.graph.vertex_count();
+        let mut tree = ShortestPathTree::new(n);
+        let mut lowered = Lowered {
+            step: step as usize,
+            settles: 0,
+            relaxed: Vec::new(),
+            previous: Vec::new(),
+            lowered: Vec::new(),
+        };
+        let stop = step as usize + 1;
+        let taken = match frontier {
+            FrontierType::LazyHeap => {
+                let mut probe = Probe {
+                    inner: LazyHeapFrontier::new(n),
+                    pops: 0,
+                    stop,
+                    taken: None,
+                };
+                dispatch!(&self.graph, g => dijkstra_into(g, root, &mut probe, &mut tree, &mut lowered))
+                    .map_err(|e| JsError::new(&e.to_string()))?;
+                probe.taken
+            }
+            FrontierType::Heap | FrontierType::Vector => {
+                let mut probe = Probe {
+                    inner: HeapFrontier::new(n),
+                    pops: 0,
+                    stop,
+                    taken: None,
+                };
+                dispatch!(&self.graph, g => dijkstra_into(g, root, &mut probe, &mut tree, &mut lowered))
+                    .map_err(|e| JsError::new(&e.to_string()))?;
+                probe.taken
+            }
+        };
+        let mut entries = taken.unwrap_or_default();
+        if frontier == FrontierType::Vector {
+            entries.sort_unstable_by_key(|e| e.vertex);
+        }
+        let total = entries.len() as u32;
+        entries.truncate(limit as usize);
+        Ok(FrontierSnapshot {
+            vertices: entries.iter().map(|e| e.vertex).collect(),
+            estimates: entries.iter().map(|e| e.estimate).collect(),
+            stale: entries.iter().map(|e| u8::from(e.stale)).collect(),
+            total,
+            relaxed: lowered.relaxed,
+            previous: lowered.previous,
+            lowered: lowered.lowered,
         })
     }
 

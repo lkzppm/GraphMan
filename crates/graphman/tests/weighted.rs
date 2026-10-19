@@ -358,3 +358,100 @@ fn a_refused_run_leaves_an_empty_tree() {
     assert_eq!(tree.distance(1), None);
     assert!(tree.distances_raw().iter().all(|d| d.is_infinite()));
 }
+
+/// Stops a run after `settles` settles and records every lowered estimate.
+struct Watch {
+    settles: usize,
+    seen: usize,
+    relaxed: Vec<(Vertex, Vertex, Weight, Weight)>,
+}
+
+impl graphman::Visitor for Watch {
+    fn settle(&mut self, _v: Vertex, _parent: Vertex, _distance: Weight) -> algo::Control {
+        self.seen += 1;
+        match self.seen > self.settles {
+            true => algo::Control::Break,
+            false => algo::Control::Continue,
+        }
+    }
+
+    fn relax(&mut self, v: Vertex, parent: Vertex, previous: Weight, distance: Weight) {
+        self.relaxed.push((v, parent, previous, distance));
+    }
+}
+
+/// The live entries of a frontier, by vertex: what it holds, whatever its layout.
+fn live(entries: &[algo::FrontierEntry]) -> Vec<(Vertex, Weight)> {
+    let mut live: Vec<(Vertex, Weight)> = entries
+        .iter()
+        .filter(|e| !e.stale)
+        .map(|e| (e.vertex, e.estimate))
+        .collect();
+    live.sort_by_key(|e| e.0);
+    live
+}
+
+#[test]
+fn every_frontier_holds_the_same_estimates_at_every_step() {
+    let edges = random_weighted(31, 60, 220, false);
+    let graph = Csr::build(&edges).unwrap();
+    for settles in [0, 1, 5, 20, 59] {
+        let mut vector = VectorFrontier::new(60);
+        let mut heap = HeapFrontier::new(60);
+        let mut lazy = LazyHeapFrontier::new(60);
+        let watch = || Watch {
+            settles,
+            seen: 0,
+            relaxed: Vec::new(),
+        };
+        algo::dijkstra_with(&graph, 1, &mut vector, &mut watch()).unwrap();
+        algo::dijkstra_with(&graph, 1, &mut heap, &mut watch()).unwrap();
+        algo::dijkstra_with(&graph, 1, &mut lazy, &mut watch()).unwrap();
+        let expected = live(&vector.entries());
+        assert_eq!(live(&heap.entries()), expected);
+        assert_eq!(live(&lazy.entries()), expected);
+        // The vector reads by vertex; the heap's array is in heap order.
+        let by_vertex: Vec<Vertex> = vector.entries().iter().map(|e| e.vertex).collect();
+        assert!(by_vertex.windows(2).all(|w| w[0] < w[1]));
+        let stored = heap.entries();
+        for (i, entry) in stored.iter().enumerate().skip(1) {
+            let parent = stored[(i - 1) / 2];
+            assert!((parent.estimate, parent.vertex) < (entry.estimate, entry.vertex));
+        }
+        assert!(!heap.entries().iter().any(|e| e.stale));
+    }
+}
+
+#[test]
+fn relax_reports_every_lowered_estimate() {
+    let edges = random_weighted(32, 80, 300, true);
+    let graph = Csr::build(&edges).unwrap();
+    let mut watch = Watch {
+        settles: usize::MAX,
+        seen: 0,
+        relaxed: Vec::new(),
+    };
+    let tree = algo::dijkstra_with(&graph, 1, &mut HeapFrontier::new(80), &mut watch).unwrap();
+    // Each vertex but the root is reached once (from +∞) and its last
+    // lowering is its answer.
+    let firsts = watch
+        .relaxed
+        .iter()
+        .filter(|r| r.2 == Weight::INFINITY)
+        .count();
+    assert_eq!(firsts, tree.reached_count() - 1);
+    let mut last = vec![None; 81];
+    for &(v, parent, previous, distance) in &watch.relaxed {
+        assert!(distance < previous);
+        last[v as usize] = Some((parent, distance));
+    }
+    for v in graph.vertices() {
+        match (tree.distance(v), last[v as usize]) {
+            (Some(d), Some((parent, distance))) => {
+                assert_eq!((Some(parent), d), (tree.parent(v), distance));
+            }
+            (Some(_), None) => assert_eq!(v, 1),
+            (None, last) => assert_eq!(last, None),
+        }
+    }
+}

@@ -100,8 +100,8 @@ link (the wordmark turns blue on the home page), then a tab per other page
 — **Observatory** (`/observatory`), **Library** (`/library`, the
 interactive manual), **Case studies** (`/studies`, the seven questions drawn), **Presentation**
 (`/presentation`, the five slides) — then, on the right, the language
-switch (two mono tags, `pt` · `en`, the current one in the blue-muted
-pill) and a bordered GitHub button. The current tab is marked in blue:
+switch (two mono tags, `pt` · `en`, over one blue-muted pill that slides
+to the current one) and a bordered square holding only the GitHub mark. The current tab is marked in blue:
 blue text, a blue-muted pill and a 2 px underline; the pill slides between
 tabs (a measured indicator, spring easing) and fades out on the home page.
 
@@ -165,9 +165,16 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   `Until(4)` breaks beside its `discover` calls as balls on one vertical
   edge in the same level colours (visitors), two components in fading
   blues with the shortest path from 4 to 3 (distance), the endpoints 1 and
-  5 ringed in navy with a longest shortest path (diameter), and the sample
-  file, the `graphman bfs` command and the file it writes, arrows between
-  (CLI). The memory budget is a paragraph
+  5 ringed in navy with a longest shortest path (diameter), the weighted
+  sample's file beside the graph with each weight written on its edge in
+  10 px mono over a white halo, blue on tree and path edges (weights), BFS's
+  path from 1 to 5 beside Dijkstra's lighter, longer one (Dijkstra), the
+  frontiers' cost table over the tree shaded by distance, each distance
+  written just outside its vertex, beside the `settle` calls as balls
+  (priority queues), the names file with what `VertexNames` answers in blue
+  (names), and the sample file, the `graphman bfs` command and the file it
+  writes, arrows between (CLI). The contents rail sizes its edge from the
+  chapter count (`--stops`). The memory budget is a paragraph
   and three lines of the representations chapter, not a chapter of its
   own, and the design decisions belong to the presentation.
 - **Case studies** (`components/Studies.tsx`, `/studies`): the seven
@@ -246,14 +253,103 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   pure CSS: masked radial gradients; hidden under reduced motion).
 
 The observatory renders under the nav (`calc(100dvh - var(--nav-height))`)
-with no header of its own: a 340 px sidebar and the stage. The sidebar never
-scrolls; it is a column of panels (Graph: file, 2 × 2 tiles, degree
-histogram, component bar, chips (a weighted file adds `weights MIN to
-MAX` and, when there are any, the negative count); Search: the algorithm
+with no header of its own: a sidebar (340 px by default) and the stage.
+On a desktop the boundary between them resizes by the grip pill in its
+middle (only the grip drags, `col-resize`; the rest of the edge stays a
+border), the boundary blue while the grip is hovered or dragged; the width stays within 280–560 px and leaves the canvas at
+least 400, is remembered per browser, resets on a double click and moves
+with the arrow keys (Shift for bigger steps). Phones keep the bottom sheet.
+
+Under the canvas, the **structure strip** shows the data structure of the
+search on it at the replay's step. It exists only once a search has run:
+a square icon button at the bottom centre of the canvas, like the other
+canvas tools (same hover lift and glow, pressed while open), opens and
+closes it, the strip growing up from the canvas's bottom edge (0.42 s) and
+shrinking back into it (0.34 s) while the canvas gives or takes the room
+(opening also glides the camera to frame the graph in the room left, as
+the strip grows);
+its icon names the structure (a row of cards for the queue,
+layers for the stack, brackets for the vector, a tree for the heap). Closed by default, the choice remembered;
+not on phones. Its top
+edge resizes it like the sidebar's (a horizontal grip pill in the middle,
+`row-resize`, 120–560 px and at least 220 px of canvas left, remembered,
+double click resets, arrow keys nudge); dragged up to the column's top
+(within 28 px) it maximizes, covering the canvas and rising from where its
+edge was (0.32 s), until dragged down again (or double clicked; the arrow
+keys go past the tallest height into it and back). Every structure shares one
+layout and none has a header: the analysing circle on the left (28 px in,
+mirrored by an empty column on the right), the structure centred, its name
+(tracked, blue: "Fila", "Pilha" or "Pilha de chamadas", "Fila de
+prioridade · vetor" or "· heap binário") over it on the analysing label's
+line, and its size under it ("Tamanho da fila: N", "Tamanho da pilha: N",
+"Estimativas abertas: N", "Tamanho do heap: N" and, 18 px on, "Altura: H",
+⌊log₂ N⌋) in grey with N in blue
+mono. BFS's queue is an array:
+square cells in the level colours, sized from the strip's height (the
+analysing circle 34 to 64 px, the queue's squares 72 % of it), glued by a 1 px seam (rounded only at its two ends, a wider seam
+where the level changes), between its "início" and "fim" labels and centred in the strip
+(the analysing column, 28 px in from the edge, is mirrored by an empty
+one on the right) and on the strip's middle line, with the vertex being
+analysed as a circle under "Analisando", level with the queue: the front
+square grows and rounds into the circle as it slides over. Cells are keyed by vertex and slide
+from where they were (FLIP, 460 ms, only when the step changes, from
+transform-free layout positions so a slide caught mid-way carries on from
+where it shows): the front cell glides into the analysing cell
+as the queue closes up behind it, new cells come in at the back, the
+vertex analysed before leaves to the left fading, and a vertex dequeued
+with nothing to enqueue passes through the analysing cell on its way
+out. DFS's stack is the same array read the other way: its top on the
+left, next to the analysing circle, and its base (the root) on the right,
+between "topo" and "base", one square per frame of the path to the vertex
+just discovered (a deep stack keeps its top frames and the root, the
+middle as a dashed count). The vertex analysed is the top itself: the
+square pushed comes in from the left as the circle grows out of it, the
+circle analysed before leaves to the left, and the frames popped since the
+last step lift off and fade. A DFS's replay steps through its pops too:
+its timeline (slider, play, arrow keys) has one step per push and one per
+pop, read off the tree (between two discoveries the stack pops back to the
+new vertex's parent), so a whole search ends with the stack emptied one
+frame at a time (one stopped at a target ends on the path to it); the
+canvas holds still during pops. The recursive and the iterative DFS hold
+the same frames at every step (the iterative one keeps a stack of
+neighbour iterators, not of vertices), so only the name differs: "Pilha
+de chamadas" for the recursive one. Dijkstra's analysing circle is the vertex the step settles, its
+distance (final now) written under it. The vector is the queue's glued
+cells, one per vertex, each its number over its estimate (every slot when
+they fit, otherwise the slots holding an estimate with the runs between
+counted): open estimates blue, settled slots grey with their distance, the
+rest pale with ∞. Each step a blue wash sweeps the slots (the scan) and the
+circle grows out of the slot it lands on, which turns grey with a blue
+edge; lowered estimates flash. The heap is the tree it is (as many levels
+as the height allows, up to five), blue discs with their estimates under
+them, the root ringed as the next to leave (the entries deeper than the
+levels drawn counted beside the bottom level's last node as "↓ +N" in
+grey mono), over its array as glued cells
+with their indices under them. Nodes and cells are keyed by vertex, so a
+sift slides them (FLIP, nodes placed by left/top) and the root popped
+glides into the analysing circle, growing as it goes. Cells and nodes link to the canvas both ways (hover lights the
+vertex, click selects it, a hovered vertex lights its cell), and the
+canvas rings every vertex the strip holds, the one the step is about more
+strongly. Long structures show their first and last cells with the middle
+as a dashed count. The sidebar never
+scrolls; it is a column of panels (Graph: file name with an info button
+whose tooltip lists what parsing dropped (loops, repeats and, when there
+are any, the negative weights), 2 × 2 tiles, the distribution chart (titled Degrees; on a
+weighted file two tracked labels, Degrees / Weights, switch it between
+vertices per degree and edges per weight range, so the weight range reads
+off its axis; both charts stay mounted, and switching grows the new bars
+from the axis, staggered left to right, as the old ones sink into it),
+component bar; the summary, the memory view and the components browser
+swap in place without a jump: the old view fades out, the next rises in,
+and the panel eases its height between them); Search: the algorithm
 as a full-width three-way segmented control (BFS / DFS / Dijkstra), under
 it mode (Max, the whole traversal / Distance) and, for Dijkstra only, the
-frontier (Vector / Heap, the course's two versions, so their times can be
-compared on the spot) side by side, then
+priority queue ("Fila de prioridade": Vector / Heap, the course's two
+versions, so their times can be compared on the spot; the code calls it
+the `Frontier`, the site uses the textbook name) or, for DFS, its
+implementation (Iterative / Recursive, the same tree; the recursive one
+refuses past the browser's 2,500 levels with a notice that points to the
+iterative one) side by side, then
 origin (and, in Distance, target) with a square play button, then result
 tiles, level profile and playback (replay + slider + count; download and
 clear live in the panel header). Controls are compact: 28 px inputs,
@@ -261,7 +357,7 @@ segments and play button, 11 px labels. **Distance** runs the chosen
 traversal from the origin and stops it the moment the target is
 discovered: the tiles read distance (steps, for a DFS; `∞` when the
 target is in another component), reached and time, and the level profile
-or depth trace cover only what was visited until then. The path floats
+or the trace cover only what was visited until then. The path floats
 at the top centre of the canvas as a row of balls (`③ → ⑤ → ②`, coloured
 from the origin's accent to the destination's `--target` green, the
 middle elided past ten) with two icon buttons beside it: grey out
@@ -277,9 +373,15 @@ click on the canvas picks the target once the origin is set;
 **Dijkstra** reads like a BFS whose levels are distance bands: the origin
 alone at 0, then twelve equal slices up to the farthest settled vertex.
 Vertices settle by distance, so each band is a contiguous stretch of the
-timeline and the level chart ("vertices per distance", rows named by the
-distance their band reaches, three significant figures), the ↑/↓ keys
-and the colour ramp all work unchanged; the legend reads `distance 0 →
+timeline and the ↑/↓ keys and the colour ramp work unchanged. The chart is
+what Dijkstra answers, "distances from <origin>": one row per settled
+vertex, closest first (the vertex, a bar to scale, the distance in mono),
+lit as the replay settles it and kept in view; hovering a row marks the
+vertex on the canvas, clicking it runs the distance query to it (the row
+stays highlighted, and the rows past it stay clickable). Only the rows in
+view are rendered (20 px each), so a million vertices scroll like ten;
+the header counts the unreachable vertices. Below 900 px of height the
+degree chart steps aside for it; the legend reads `distance 0 →
 distance MAX`, the hover card the vertex's distance, the tiles the
 eccentricity (or, in Distance, the path's weight) with at most three
 decimals. A graph with a negative weight is refused with a notice in the
@@ -297,21 +399,32 @@ fills the room between the stats and the playback row, which is pinned to
 the bottom of the panel. Arrow keys work anywhere on the page (Safari does
 not focus clicked buttons): ↑/↓ a level, ←/→ a vertex. On short viewports
 the sidebar sheds
-pieces instead of scrolling — chips (≤ 880 px), component bar (≤ 820),
+pieces instead of scrolling — component bar (≤ 820 px),
 histogram (≤ 740), level profile (≤ 660) — and only scrolls below 580 px.
 The stage carries floating clusters: a help button top left that opens a
 controls popover (the same `kbd` cheat sheet as the empty sidebar, plus the
 stage gestures; closes on Esc, outside click or the button), layout tools
 top right (simulation on/off, reheat, vertex numbers, follow), view tools
-bottom right (zoom in/out, fit, full screen), the legend bottom left. Vertex numbers are a 2D canvas over
-the WebGPU one, drawn only when discs are at least 5 px.
+bottom right (zoom in/out, fit, full screen), the legend bottom left.
+The camera never jumps on a request: zoom buttons (clicks in a row add
+up), fit (button, F, double click) and follow glide over about a quarter
+second, the zoom eased on a log scale; the wheel and pinch stay direct, and
+only the auto-fit while a new layout settles moves the camera at once. Vertex numbers are a 2D canvas over
+the WebGPU one, drawn only when discs are at least 5 px. On a weighted
+graph the same canvas draws each edge's weight at its middle, in a small
+pill (background fill, grey hairline, 10 px mono grey text), under the
+vertex numbers and only where the edge on screen is long enough to hold it.
+The selected vertex's edges, and the edges of Dijkstra's tree as the
+replay reaches them, turn their pills blue (accent hairline, accent-muted
+tint, accent text), drawn last so they sit on top.
 
 ## Icons
 
 - UI icons come from `lucide-react` (14–24 px, `strokeWidth` 1.5–2):
   upload, flask (sample, only while no graph is loaded), x (close the
   graph), play/pause/replay, download, trash, ruler, magnet (force simulation),
-  refresh, hash, plus/minus, maximise, expand/minimise, arrow-right,
+  refresh, hash, weight (edge weights, and the weighted example),
+  waypoints (the unweighted example), plus/minus, maximise, expand/minimise, arrow-right,
   chevron-down, plus one per decision card and pipeline step.
 - Brand glyphs come from `simple-icons` through `components/BrandIcon.tsx`,
   drawn in the current text colour.
@@ -345,17 +458,27 @@ the WebGPU one, drawn only when discs are at least 5 px.
 - **Panel** (observatory sidebar): tracked uppercase title with icon
   actions on the right, hairline bottom; panels rise in with a stagger.
   Inside: stat tiles (2 × 2 bordered grid, blue mono values), tiny bar
-  charts (32 px, blue bars on a hairline axis), mono chips.
+  charts (32 px, blue bars on a hairline axis).
 - **Icon button**: 30 px bordered square; hover turns it blue with a glow;
   `aria-pressed` fills it blue-muted. In a floating **cluster** (blurred,
   bordered pill on the stage) the borders drop and hover tints grey.
-- **Empty observatory**: the sidebar shows two starter tiles (Sample, Open
-  a file) and a cheat sheet of `kbd` chips (click, drag, scroll, F, space,
-  arrows, esc) with three-word labels; the stage draws a faint drifting
-  constellation on the label canvas (grey dots, a few blue, hairline links,
-  pushed away by the pointer; decoration only) under a compact dashed card:
-  icon, "Drop a graph file anywhere", the sample file as the format
-  explanation (a tiny file card with `// comments`), and two buttons.
+- **Empty observatory**: the sidebar shows two starter tiles (Examples,
+  Open a file) and a cheat sheet of `kbd` chips (click, drag, scroll, F,
+  space, arrows, esc) with three-word labels; the stage draws a faint
+  drifting constellation on the label canvas (grey dots, a few blue,
+  hairline links, pushed away by the pointer; decoration only) under a
+  compact dashed card: icon, "Drop a graph file anywhere", the sample file
+  as the format explanation (a tiny file card with `// comments`, the
+  optional weight column in faint blue); no buttons, since the sidebar's
+  tiles already open a file or an example. The Examples tile turns into
+  the choice in place (its two faces share one grid cell, so it keeps its
+  size; the face fades as the choices rise in): two rows, each with its
+  icon: the same ten vertices and
+  fifteen edges (`EXAMPLE_EDGES` in `web/src/lib/graphman.ts`) without
+  weights (waypoints) or with them (a weight), whose lightest path from 1
+  to 10 is not the shortest, so BFS and Dijkstra disagree visibly. A click
+  outside or Esc turns it back. The format card shows that file's first
+  lines.
 - **Storage picker** (a parsed file waiting for a representation): a card
   in place of the drop card, the file name and counts over three cards
   (pictogram, name, hint, the cost in mono with a bar). It never pops: the
@@ -467,7 +590,8 @@ the WebGPU one, drawn only when discs are at least 5 px.
   in the Radial levels layout instead, rooted in the largest component
   (the force placement is only a seed for a simulation they will not run).
 - **The top-right cluster** is split by a hairline: on the left the view
-  toggles (vertex numbers `#`, follow), on the right the layout menu
+  toggles (edge weights, a weight icon, only on a weighted graph; vertex
+  numbers `#`; follow), on the right the layout menu
   (`Shapes`). The menu is a popover like the help one, hung under the
   cluster: Force (springs and repulsion), Radial levels (BFS rings around
   the origin), Layered (levels as rows, subtrees together), Degree circle
