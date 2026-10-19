@@ -7,15 +7,18 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type PointerEvent,
   type ReactNode,
 } from 'react';
 import { siNextdotjs, siRust, siVercel, siWebassembly, siWebgpu } from 'simple-icons';
 import { useT } from '@/i18n/LocaleProvider';
+import { at, Bar, Head, type T } from './deck-kit';
+import { Frontiers, Paths, Timing, Weights } from './DeckPart2';
 import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/lib/format';
 import { logScale } from '@/lib/scale';
-import type { DiameterMethod, GraphStudy, Representation } from '@/lib/studies';
+import type { DiameterMethod, GraphStudy, Representation, WeightedStudy } from '@/lib/studies';
 import BrandIcon from './BrandIcon';
 import RepresentationPicto, { REPR_KINDS } from './RepresentationPicto';
 import Constellation from './Constellation';
@@ -25,12 +28,35 @@ import Logo from './Logo';
 import styles from './Deck.module.css';
 
 const STACK_ICONS = [siRust, siWebassembly, siWebgpu, siNextdotjs, siVercel];
-const SLIDE_COUNT = 5;
+/** The project's parts; the cover's switch picks which one the deck tells. */
+type Part = 1 | 2;
+/** The address of Part 2's deck, so a reload (or a shared link) keeps it. */
+const PART_2_HASH = '#part-2';
+
+function subscribeHash(onChange: () => void) {
+  window.addEventListener('hashchange', onChange);
+  return () => window.removeEventListener('hashchange', onChange);
+}
+
+function readPart(): Part {
+  return window.location.hash === PART_2_HASH ? 2 : 1;
+}
+
+/** Switches the deck by rewriting the address in place (no history entry),
+    then tells the subscribers, which `replaceState` alone does not. */
+function setPart(part: Part) {
+  const { pathname, search } = window.location;
+  window.history.replaceState(null, '', part === 2 ? PART_2_HASH : pathname + search);
+  window.dispatchEvent(new HashChangeEvent('hashchange'));
+}
 /** Horizontal travel that counts as a swipe between slides. */
 const SWIPE = 60;
 
 /**
- * The 8-minute presentation as five slides that draw themselves. Each slide
+ * The 8-minute presentations, one per part of the project, behind a switch
+ * on the shared cover: Part 1 (architecture, decisions, benchmark) and
+ * Part 2 (weights, one Dijkstra over three frontiers, vector against heap,
+ * shortest paths), both ending on the QR code. Each slide
  * fills the viewport under the nav; ← → (space, PageUp/Down, a swipe or the
  * buttons) move, Home/End jump, F toggles full screen. Everything animated
  * is gated on the current slide, so moving away and back replays the
@@ -40,17 +66,46 @@ const SWIPE = 60;
  * a graph with a wave running along it next to the QR code. The words come from the dictionary, the
  * numbers from the same results.json as the case-studies page.
  */
-export default function Deck({ studies }: { studies: GraphStudy[] }) {
+export default function Deck({
+  studies,
+  weighted,
+}: {
+  studies: GraphStudy[];
+  weighted: WeightedStudy[];
+}) {
   const t = useT();
   const p = t.presentation;
+  // The part lives in the address (`#part-2` opens Part 2's deck), so a
+  // reload or a shared link keeps it; the server renders Part 1.
+  const part = useSyncExternalStore(subscribeHash, readPart, () => 1 as Part);
   const [index, setIndex] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
   const deckRef = useRef<HTMLDivElement>(null);
   const swipe = useRef<{ id: number; x: number } | null>(null);
 
-  const go = useCallback((next: number) => {
-    setIndex(Math.max(0, Math.min(SLIDE_COUNT - 1, next)));
-  }, []);
+  const slides =
+    part === 1
+      ? [
+          <Cover key="cover" t={t} part={part} onPart={setPart} />,
+          <Architecture key="architecture" t={t} />,
+          <Decisions key="decisions" t={t} studies={studies} />,
+          <Benchmark key="benchmark" t={t} studies={studies} />,
+          <TryIt key="try" t={t} eyebrow={p.slides.observatory.eyebrow} />,
+        ]
+      : [
+          <Cover key="cover" t={t} part={part} onPart={setPart} />,
+          <Weights key="weights" t={t} />,
+          <Frontiers key="frontiers" t={t} />,
+          <Timing key="timing" t={t} studies={weighted} />,
+          <Paths key="paths" t={t} studies={weighted} />,
+          <TryIt key="try" t={t} eyebrow={p.slides.part2.observatory} />,
+        ];
+  const count = slides.length;
+
+  const go = useCallback(
+    (next: number) => setIndex(Math.max(0, Math.min(count - 1, next))),
+    [count],
+  );
 
   const toggleFullscreen = useCallback(() => {
     const el = deckRef.current;
@@ -69,21 +124,25 @@ export default function Deck({ studies }: { studies: GraphStudy[] }) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'PageDown') {
         event.preventDefault();
-        setIndex((i) => Math.min(SLIDE_COUNT - 1, i + 1));
+        setIndex((i) => Math.min(count - 1, i + 1));
       } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
         event.preventDefault();
         setIndex((i) => Math.max(0, i - 1));
       } else if (event.key === 'Home') {
         setIndex(0);
       } else if (event.key === 'End') {
-        setIndex(SLIDE_COUNT - 1);
+        setIndex(count - 1);
+      } else if (event.key === '1' || event.key === '2') {
+        // The part's number: its deck, from the cover.
+        setPart(event.key === '1' ? 1 : 2);
+        setIndex(0);
       } else if (event.key === 'f' || event.key === 'F') {
         toggleFullscreen();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggleFullscreen]);
+  }, [toggleFullscreen, count]);
 
   // A horizontal swipe on a touch screen turns the page; the cover's mark
   // captures its own pointer while a vertex is dragged, so it never reaches here.
@@ -100,20 +159,14 @@ export default function Deck({ studies }: { studies: GraphStudy[] }) {
     else if (dx > SWIPE) go(index - 1);
   };
 
-  const slides = [
-    <Cover key="cover" t={t} />,
-    <Architecture key="architecture" t={t} />,
-    <Decisions key="decisions" t={t} studies={studies} />,
-    <Benchmark key="benchmark" t={t} studies={studies} />,
-    <TryIt key="try" t={t} />,
-  ];
-
   return (
     <div ref={deckRef} className={`${styles.deck} ${fullscreen ? styles.deckFullscreen : ''}`}>
       <div className={styles.stage} onPointerDown={onPointerDown} onPointerUp={onPointerUp}>
         {slides.map((slide, i) => (
           <section
-            key={i}
+            // The cover is the same slide in both decks: switching parts only
+            // crossfades its topics. The other slides are new, so they draw again.
+            key={i === 0 ? 'cover' : `${part}-${i}`}
             className={`${styles.slide} ${i === index ? styles.slideCurrent : ''}`}
             aria-hidden={i !== index}
             inert={i !== index}
@@ -142,16 +195,16 @@ export default function Deck({ studies }: { studies: GraphStudy[] }) {
               aria-selected={i === index}
               className={i === index ? styles.dotCurrent : styles.dot}
               onClick={() => go(i)}
-              aria-label={p.counter(i + 1, SLIDE_COUNT)}
+              aria-label={p.counter(i + 1, count)}
             />
           ))}
         </div>
-        <span className={`mono ${styles.counter}`}>{p.counter(index + 1, SLIDE_COUNT)}</span>
+        <span className={`mono ${styles.counter}`}>{p.counter(index + 1, count)}</span>
         <button
           type="button"
           className={styles.navButton}
           onClick={() => go(index + 1)}
-          disabled={index === SLIDE_COUNT - 1}
+          disabled={index === count - 1}
           aria-label={p.next}
         >
           <ChevronRight size={16} />
@@ -171,28 +224,9 @@ export default function Deck({ studies }: { studies: GraphStudy[] }) {
   );
 }
 
-type T = ReturnType<typeof useT>;
-
-/** Seconds into the slide's arrival at which an element starts moving. */
-const at = (seconds: number) => ({ '--d': `${seconds}s` }) as CSSProperties;
-
-/** The head every slide but the cover wears: the slide's number and one word. */
-function Head({ eyebrow, title }: { eyebrow: string; title: string }) {
-  return (
-    <header className={styles.head}>
-      <p className={`mono ${styles.index} ${styles.rise}`} style={at(0)}>
-        {eyebrow}
-      </p>
-      <h2 className={`${styles.title} ${styles.rise}`} style={at(0.08)}>
-        {title}
-      </h2>
-    </header>
-  );
-}
-
 /* ---- cover ---------------------------------------------------------------- */
 
-function Cover({ t }: { t: T }) {
+function Cover({ t, part, onPart }: { t: T; part: Part; onPart: (part: Part) => void }) {
   const s = t.presentation.slides.cover;
   return (
     <div className={styles.cover}>
@@ -214,6 +248,42 @@ function Cover({ t }: { t: T }) {
               </span>
             ))}
           </p>
+          {/* The switch between the two decks: a pill whose thumb slides,
+              and what the chosen part covers beside it. */}
+          <div className={styles.partRow}>
+            <div
+              className={styles.parts}
+              role="radiogroup"
+              aria-label={s.partsLabel}
+              data-part={part}
+            >
+              <span className={styles.partsThumb} aria-hidden="true" />
+              {s.parts.map((label, i) => (
+                <button
+                  key={label}
+                  type="button"
+                  role="radio"
+                  aria-checked={part === i + 1}
+                  className={styles.partButton}
+                  onClick={() => onPart(i === 0 ? 1 : 2)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className={styles.topics}>
+              {s.topics.map((topics, i) => (
+                <span
+                  key={topics}
+                  className="comment"
+                  data-current={part === i + 1 || undefined}
+                  aria-hidden={part !== i + 1}
+                >
+                  {topics}
+                </span>
+              ))}
+            </span>
+          </div>
           <ul className={styles.stack}>
             {s.stack.map((label, i) => (
               <li key={label} className={styles.stackItem}>
@@ -652,45 +722,6 @@ function Decisions({ t, studies }: { t: T; studies: GraphStudy[] }) {
    component count and the best diameter answer. Everything else lives on
    the case-studies page, which the button under the sheet opens. */
 
-/** One bar: a track, a fill that grows to its share of the shared scale,
-    the measurement after it. A refused representation gets a dashed bar
-    running off the track and what it would have needed. */
-function Bar({
-  width,
-  colour,
-  value,
-  ghost,
-  delay,
-}: {
-  width: number;
-  colour: string;
-  value: ReactNode;
-  ghost?: boolean;
-  delay: number;
-}) {
-  return (
-    <span className={styles.barRow} data-ghost={ghost || undefined}>
-      <span className={styles.track}>
-        <span
-          className={styles.fill}
-          style={
-            {
-              ...at(delay),
-              // Rounded: Math.log10 differs in its last digit between Node and
-              // the browser, and a different string would break hydration.
-              '--w': `${Math.max(1.5, width * 100).toFixed(2)}%`,
-              '--colour': colour,
-            } as CSSProperties
-          }
-        />
-      </span>
-      <span className={`mono ${styles.barValue} ${styles.figFade}`} style={at(delay + 0.5)}>
-        {value}
-      </span>
-    </span>
-  );
-}
-
 const REPRESENTATIONS: Representation[] = ['adjacency_list', 'adjacency_matrix', 'csr'];
 const REP_COLOURS: Record<Representation, string> = {
   adjacency_list: 'var(--accent)',
@@ -867,13 +898,13 @@ function spell(word: string) {
 const LETTER_STEP = 0.18;
 const WAVE_PERIOD = 4.2;
 
-function TryIt({ t }: { t: T }) {
+function TryIt({ t, eyebrow }: { t: T; eyebrow: string }) {
   const s = t.presentation.slides.observatory;
   const word = spell(s.thanks);
   const settle = 0.4 + word.nodes.length * LETTER_STEP;
   return (
     <div className={styles.body}>
-      <Head eyebrow={s.eyebrow} title={s.title} />
+      <Head eyebrow={eyebrow} title={s.title} />
       <div className={styles.tryIt}>
         <div className={`${styles.browser} ${styles.rise}`} style={at(0.2)}>
           <div className={styles.browserBar}>
