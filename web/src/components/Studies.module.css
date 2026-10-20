@@ -210,6 +210,11 @@
   line-height: 1.25;
 }
 
+/* What a chapter's bars measure, under them (the BFS and DFS times). */
+.chapterCaption {
+  font-size: 12px;
+}
+
 /* Iterative or recursive DFS, at the end of the chapter's heading. */
 .waySwitch {
   display: inline-flex;
