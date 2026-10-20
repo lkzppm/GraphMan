@@ -13,6 +13,12 @@
   padding-top: 26px;
 }
 
+/* A part with nothing to show yet: its words rise in when it is picked. */
+.partEmpty {
+  padding-top: 64px;
+  animation: rise 0.5s var(--ease) both;
+}
+
 /* ---- the menu ------------------------------------------------------------- */
 
 /* Under the site's nav and stuck to it: the overview and the six graphs
@@ -808,5 +814,19 @@ g[data-apart] .sideLabel {
 
   .pickName {
     display: none;
+  }
+}
+
+/* Redeclared here: CSS modules scope animation names. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .partEmpty {
+    animation: none;
   }
 }
