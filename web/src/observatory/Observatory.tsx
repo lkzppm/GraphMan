@@ -454,6 +454,8 @@ export default function Observatory() {
   const [notice, setNotice] = useState<string | null>(null);
   /** The loaded graph's names, if a names file came with it. */
   const [names, setNames] = useState<NamesInfo | null>(null);
+  /** Names beside the vertices; the toggle only exists once names are loaded. */
+  const [showNames, setShowNames] = useState(true);
   /** Names fetched from the library, kept: labels ask for them every frame. */
   const nameCache = useRef(new Map<number, string | null>());
   const namesInputRef = useRef<HTMLInputElement>(null);
@@ -474,6 +476,8 @@ export default function Observatory() {
   const nameOfRef = useRef(nameOf);
   nameOfRef.current = nameOf;
   const named = names !== null;
+  /** Whether the canvas writes the names: loaded, and not switched off. */
+  const drawNames = named && showNames;
   /** A vertex as the visitor reads it: its name when it has one. */
   const vertexLabel = (v: number) => nameOf(v) ?? String(v);
   const [fullscreen, setFullscreen] = useState(false);
@@ -1835,7 +1839,7 @@ export default function Observatory() {
     const canvas = labelCanvasRef.current;
     const stage = stageRef.current;
     const weights = showWeights ? (meta?.edgeWeights ?? null) : null;
-    if (!canvas || !stage || !meta || (!showLabels && !weights)) {
+    if (!canvas || !stage || !meta || (!showLabels && !weights && !drawNames)) {
       if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
       return;
     }
@@ -1964,7 +1968,7 @@ export default function Observatory() {
         ctx.globalAlpha = 1;
       }
 
-      if (!showLabels || radius < 5) return;
+      if ((!showLabels && !drawNames) || radius < 5) return;
       const fontSize = Math.min(11, Math.round(radius * 1.05));
       ctx.font = `500 ${fontSize}px ${mono}`;
       ctx.fillStyle = '#ffffff';
@@ -1973,13 +1977,13 @@ export default function Observatory() {
         const x = sx(v);
         const y = sy(v);
         if (x < -20 || y < -20 || x > rect.width + 20 || y > rect.height + 20) continue;
-        ctx.fillText(String(v), x, y + 0.5);
+        if (showLabels) ctx.fillText(String(v), x, y + 0.5);
         shown.push(v);
       }
 
       // With a names file, each name beside its vertex, on a halo of the
       // background so edges do not cross it; only while few are on screen.
-      if (!named || shown.length > NAME_LABELS) return;
+      if (!drawNames || shown.length > NAME_LABELS) return;
       const nameOfNow = nameOfRef.current;
       ctx.font = `500 ${Math.max(10, fontSize)}px ${style.getPropertyValue('--font-sans')}`;
       ctx.textAlign = 'left';
@@ -1998,7 +2002,7 @@ export default function Observatory() {
     };
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
-  }, [meta, showLabels, showWeights, named]);
+  }, [meta, showLabels, showWeights, drawNames]);
 
   // ---- derived -----------------------------------------------------------
 
@@ -2841,6 +2845,15 @@ export default function Observatory() {
                       onClick={() => setShowWeights((on) => !on)}
                     >
                       <Weight size={15} />
+                    </IconButton>
+                  )}
+                  {named && (
+                    <IconButton
+                      label={showNames ? t.hideNames : t.showNames}
+                      pressed={showNames}
+                      onClick={() => setShowNames((on) => !on)}
+                    >
+                      <Tag size={15} />
                     </IconButton>
                   )}
                   <IconButton
