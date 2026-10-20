@@ -561,6 +561,7 @@ function SheetView({ sheet }: { sheet: Sheet }) {
         </Chapter>
         <Chapter index={2} title={q.bfs.title} delay={0.1}>
           <Bars bars={sheet.bfs} view={view} />
+          <p className={`comment ${styles.chapterCaption}`}>{q.meanTime}</p>
         </Chapter>
         <Chapter
           index={3}
@@ -585,6 +586,7 @@ function SheetView({ sheet }: { sheet: Sheet }) {
           }
         >
           <Bars bars={sheet.dfs[shownWay]} view={view} />
+          <p className={`comment ${styles.chapterCaption}`}>{q.meanTime}</p>
         </Chapter>
       </div>
 
