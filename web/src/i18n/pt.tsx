@@ -475,6 +475,8 @@ export const pt: Dictionary = {
     showControls: 'Mostrar os controles',
     hideWeights: 'Esconder os pesos das arestas',
     showWeights: 'Mostrar os pesos das arestas',
+    hideNames: 'Esconder os nomes dos vértices',
+    showNames: 'Mostrar os nomes dos vértices',
     hideNumbers: 'Esconder os números dos vértices',
     showNumbers: 'Mostrar os números dos vértices',
     stopFollowing: 'Parar de seguir a busca',
