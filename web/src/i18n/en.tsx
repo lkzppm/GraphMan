@@ -251,7 +251,7 @@ export const en = {
         title: 'Memory per representation',
         needs: (bytes: string) => `would need ${bytes}`,
       },
-      meanTime: '// mean time of one search from distinct roots',
+      meanTime: 'mean time',
       bfs: { title: 'BFS' },
       dfs: {
         title: 'DFS',

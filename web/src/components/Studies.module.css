@@ -210,9 +210,32 @@
   line-height: 1.25;
 }
 
-/* What a chapter's bars measure, under them (the BFS and DFS times). */
-.chapterCaption {
-  font-size: 12px;
+/* "Mean time" over the BFS and DFS chapters together: a label between two
+   hairlines, in a row of its own above the second and third columns. */
+.rowThree {
+  row-gap: 10px;
+}
+
+.rowThree > article {
+  grid-row: 2;
+}
+
+.spanLabel {
+  grid-row: 1;
+  grid-column: 2 / 4;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.spanLabel::before,
+.spanLabel::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
 }
 
 /* Iterative or recursive DFS, at the end of the chapter's heading. */
@@ -700,6 +723,13 @@ g[data-apart] .sideLabel {
 
   .rowThree .bar {
     grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  /* Stacked, the label sits in its place in the page: above the BFS. */
+  .rowThree > article,
+  .spanLabel {
+    grid-row: auto;
+    grid-column: auto;
   }
 
   .track,
