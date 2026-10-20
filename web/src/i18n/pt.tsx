@@ -218,6 +218,11 @@ export const pt: Dictionary = {
 
   studies: {
     overview: 'Geral',
+    parts: { label: 'Partes do trabalho', one: 'Parte 1', two: 'Parte 2' },
+    part2: {
+      title: 'Parte 2: grafos com pesos',
+      lead: 'Os grafos com pesos da disciplina e a rede de colaboração ainda não foram publicados. Quando forem, graphman study preenche esta página: os caminhos mínimos a partir do vértice 10, o Dijkstra médio com vetor e com heap, e os caminhos de Edsger W. Dijkstra até os cinco pesquisadores.',
+    },
     views: 'Visões',
     average: (n: string) => `média dos ${n} grafos`,
     of: (k: string, n: string) => `${k} de ${n}`,
