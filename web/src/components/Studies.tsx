@@ -559,9 +559,10 @@ function SheetView({ sheet }: { sheet: Sheet }) {
         <Chapter index={1} title={q.memory.title} delay={0.05}>
           <Bars bars={sheet.memory} view={view} />
         </Chapter>
+        {/* One label over both timing chapters: what their bars measure. */}
+        <p className={`label ${styles.spanLabel}`}>{q.meanTime}</p>
         <Chapter index={2} title={q.bfs.title} delay={0.1}>
           <Bars bars={sheet.bfs} view={view} />
-          <p className={`comment ${styles.chapterCaption}`}>{q.meanTime}</p>
         </Chapter>
         <Chapter
           index={3}
@@ -586,7 +587,6 @@ function SheetView({ sheet }: { sheet: Sheet }) {
           }
         >
           <Bars bars={sheet.dfs[shownWay]} view={view} />
-          <p className={`comment ${styles.chapterCaption}`}>{q.meanTime}</p>
         </Chapter>
       </div>
 
