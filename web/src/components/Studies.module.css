@@ -13,6 +13,12 @@
   padding-top: 26px;
 }
 
+/* A part with nothing to show yet: its words rise in when it is picked. */
+.partEmpty {
+  padding-top: 64px;
+  animation: rise 0.5s var(--ease) both;
+}
+
 /* ---- the menu ------------------------------------------------------------- */
 
 /* Under the site's nav and stuck to it: the overview and the six graphs
@@ -208,6 +214,34 @@
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.25;
+}
+
+/* "Mean time" over the BFS and DFS chapters together: a label between two
+   hairlines, in a row of its own above the second and third columns. */
+.rowThree {
+  row-gap: 10px;
+}
+
+.rowThree > article {
+  grid-row: 2;
+}
+
+.spanLabel {
+  grid-row: 1;
+  grid-column: 2 / 4;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.spanLabel::before,
+.spanLabel::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
 }
 
 /* Iterative or recursive DFS, at the end of the chapter's heading. */
@@ -697,6 +731,13 @@ g[data-apart] .sideLabel {
     grid-template-columns: 88px minmax(0, 1fr);
   }
 
+  /* Stacked, the label sits in its place in the page: above the BFS. */
+  .rowThree > article,
+  .spanLabel {
+    grid-row: auto;
+    grid-column: auto;
+  }
+
   .track,
   .rowThree .track,
   .rowLast .track {
@@ -773,5 +814,19 @@ g[data-apart] .sideLabel {
 
   .pickName {
     display: none;
+  }
+}
+
+/* Redeclared here: CSS modules scope animation names. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .partEmpty {
+    animation: none;
   }
 }

@@ -12,6 +12,7 @@ import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/
 import { logScale } from '@/lib/scale';
 import type { DiameterMethod, GraphStudy, Representation } from '@/lib/studies';
 import { useT } from '@/i18n/LocaleProvider';
+import Rail from './Rail';
 import Reveal from './Reveal';
 import styles from './Studies.module.css';
 
@@ -27,6 +28,8 @@ import styles from './Studies.module.css';
 
 /** The hash the overview is kept under; a graph is `#grafo-<n>`. */
 const OVERVIEW = 'geral';
+/** The address of Part 2's page. */
+const PART_2 = '#parte-2';
 
 /** The representations in the order the bars show them, and their blues. */
 const REPRESENTATIONS: Representation[] = ['adjacency_list', 'csr', 'adjacency_matrix'];
@@ -357,10 +360,13 @@ function meanSheet(studies: GraphStudy[], t: T, scales: Scales): Sheet {
 
 export default function Studies({ studies }: { studies: GraphStudy[] }) {
   const t = useT();
-  // The view: the overview, or the index of one graph. Kept in the hash.
+  // The part of the project (the rail on the left), and in Part 1 the view:
+  // the overview, or the index of one graph. Both kept in the hash.
+  const [part, setPart] = useState<1 | 2>(1);
   const [view, setView] = useState<number | null>(null);
   useEffect(() => {
     const read = () => {
+      setPart(location.hash === PART_2 ? 2 : 1);
       const match = /^#grafo-(\d+)$/.exec(location.hash);
       const i = match ? studies.findIndex((s) => graphNumber(s.name) === match[1]) : -1;
       setView(i >= 0 ? i : null);
@@ -371,6 +377,7 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
   }, [studies]);
   const choose = useCallback(
     (i: number | null) => {
+      setPart(1);
       setView(i);
       history.replaceState(
         null,
@@ -380,6 +387,13 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
     },
     [studies],
   );
+  const choosePart = (next: 1 | 2) => {
+    if (next === 1) choose(view);
+    else {
+      setPart(2);
+      history.replaceState(null, '', PART_2);
+    }
+  };
 
   // The menu is a tablist: the overview is stop 0, graph i is stop i + 1.
   // Left and right walk it from anywhere on the page, Home and End jump,
@@ -389,6 +403,8 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
   const last = studies.length;
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // Part 2 has no graph menu to walk.
+      if (part === 2) return;
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       const active = document.activeElement;
       const inMenu = active instanceof HTMLElement && tabs.current.includes(active as never);
@@ -417,14 +433,30 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [choose, last, stop]);
+  }, [choose, last, stop, part]);
 
-  if (studies.length === 0) {
+  const rail = (
+    <Rail
+      label={t.studies.parts.label}
+      stops={[
+        { id: '1', title: t.studies.parts.one },
+        { id: '2', title: t.studies.parts.two },
+      ]}
+      active={String(part)}
+      onSelect={(id) => choosePart(id === '2' ? 2 : 1)}
+      numbered={false}
+    />
+  );
+
+  // Part 2's graphs are not published yet: the page says so.
+  if (part === 2 || studies.length === 0) {
+    const empty = part === 2 ? t.studies.part2 : null;
     return (
       <section className={styles.section}>
-        <div className={`container ${styles.content}`}>
-          <h1 className={styles.title}>{t.studies.emptyTitle}</h1>
-          <p className={styles.lead}>{t.studies.emptyLead}</p>
+        {rail}
+        <div key={part} className={`container ${styles.content} ${styles.partEmpty}`}>
+          <h1 className={styles.title}>{empty ? empty.title : t.studies.emptyTitle}</h1>
+          <p className={styles.lead}>{empty ? empty.lead : t.studies.emptyLead}</p>
         </div>
       </section>
     );
@@ -457,6 +489,7 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
 
   return (
     <section className={styles.section}>
+      {rail}
       <nav className={styles.menu}>
         <div
           className={`container ${styles.menuInner}`}
@@ -559,6 +592,8 @@ function SheetView({ sheet }: { sheet: Sheet }) {
         <Chapter index={1} title={q.memory.title} delay={0.05}>
           <Bars bars={sheet.memory} view={view} />
         </Chapter>
+        {/* One label over both timing chapters: what their bars measure. */}
+        <p className={`label ${styles.spanLabel}`}>{q.meanTime}</p>
         <Chapter index={2} title={q.bfs.title} delay={0.1}>
           <Bars bars={sheet.bfs} view={view} />
         </Chapter>

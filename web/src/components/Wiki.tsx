@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowUpRight } from 'lucide-react';
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useT } from '@/i18n/LocaleProvider';
 import {
   SAMPLE_EDGES,
@@ -20,6 +20,7 @@ import {
   shortestPath,
 } from '@/lib/sample';
 import Code from './Code';
+import Rail from './Rail';
 import GraphFigure, { levelColour } from './GraphFigure';
 import Representations from './Representations';
 import Reveal from './Reveal';
@@ -128,12 +129,9 @@ export default function Wiki({ examples }: { examples: Record<string, string> })
   const t = useT();
   const l = t.library;
   const [active, setActive] = useState<ChapterId>(STOPS[0]);
-  const [hidden, setHidden] = useState(false);
-  const railRef = useRef<HTMLElement>(null);
 
   // The rail follows the reader: the current stop is the last one whose top
-  // has passed the upper third of the viewport. It fades out when the footer
-  // scrolls up to it and comes back as soon as the footer leaves.
+  // has passed the upper third of the viewport.
   useEffect(() => {
     let frame = 0;
     const update = () => {
@@ -145,9 +143,6 @@ export default function Wiki({ examples }: { examples: Record<string, string> })
         if (el && el.getBoundingClientRect().top <= line) current = id;
       }
       setActive(current);
-      const rail = railRef.current?.getBoundingClientRect();
-      const footer = document.querySelector('footer')?.getBoundingClientRect();
-      setHidden(!!rail && !!footer && footer.top < rail.bottom + 24);
     };
     const onScroll = () => {
       if (!frame) frame = requestAnimationFrame(update);
@@ -167,28 +162,11 @@ export default function Wiki({ examples }: { examples: Record<string, string> })
 
   return (
     <section className={`section ${styles.section}`}>
-      {/* The stops as a vertical path of vertices, fixed on the left; the
-          current one is filled and the edge is drawn down to it. */}
-      <nav
-        ref={railRef}
-        className={styles.rail}
-        aria-label={l.contents}
-        data-hidden={hidden || undefined}
-      >
-        <ol
-          style={{ '--progress': STOPS.indexOf(active), '--stops': STOPS.length } as CSSProperties}
-        >
-          {STOPS.map((id, i) => (
-            <li key={id}>
-              <a href={`#${id}`} data-active={active === id || undefined}>
-                <span className={styles.railNode} />
-                <span className={`mono ${styles.railIndex}`}>{String(i + 1).padStart(2, '0')}</span>
-                <span className={styles.railTitle}>{l.chapters[id].title}</span>
-              </a>
-            </li>
-          ))}
-        </ol>
-      </nav>
+      <Rail
+        label={l.contents}
+        stops={STOPS.map((id) => ({ id, title: l.chapters[id].title, href: `#${id}` }))}
+        active={active}
+      />
 
       <div className={`container ${styles.layout}`}>
         <div className={styles.content}>

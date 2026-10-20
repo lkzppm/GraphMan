@@ -217,6 +217,11 @@ export const en = {
   studies: {
     overview: 'Overview',
     views: 'Views',
+    parts: { label: 'Parts of the project', one: 'Part 1', two: 'Part 2' },
+    part2: {
+      title: 'Part 2: weighted graphs',
+      lead: "The course's weighted graphs and its collaboration network are not published yet. When they are, graphman study fills this page: the shortest paths from vertex 10, the mean Dijkstra with a vector and with a heap, and the paths from Edsger W. Dijkstra to the five researchers.",
+    },
     average: (n: string) => `mean of the ${n} graphs`,
     of: (k: string, n: string) => `${k} of ${n}`,
     emptyTitle: 'No results yet.',
@@ -251,9 +256,10 @@ export const en = {
         title: 'Memory per representation',
         needs: (bytes: string) => `would need ${bytes}`,
       },
-      bfs: { title: 'Mean time of one BFS' },
+      meanTime: 'mean time',
+      bfs: { title: 'BFS' },
       dfs: {
-        title: 'Mean time of one DFS',
+        title: 'DFS',
         way: 'Implementation',
         ways: { iterative: 'Iterative', recursive: 'Recursive' },
       },
