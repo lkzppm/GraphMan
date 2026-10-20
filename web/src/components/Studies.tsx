@@ -559,6 +559,8 @@ function SheetView({ sheet }: { sheet: Sheet }) {
         <Chapter index={1} title={q.memory.title} delay={0.05}>
           <Bars bars={sheet.memory} view={view} />
         </Chapter>
+        {/* One label over both timing chapters: what their bars measure. */}
+        <p className={`label ${styles.spanLabel}`}>{q.meanTime}</p>
         <Chapter index={2} title={q.bfs.title} delay={0.1}>
           <Bars bars={sheet.bfs} view={view} />
         </Chapter>

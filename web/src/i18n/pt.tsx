@@ -253,9 +253,10 @@ export const pt: Dictionary = {
         title: 'Memória por representação',
         needs: (bytes: string) => `precisaria de ${bytes}`,
       },
-      bfs: { title: 'Tempo médio de uma BFS' },
+      meanTime: 'tempo médio',
+      bfs: { title: 'BFS' },
       dfs: {
-        title: 'Tempo médio de uma DFS',
+        title: 'DFS',
         way: 'Implementação',
         ways: { iterative: 'Iterativa', recursive: 'Recursiva' },
       },
