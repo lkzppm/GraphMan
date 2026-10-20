@@ -472,6 +472,8 @@ export const en = {
     showControls: 'Show the controls',
     hideWeights: 'Hide edge weights',
     showWeights: 'Show edge weights',
+    hideNames: 'Hide vertex names',
+    showNames: 'Show vertex names',
     hideNumbers: 'Hide vertex numbers',
     showNumbers: 'Show vertex numbers',
     stopFollowing: 'Stop following the search',
