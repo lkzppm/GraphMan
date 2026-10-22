@@ -136,15 +136,27 @@ co-authored papers, so a small weight means close collaborators):
 **Timing rule** (carried over from Part 1): measure the algorithm only, not
 parsing or writing results.
 
-## Open points (until the files are downloaded)
+## The files (downloaded 2026-10-22)
 
-- File names, sizes and whether the weighted graphs are the Part 1 graphs
-  with weights added. If they are, `n` reaches 4.8M and the **vector**
-  Dijkstra is `O(n²)` per source, about 2.3·10¹³ scan steps per run on
-  graphs 5 and 6: 100 runs are out of reach and the table must say so
-  honestly (time budget, smaller `k`, flagged cell), like the Part 1
-  matrix memory refusals.
-- The vertex-name file's format (likely `index,name` per line) and its
-  encoding (UTF-8 is needed for `Éva`).
-- Duplicate edges and self-loops in weighted files: whether they occur, and
-  which weight a duplicate keeps (see `spec/PHASE2.md`, section 3).
+| File | Vertices | Edges | Weights | Notes |
+|---|---|---|---|---|
+| `grafo_W_3.txt` | 100,000 | 6,099,868 | 0 to 10 | 73 duplicate lines, connected |
+| `grafo_W_4.txt` | 1,000,000 | 30,999,944 | 0 to 10 | 34 duplicate lines, connected |
+| `grafo_W_5.txt` | 10,000,000 | 39,999,991 | 0 to 10 | 4 duplicate lines, connected |
+| `rede_colaboracao.txt` | 722,385 | 2,272,543 | 0.0037 to 113 | 77,486 components, largest 576,309 |
+
+- The weighted graphs are new random graphs, not the Part 1 graphs with
+  weights added; the batch has no `grafo_W_1` or `grafo_W_2`.
+- No file has a negative weight or a self-loop, so every question is a
+  Dijkstra; the refusal is shown on the handout's Figure 1 instead.
+- The vertex names are a separate file, `rede_colaboracao_vertices.txt`:
+  `index,name` per line, no header, UTF-8. The six names asked for are there
+  with the exact spelling (Dijkstra 2722, Turing 11365, J. B. Kruskal
+  471365, Kleinberg 5709, Tardos 11386, Figueiredo 343930).
+- Alan M. Turing's only edge goes to vertex 717737, whose only edge is back
+  to him: the two are a component of their own, so there is no path from
+  Dijkstra and the answer is "unreachable", not a distance.
+- The vector Dijkstra is `O(n²)` per source: about 2 s on `grafo_W_3`,
+  minutes on `grafo_W_4` and hours on `grafo_W_5` (Apple M5). The study runs
+  it under `--dijkstra-budget`, reporting the runs that finished or an
+  estimate from the run cut short, like the Part 1 matrix memory refusals.
