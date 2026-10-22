@@ -10,10 +10,12 @@ import {
 } from 'react';
 import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/lib/format';
 import { logScale } from '@/lib/scale';
-import type { DiameterMethod, GraphStudy, Representation } from '@/lib/studies';
+import type { DiameterMethod, GraphStudy, Representation, WeightedStudy } from '@/lib/studies';
 import { useT } from '@/i18n/LocaleProvider';
 import Rail from './Rail';
 import Reveal from './Reveal';
+import { Bars, Chapter, Swap, type Bar } from './studies-kit';
+import StudiesPart2 from './StudiesPart2';
 import styles from './Studies.module.css';
 
 /* The case studies: one sheet per view, the seven questions of the
@@ -73,17 +75,6 @@ function timing(
 }
 
 /* ---- the sheet: what one view shows ------------------------------------- */
-
-interface Bar {
-  key: string;
-  label: string;
-  colour: string;
-  /** 0..1 of the track; null draws nothing but the value. */
-  width: number | null;
-  value: ReactNode;
-  /** Dashed outline instead of a fill: something that was not measured. */
-  ghost?: boolean;
-}
 
 interface Sheet {
   /** The view this sheet is: what `Swap` keys its crossfade on. */
@@ -358,7 +349,14 @@ function meanSheet(studies: GraphStudy[], t: T, scales: Scales): Sheet {
 
 /* ---- the page ------------------------------------------------------------ */
 
-export default function Studies({ studies }: { studies: GraphStudy[] }) {
+export default function Studies({
+  studies,
+  weighted,
+}: {
+  studies: GraphStudy[];
+  /** Part 2: the weighted course graphs and the collaboration network. */
+  weighted: WeightedStudy[];
+}) {
   const t = useT();
   // The part of the project (the rail on the left), and in Part 1 the view:
   // the overview, or the index of one graph. Both kept in the hash.
@@ -366,7 +364,8 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
   const [view, setView] = useState<number | null>(null);
   useEffect(() => {
     const read = () => {
-      setPart(location.hash === PART_2 ? 2 : 1);
+      // Part 2 keeps its own views under its prefix (`#parte-2-w3`, ...).
+      setPart(location.hash.startsWith(PART_2) ? 2 : 1);
       const match = /^#grafo-(\d+)$/.exec(location.hash);
       const i = match ? studies.findIndex((s) => graphNumber(s.name) === match[1]) : -1;
       setView(i >= 0 ? i : null);
@@ -448,7 +447,16 @@ export default function Studies({ studies }: { studies: GraphStudy[] }) {
     />
   );
 
-  // Part 2's graphs are not published yet: the page says so.
+  if (part === 2 && weighted.length > 0) {
+    return (
+      <section className={`${styles.section} ${styles.sectionFill}`}>
+        {rail}
+        <StudiesPart2 studies={weighted} />
+      </section>
+    );
+  }
+
+  // A part whose study has not run yet: the page says so.
   if (part === 2 || studies.length === 0) {
     const empty = part === 2 ? t.studies.part2 : null;
     return (
@@ -663,86 +671,6 @@ function SheetView({ sheet }: { sheet: Sheet }) {
           <Bars bars={sheet.diameter} view={view} />
         </Chapter>
       </div>
-    </div>
-  );
-}
-
-/** Numbers that change when the view does: the span is keyed by the view,
-    so React swaps its contents and the new ones fade up into place. */
-function Swap({
-  view,
-  className,
-  children,
-}: {
-  view: string;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <span key={view} className={`${styles.swap} ${className ?? ''}`}>
-      {children}
-    </span>
-  );
-}
-
-/** A question of the assignment: mono index, title, hairline, the drawing. */
-function Chapter({
-  index,
-  title,
-  delay,
-  tools,
-  children,
-}: {
-  index: number;
-  title: string;
-  delay: number;
-  /** Controls at the right end of the heading. */
-  tools?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <Reveal as="article" className={styles.chapter} delay={delay}>
-      <header className={styles.chapterHead}>
-        <span className={`mono ${styles.chapterIndex}`}>{String(index).padStart(2, '0')}</span>
-        <h2 className={styles.chapterTitle}>{title}</h2>
-        {tools}
-      </header>
-      {children}
-    </Reveal>
-  );
-}
-
-/** Horizontal bars, label on the left, value after the bar. The fill is
-    always in the tree (width 0 when there is nothing to draw) so a change
-    of view slides it instead of replacing it. */
-function Bars({ bars, view }: { bars: Bar[]; view: string }) {
-  return (
-    <div className={styles.bars}>
-      {bars.map((bar) => (
-        <div
-          key={bar.key}
-          className={styles.bar}
-          data-ghost={bar.ghost || undefined}
-          data-bare={bar.label === '' || undefined}
-          data-empty={bar.width === null || undefined}
-        >
-          {bar.label !== '' && <span className={`mono ${styles.barLabel}`}>{bar.label}</span>}
-          <span className={styles.track}>
-            <span
-              className={styles.fill}
-              style={
-                {
-                  '--w': bar.width === null ? '0%' : `${Math.max(0.6, bar.width * 100)}%`,
-                  '--colour': bar.colour,
-                } as CSSProperties
-              }
-            />
-            <span className={`mono ${styles.value}`}>
-              <Swap view={view}>{bar.value}</Swap>
-            </span>
-          </span>
-        </div>
-      ))}
     </div>
   );
 }

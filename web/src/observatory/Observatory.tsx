@@ -1,12 +1,10 @@
 'use client';
 
 import {
-  ArrowDown01,
   Brackets,
   GalleryHorizontalEnd,
   Layers,
   Network,
-  ArrowDownNarrowWide,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -34,6 +32,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  RouteOff,
   Ruler,
   Scan,
   Trash2,
@@ -342,6 +341,8 @@ const MORPH_MS = 700;
 const PATH_FILL = 0.62;
 /** Pointer travel (CSS px) under which a press is a click, not a drag or a pan. */
 const CLICK_SLOP = 4;
+/** Two clicks on one vertex closer than this are a double click. */
+const DOUBLE_CLICK_MS = 500;
 /** The vertex card's widest usual line, for keeping it inside the window. */
 const TOOLTIP_WIDTH = 190;
 
@@ -440,6 +441,9 @@ export default function Observatory() {
   const [pathOnly, setPathOnly] = useState(false);
   const [search, setSearch] = useState<Search | null>(null);
   const [reveal, setReveal] = useState(0);
+  /** With a destination loaded, the timeline walks its path instead: the
+      vertex index along it (fractional while moving). */
+  const [walk, setWalk] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [simulate, setSimulate] = useState(true);
   const [dragOver, setDragOver] = useState(false);
@@ -486,6 +490,8 @@ export default function Observatory() {
   metaRef.current = meta;
   const searchRef = useRef<Search | null>(null);
   searchRef.current = search;
+  /** The last click on a vertex, and the origin it replaced. */
+  const lastClick = useRef<{ vertex: number; at: number; origin: string } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   /** The lit component (1 = largest), 0 for none. */
   const [component, setComponent] = useState(0);
@@ -569,6 +575,7 @@ export default function Observatory() {
   const pinnedRef = useRef(false);
   const hoverFrame = useRef(0);
   const revealRef = useRef(0);
+  const walkRef = useRef(0);
   /** Keep the whole graph in view while the layout settles, until the user takes over. */
   const autoFit = useRef(false);
 
@@ -1327,9 +1334,22 @@ export default function Observatory() {
         // The search picture is the tree: no selection ring or neighbourhood on the origin.
         setSelected(0);
         renderer.setSelected(0);
-        revealRef.current = 0;
-        setReveal(0);
-        renderer.setReveal(0);
+        if (path) {
+          // A destination reached: the search is shown whole, up to it, and
+          // the timeline walks the path.
+          const end = (moves ? moves.trail.length : span) - 1;
+          revealRef.current = end;
+          setReveal(end);
+          renderer.setReveal(span - 1);
+          walkRef.current = 0;
+          setWalk(0);
+          renderer.setWalk(0);
+        } else {
+          revealRef.current = 0;
+          setReveal(0);
+          renderer.setReveal(0);
+          renderer.setWalk(-1);
+        }
         setPlaying(true);
       } catch (error) {
         setNotice(error instanceof Error ? error.message : String(error));
@@ -1342,7 +1362,7 @@ export default function Observatory() {
   // grows slowly with the tree, so small graphs stay watchable and large
   // ones finish within seconds.
   useEffect(() => {
-    if (!playing || !search) return;
+    if (!playing || !search || search.path) return;
     const total = search.steps;
     const duration = Math.min(8000, Math.max(1600, total * 6));
     rendererRef.current?.setRevealRate((Math.max(search.span - 1, 1) / duration) * 1000);
@@ -1367,6 +1387,29 @@ export default function Observatory() {
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [playing, search, fitDiscovered]);
+
+  // With a destination, playing walks the path from the origin to it, a
+  // quarter second an edge (between 1.2 and 6 seconds in all).
+  useEffect(() => {
+    if (!playing || !search?.path) return;
+    const last = search.path.length - 1;
+    const duration = Math.min(6000, Math.max(1200, last * 250));
+    let frame = 0;
+    let start: number | null = null;
+    const from = walkRef.current >= last ? 0 : walkRef.current;
+    const tick = (now: number) => {
+      if (start === null) start = now - (from / Math.max(last, 1)) * duration;
+      const t = Math.min(1, (now - start) / duration);
+      const position = t * last;
+      walkRef.current = position;
+      setWalk(position);
+      rendererRef.current?.setWalk(position);
+      if (t < 1) frame = requestAnimationFrame(tick);
+      else setPlaying(false);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [playing, search]);
 
   // The structure strip reads Dijkstra's frontier through this, replayed
   // to a step by the library.
@@ -1428,6 +1471,17 @@ export default function Observatory() {
   const scrubToRank = (rank: number) =>
     scrub(search?.stepOf ? search.stepOf[Math.max(0, Math.min(rank, search.span - 1))] : rank);
 
+  /** Moves the walk along the path to a step (a vertex index along it). */
+  const walkTo = (step: number) => {
+    if (!search?.path) return;
+    keysTarget.current = 'search';
+    setPlaying(false);
+    const position = Math.max(0, Math.min(search.path.length - 1, step));
+    walkRef.current = position;
+    setWalk(position);
+    rendererRef.current?.setWalk(position);
+  };
+
   /** Moves the timeline to a level: a BFS shows the whole level, a DFS jumps
       to the first vertex discovered at that depth. */
   const scrubToLevel = (level: number) => {
@@ -1444,6 +1498,10 @@ export default function Observatory() {
 
   /** The discovery rank the timeline is at, and the level of its vertex. */
   const revealRank = search ? rankOf(search, reveal) : 0;
+  /** Where the timeline is and where it ends: the walk along a loaded
+      path, or the search's steps. */
+  const timelineAt = search?.path ? walk : reveal;
+  const timelineEnd = search ? (search.path ? search.path.length : search.steps) - 1 : 0;
   const revealLevel = search ? search.levels[search.order[Math.round(revealRank)]] : 0;
 
   const downloadTree = () => {
@@ -1656,11 +1714,16 @@ export default function Observatory() {
         setHovered(g.vertex);
         renderer?.setHovered(g.vertex);
       }
-      // In distance mode, with an origin already chosen, a click on another
-      // vertex picks the target; otherwise it picks the origin.
-      if (mode === 'distance' && rootValid && g.vertex !== root) {
-        setTargetInput(vertexLabel(g.vertex));
-      } else setRootInput(vertexLabel(g.vertex));
+      // A click picks the origin. The second click of a double click is
+      // left alone: the double click picks the target and puts back the
+      // origin the first click replaced.
+      const last = lastClick.current;
+      const second =
+        last !== null && last.vertex === g.vertex && event.timeStamp - last.at < DOUBLE_CLICK_MS;
+      if (!second) {
+        lastClick.current = { vertex: g.vertex, at: event.timeStamp, origin: rootInput };
+        setRootInput(vertexLabel(g.vertex));
+      }
     }
     // A click on the background (a pan that never moved) clears the selection.
     if (
@@ -1728,10 +1791,19 @@ export default function Observatory() {
     revealLevel: 0,
     scrub,
     scrubToLevel,
+    walkTo,
     component,
     selectComponent,
   });
-  keysRef.current = { search, revealLevel, scrub, scrubToLevel, component, selectComponent };
+  keysRef.current = {
+    search,
+    revealLevel,
+    scrub,
+    scrubToLevel,
+    walkTo,
+    component,
+    selectComponent,
+  };
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1750,6 +1822,13 @@ export default function Observatory() {
         event.preventDefault();
         const dir = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
         k.selectComponent(Math.max(1, Math.min(count, k.component + dir)));
+        return;
+      }
+      if (arrow && k.search?.path) {
+        // A destination loaded: the arrows walk its path, a vertex at a
+        // time (ten with shift).
+        event.preventDefault();
+        k.walkTo(Math.round(walkRef.current) + arrow * (event.shiftKey ? 10 : 1));
         return;
       }
       if (k.search && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
@@ -2041,6 +2120,71 @@ export default function Observatory() {
   const run = () => {
     if (canRun) runSearch(kind, root, mode === 'distance' ? target : 0);
   };
+
+  /**
+   * A double click on a vertex makes it the target. With a search on
+   * screen, its tree already holds the answer: the path is read back along
+   * the parents and the distance shown, nothing runs again and the replay
+   * stays where it is. Only a search that stopped at an earlier target
+   * before reaching this vertex runs on to it.
+   */
+  const pickTarget = (v: number) => {
+    const last = lastClick.current;
+    if (last?.vertex === v) setRootInput(last.origin);
+    lastClick.current = null;
+    setMode('distance');
+    setTargetInput(vertexLabel(v));
+    const s = searchRef.current;
+    if (!s) return;
+    const reached = s.ranks[v] !== UNREACHED;
+    if (reached && s.ranks[v] >= s.span) {
+      runSearch(s.kind, s.root, v);
+      return;
+    }
+    let path: Uint32Array | null = null;
+    if (reached) {
+      const steps: number[] = [];
+      for (let u = v; steps.length <= s.span; u = s.parents[u]) {
+        steps.push(u);
+        if (u === s.root) break;
+      }
+      path = Uint32Array.from(steps.reverse());
+    }
+    const renderer = rendererRef.current;
+    renderer?.setPath(v, path);
+    setSearch({ ...s, target: v, path });
+    if (path) {
+      // The search is shown whole, the timeline walks the path.
+      revealRef.current = s.steps - 1;
+      setReveal(s.steps - 1);
+      renderer?.setReveal(s.span - 1);
+      walkRef.current = 0;
+      setWalk(0);
+      renderer?.setWalk(0);
+      setPlaying(true);
+    } else renderer?.setWalk(-1);
+  };
+
+  /**
+   * Drops the destination and gives the timeline back to the search. A
+   * search that stopped at the destination runs again to the end; one that
+   * already covered everything is just shown whole.
+   */
+  const clearTarget = () => {
+    setMode('search');
+    setTargetInput('');
+    const s = searchRef.current;
+    if (!s) return;
+    if (s.span < s.result.reached) {
+      runSearch(s.kind, s.root, 0);
+      return;
+    }
+    const renderer = rendererRef.current;
+    renderer?.setPath(0, null);
+    renderer?.setWalk(-1);
+    setPlaying(false);
+    setSearch({ ...s, target: 0, path: null });
+  };
   const kindLabel = kind === 'dijkstra' ? t.dijkstra : kind.toUpperCase();
   const runLabel =
     mode === 'distance'
@@ -2191,6 +2335,29 @@ export default function Observatory() {
                     {formatBytes(meta.bytes)} · {t.parsedIn(formatMs(meta.parseMs))}
                   </span>
                 </div>
+                {/* The names file: a tag that adds one, blue once loaded; then
+                    hovering it names the file and turns it into a remove. */}
+                <span className={styles.namesAction}>
+                  <button
+                    type="button"
+                    className={styles.fileAction}
+                    aria-label={names ? `${t.names.remove}: ${names.file}` : t.names.add}
+                    title={names ? undefined : t.names.add}
+                    data-active={names ? true : undefined}
+                    data-names={names ? true : undefined}
+                    onClick={() => (names ? removeNames() : namesInputRef.current?.click())}
+                  >
+                    <Tag size={14} className={styles.namesIcon} aria-hidden="true" />
+                    <X size={14} className={styles.namesRemoveIcon} aria-hidden="true" />
+                  </button>
+                  {names && (
+                    <span className={styles.fileInfoTip} data-align="end" role="tooltip">
+                      <span className={styles.namesTipFile}>{names.file}</span>
+                      <span>{t.names.count(names.count)}</span>
+                      <span className={styles.namesTipHint}>{t.names.remove}</span>
+                    </span>
+                  )}
+                </span>
                 <button
                   type="button"
                   className={styles.fileAction}
@@ -2202,34 +2369,6 @@ export default function Observatory() {
                 >
                   <MemoryStick size={14} />
                 </button>
-              </div>
-              <div className={styles.namesRow}>
-                <Tag size={12} aria-hidden="true" />
-                {names ? (
-                  <>
-                    <span className={`mono ${styles.namesFile}`} title={names.file}>
-                      {names.file}
-                    </span>
-                    <span className={styles.namesCount}>{t.names.count(names.count)}</span>
-                    <button
-                      type="button"
-                      className={styles.namesRemove}
-                      aria-label={t.names.remove}
-                      title={t.names.remove}
-                      onClick={removeNames}
-                    >
-                      <X size={12} />
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    className={styles.namesAdd}
-                    onClick={() => namesInputRef.current?.click()}
-                  >
-                    {t.names.add}
-                  </button>
-                )}
               </div>
               <Swap view={memoryOpen ? 'memory' : componentsOpen ? 'components' : 'summary'}>
                 {memoryOpen ? (
@@ -2283,6 +2422,11 @@ export default function Observatory() {
               actions={
                 search && (
                   <>
+                    {search.target !== 0 && (
+                      <IconButton label={t.clearTarget} onClick={clearTarget}>
+                        <RouteOff size={14} />
+                      </IconButton>
+                    )}
                     <IconButton label={t.downloadTree} onClick={downloadTree}>
                       <Download size={14} />
                     </IconButton>
@@ -2452,7 +2596,20 @@ export default function Observatory() {
                     />
                     <Stat label={t.time} value={formatMs(search.elapsedMs)} />
                   </div>
-                  {search.kind === 'bfs' ? (
+                  {search.path ? (
+                    <Itinerary
+                      t={t}
+                      title={search.kind === 'dfs' ? t.itinerary.treePath : t.itinerary.title}
+                      path={search.path}
+                      distanceOf={(v) =>
+                        search.distances ? search.distances[v] : search.levels[v]
+                      }
+                      label={vertexLabel}
+                      walk={walk}
+                      onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
+                      onStep={walkTo}
+                    />
+                  ) : search.kind === 'bfs' ? (
                     <LevelProfile
                       t={t}
                       sizes={search.levelSizes}
@@ -2460,16 +2617,14 @@ export default function Observatory() {
                       onSelect={scrubToLevel}
                     />
                   ) : search.distances && search.settled ? (
-                    <DistanceList
+                    <DistanceProfile
                       t={t}
-                      root={search.root}
                       settled={search.settled}
-                      ranks={search.ranks}
                       distances={search.distances}
                       unreached={(meta?.vertices ?? 0) - search.settled.length}
-                      target={search.target}
-                      reveal={reveal}
-                      onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
+                      label={vertexLabel}
+                      reveal={revealRank}
+                      onScrub={scrubToRank}
                       onPick={(v) => {
                         setMode('distance');
                         setTargetInput(vertexLabel(v));
@@ -2489,13 +2644,13 @@ export default function Observatory() {
                   )}
                   <div className={styles.playback}>
                     <IconButton
-                      label={playing ? t.pause : reveal >= search.steps - 1 ? t.replay : t.play}
+                      label={playing ? t.pause : timelineAt >= timelineEnd ? t.replay : t.play}
                       onClick={() => setPlaying((p) => !p)}
                       accent
                     >
                       {playing ? (
                         <Pause size={14} />
-                      ) : reveal >= search.steps - 1 ? (
+                      ) : timelineAt >= timelineEnd ? (
                         <RotateCcw size={14} />
                       ) : (
                         <Play size={14} />
@@ -2504,14 +2659,18 @@ export default function Observatory() {
                     <input
                       type="range"
                       min={0}
-                      max={Math.max(search.steps - 1, 0)}
+                      max={Math.max(timelineEnd, 0)}
                       step={1}
-                      value={Math.round(reveal)}
-                      onChange={(event) => scrub(Number(event.target.value))}
-                      aria-label={t.progress}
+                      value={Math.round(timelineAt)}
+                      onChange={(event) =>
+                        search.path
+                          ? walkTo(Number(event.target.value))
+                          : scrub(Number(event.target.value))
+                      }
+                      aria-label={search.path ? t.itinerary.progress : t.progress}
                     />
                     <span className={`mono ${styles.hint}`}>
-                      {formatInt(Math.min(Math.round(reveal) + 1, search.steps))}
+                      {formatInt(Math.min(Math.round(timelineAt) + 1, timelineEnd + 1))}
                     </span>
                   </div>
                 </div>
@@ -2685,7 +2844,10 @@ export default function Observatory() {
           onPointerLeave={onPointerLeave}
           onWheel={onWheel}
           onDoubleClick={(event) => {
-            if (onCanvas(event) && !pick(event.clientX, event.clientY)) fit();
+            if (!onCanvas(event)) return;
+            const v = pick(event.clientX, event.clientY);
+            if (v) pickTarget(v);
+            else fit();
           }}
           style={{
             cursor: gesture.current.mode === 'pan' ? 'grabbing' : hovered ? 'pointer' : 'default',
@@ -3637,6 +3799,8 @@ function Tile({
     the old ones sink into it. */
 function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
   const [of, setOf] = useState<'degree' | 'weight'>('degree');
+  /** The column under the pointer: its value replaces the unit above. */
+  const [hot, setHot] = useState<number | null>(null);
   const weights = meta.edgeWeights;
   const showing = weights ? of : 'degree';
   const degreeBars = useMemo(() => degreeHistogram(meta.degrees, meta.degree.max), [meta]);
@@ -3671,7 +3835,10 @@ function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
                 type="button"
                 className={`label ${styles.tileLabel}`}
                 aria-pressed={showing === which}
-                onClick={() => setOf(which)}
+                onClick={() => {
+                  setOf(which);
+                  setHot(null);
+                }}
               >
                 {t.distributions[which]}
               </button>
@@ -3681,16 +3848,22 @@ function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
           <span className={`label ${styles.tileLabel}`}>{t.distributions.degree}</span>
         )}
         <span className={styles.layers}>
-          {layers.map((layer) => (
-            <span
-              key={layer.which}
-              className={styles.tileHint}
-              data-active={layer.which === showing || undefined}
-              aria-hidden={layer.which !== showing}
-            >
-              {t.distributionUnit[layer.which]}
-            </span>
-          ))}
+          {layers.map((layer) => {
+            const bar = layer.which === showing && hot !== null ? layer.bars[hot] : null;
+            return (
+              <span
+                key={layer.which}
+                className={`${styles.tileHint} ${bar ? `mono ${styles.hintValue}` : ''}`}
+                data-active={layer.which === showing || undefined}
+                aria-hidden={layer.which !== showing}
+                aria-live="polite"
+              >
+                {bar
+                  ? t.distributionBucket[layer.which](bar.range, formatInt(bar.count))
+                  : t.distributionUnit[layer.which]}
+              </span>
+            );
+          })}
         </span>
       </div>
       <div className={styles.layers}>
@@ -3701,7 +3874,18 @@ function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
               key={layer.which}
               className={styles.bars}
               data-active={layer.which === showing || undefined}
+              data-hover={(layer.which === showing && hot !== null) || undefined}
               aria-hidden={layer.which !== showing}
+              // The column under the pointer, found by position so a
+              // one-pixel column is as easy to reach as a wide one.
+              onPointerMove={(event) => {
+                if (layer.which !== showing) return;
+                const rect = event.currentTarget.getBoundingClientRect();
+                const share = (event.clientX - rect.left) / rect.width;
+                const n = layer.bars.length;
+                setHot(Math.min(n - 1, Math.max(0, Math.floor(share * n))));
+              }}
+              onPointerLeave={() => setHot(null)}
             >
               {layer.bars.map((b, i) => (
                 <span
@@ -3710,7 +3894,7 @@ function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
                     height: `${Math.max(b.count > 0 ? 3 : 0, (b.count / peak) * 100)}%`,
                     transitionDelay: `${(i * 160) / layer.bars.length}ms`,
                   }}
-                  title={t.distributionBucket[layer.which](b.range, formatInt(b.count))}
+                  data-hot={(layer.which === showing && hot === i) || undefined}
                 />
               ))}
             </div>
@@ -4167,138 +4351,218 @@ function LevelProfile({
   );
 }
 
-/** Height of one row of the distance list, in CSS pixels. */
-const DISTANCE_ROW = 20;
+/**
+ * A destination's path as an itinerary, one row per vertex from the origin,
+ * each with the weight of the edge that reaches it (1 without weights) and
+ * the distance so far (the bar). The timeline walks it: rows light up to
+ * the step the walk is on, which wears a ring on the canvas too. Hovering
+ * a row marks its vertex; clicking it walks there.
+ */
+function Itinerary({
+  t,
+  title,
+  path,
+  distanceOf,
+  label,
+  walk,
+  onHover,
+  onStep,
+}: {
+  t: Strings;
+  title: string;
+  /** Origin to destination, both included. */
+  path: Uint32Array;
+  /** The distance from the origin: Dijkstra's, or the level of a BFS or DFS. */
+  distanceOf: (v: number) => number;
+  /** A vertex as the visitor reads it: its name, or its number. */
+  label: (v: number) => string;
+  /** The step the walk is on (fractional while it moves). */
+  walk: number;
+  onHover: (v: number) => void;
+  onStep: (step: number) => void;
+}) {
+  const listRef = useRef<HTMLOListElement>(null);
+  const total = distanceOf(path[path.length - 1]);
+  const current = Math.floor(walk + 0.001);
+
+  // Keep the step the walk is on in view.
+  useEffect(() => {
+    const row = listRef.current?.querySelector<HTMLElement>('[data-current="true"]');
+    row?.scrollIntoView({ block: 'nearest' });
+  }, [current]);
+
+  return (
+    <div className={`${styles.chart} ${styles.shedFourth}`} aria-label={title}>
+      <div className={styles.chartHeader}>
+        <span className={`label ${styles.tileLabel}`}>{title}</span>
+        <span className={`mono ${styles.tileHint}`}>{t.itinerary.edges(path.length - 1)}</span>
+      </div>
+      <ol ref={listRef} className={styles.itinerary}>
+        {Array.from(path, (v, i) => {
+          const d = distanceOf(v);
+          const lit = i <= current;
+          return (
+            <li key={v}>
+              <button
+                type="button"
+                className={`${styles.step} ${lit ? styles.levelLit : ''} ${i === current ? styles.levelCurrent : ''}`}
+                data-current={i === current ? 'true' : undefined}
+                data-end={i === 0 || i === path.length - 1 || undefined}
+                title={t.itinerary.goTo(label(v))}
+                onClick={() => onStep(i)}
+                onPointerEnter={() => onHover(v)}
+                onPointerLeave={() => onHover(0)}
+              >
+                <span className={`mono ${styles.stepWeight}`}>
+                  {i === 0 ? '' : `+${formatWeight(d - distanceOf(path[i - 1]))}`}
+                </span>
+                <span className={styles.stepVertex}>{label(v)}</span>
+                <span className={styles.levelTrack}>
+                  <span
+                    className={styles.levelBar}
+                    style={{ width: `${total > 0 ? Math.max(1.5, (d / total) * 100) : 100}%` }}
+                  />
+                </span>
+                <span className={`mono ${styles.distValue}`}>{formatWeight(d)}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
 
 /**
- * What Dijkstra answers: the distance from the origin to every other
- * vertex, one row each, closest first (the settle order), with a bar to
- * scale. Rows light up as the replay settles them; hovering one marks the
- * vertex on the canvas, clicking one draws the shortest path to it. Only
- * the rows in view are rendered, so a million vertices scroll like ten.
+ * Dijkstra's whole answer at a glance: how many of the reached vertices lie
+ * within each distance of the origin, a curve that climbs from the origin
+ * to everyone. Vertices settle in distance order, so the timeline is a
+ * point on the curve: blue up to it, and a click or a drag moves it. The
+ * median distance is marked, and the farthest vertex is one click from its
+ * path.
  */
-function DistanceList({
+function DistanceProfile({
   t,
-  root,
   settled,
-  ranks,
   distances,
   unreached,
-  target,
+  label,
   reveal,
-  onHover,
+  onScrub,
   onPick,
 }: {
   t: Strings;
-  root: number;
   /** Settled vertices, closest first, the origin included. */
   settled: Uint32Array;
-  /** Settle rank of each vertex (UNREACHED if not settled). */
-  ranks: Uint32Array;
   distances: Float64Array;
   unreached: number;
-  target: number;
+  label: (v: number) => string;
   reveal: number;
-  onHover: (v: number) => void;
+  onScrub: (rank: number) => void;
   onPick: (v: number) => void;
 }) {
-  const listRef = useRef<HTMLDivElement>(null);
-  const [view, setView] = useState({ top: 0, height: 0 });
-  /** Closest first (the settle order), or by vertex number. */
-  const [by, setBy] = useState<'distance' | 'vertex'>('distance');
-  // The origin is rank 0; the rows are everyone else.
-  const count = Math.max(0, settled.length - 1);
-  const farthest = count ? distances[settled[count]] : 0;
-  const current = Math.round(reveal);
-  const byVertex = useMemo(() => (by === 'vertex' ? settled.slice(1).sort() : null), [by, settled]);
-  /** The vertex on row `i`. */
-  const rowVertex = (i: number) => (byVertex ? byVertex[i] : settled[i + 1]);
-  // The index column fits the largest vertex number, the same on every row.
-  const indexWidth = `calc(${String(distances.length - 1).length}ch + 12px)`;
+  const W = 300;
+  const H = 72;
+  const clipId = useId();
+  const total = settled.length;
+  const last = settled[total - 1];
+  const farthest = distances[last];
+  const median = distances[settled[Math.floor((total - 1) / 2)]];
+  /** x of a distance, y of a share of the reached vertices. */
+  const x = (d: number) => (farthest > 0 ? (d / farthest) * W : W);
+  const y = (share: number) => H - share * (H - 2) - 1;
+  // One point per column: the share of vertices settled within its distance.
+  const curve = useMemo(() => {
+    const columns = Math.min(W, Math.max(total, 2));
+    const pts: string[] = [];
+    let rank = 0;
+    for (let c = 0; c < columns; c++) {
+      const limit = (c / (columns - 1)) * farthest;
+      while (rank < total && distances[settled[rank]] <= limit) rank++;
+      const px = (c / (columns - 1)) * W;
+      const py = H - (rank / total) * (H - 2) - 1;
+      pts.push(`${px.toFixed(1)} ${py.toFixed(1)}`);
+    }
+    return pts.join(' L');
+  }, [settled, distances, total, farthest]);
+  const rank = Math.max(0, Math.min(Math.round(reveal), total - 1));
+  const cursorX = x(distances[settled[rank]]);
 
-  useEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-    const measure = () => setView({ top: list.scrollTop, height: list.clientHeight });
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(list);
-    return () => observer.disconnect();
-  }, []);
-
-  // Keep the row the replay is on in view (in settle order, where it moves
-  // down the list; by vertex it would jump about).
-  useEffect(() => {
-    const list = listRef.current;
-    if (!list || current < 1 || by !== 'distance') return;
-    const y = (current - 1) * DISTANCE_ROW;
-    if (y < list.scrollTop) list.scrollTop = y;
-    else if (y + DISTANCE_ROW > list.scrollTop + list.clientHeight)
-      list.scrollTop = y + DISTANCE_ROW - list.clientHeight;
-  }, [current, by]);
-
-  const first = Math.max(0, Math.floor(view.top / DISTANCE_ROW) - 4);
-  const last = Math.min(count, Math.ceil((view.top + view.height) / DISTANCE_ROW) + 4);
-  const rows = [];
-  for (let i = first; i < last; i++) {
-    const v = rowVertex(i);
-    const rank = ranks[v];
-    const d = distances[v];
-    rows.push(
-      <button
-        key={v}
-        type="button"
-        className={`${styles.distRow} ${rank <= current ? styles.levelLit : ''} ${rank === current ? styles.levelCurrent : ''}`}
-        style={{ top: i * DISTANCE_ROW }}
-        data-target={v === target || undefined}
-        title={t.drawPathTo(String(v))}
-        onClick={() => onPick(v)}
-        onPointerEnter={() => onHover(v)}
-        onPointerLeave={() => onHover(0)}
-      >
-        <span className={`mono ${styles.levelIndex}`}>{v}</span>
-        <span className={styles.levelTrack}>
-          <span
-            className={styles.levelBar}
-            style={{ width: `${farthest > 0 ? Math.max(1.5, (d / farthest) * 100) : 100}%` }}
-          />
-        </span>
-        <span className={`mono ${styles.distValue}`}>{formatWeight(d)}</span>
-      </button>,
-    );
-  }
+  /** The settle rank of the last vertex within a distance (binary search). */
+  const rankWithin = (d: number) => {
+    let lo = 0;
+    let hi = total - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (distances[settled[mid]] <= d) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+  const scrubAt = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const share = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    onScrub(rankWithin(share * farthest));
+  };
 
   return (
-    <div
-      className={`${styles.chart} ${styles.shedFourth}`}
-      aria-label={t.distancesFrom(String(root))}
-    >
+    <div className={`${styles.chart} ${styles.shedFourth}`} aria-label={t.profile.title}>
       <div className={styles.chartHeader}>
-        <span className={`label ${styles.tileLabel}`}>{t.distancesFrom(String(root))}</span>
-        <span className={styles.chartTools}>
-          {unreached > 0 && (
-            <span className={styles.tileHint}>{t.unreachedCount(formatInt(unreached))}</span>
-          )}
+        <span className={`label ${styles.tileLabel}`}>{t.profile.title}</span>
+      </div>
+      <svg
+        className={styles.trace}
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          scrubAt(event);
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubAt(event);
+        }}
+        role="slider"
+        aria-label={t.progress}
+        aria-valuemin={0}
+        aria-valuemax={total - 1}
+        aria-valuenow={rank}
+        tabIndex={0}
+      >
+        <line className={styles.profileMedian} x1={0} x2={W} y1={y(0.5)} y2={y(0.5)} />
+        <line className={styles.profileMedian} x1={x(median)} x2={x(median)} y1={y(0.5)} y2={H} />
+        <path className={styles.traceDim} d={`M${curve}`} />
+        <clipPath id={clipId}>
+          <rect x={0} y={0} width={cursorX} height={H} />
+        </clipPath>
+        <path
+          className={styles.traceLit}
+          d={`M${curve} L${W} ${H} L0 ${H} Z`}
+          clipPath={`url(#${clipId})`}
+        />
+        <path className={styles.traceLine} d={`M${curve}`} clipPath={`url(#${clipId})`} />
+        <line className={styles.traceCursor} x1={cursorX} x2={cursorX} y1={0} y2={H} />
+      </svg>
+      <div className={styles.axis}>
+        <span>0</span>
+        <span>{t.profile.median(formatWeight(median))}</span>
+        <span>{formatWeight(farthest)}</span>
+      </div>
+      <div className={styles.profileFoot}>
+        {total > 1 && (
           <button
             type="button"
-            className={styles.sortButton}
-            aria-label={by === 'distance' ? t.sortByVertex : t.sortByDistance}
-            title={by === 'distance' ? t.sortByVertex : t.sortByDistance}
-            onClick={() => setBy((b) => (b === 'distance' ? 'vertex' : 'distance'))}
+            className={styles.farthest}
+            title={t.profile.farthestPath(label(last))}
+            onClick={() => onPick(last)}
           >
-            {by === 'distance' ? <ArrowDownNarrowWide size={13} /> : <ArrowDown01 size={13} />}
+            <span className={styles.tileLabel}>{t.profile.farthest}</span>
+            <span className={styles.farthestName}>{label(last)}</span>
+            <ChevronRight size={12} aria-hidden="true" />
           </button>
-        </span>
-      </div>
-      <div
-        ref={listRef}
-        className={styles.distList}
-        style={{ '--index-width': indexWidth } as CSSProperties}
-        onScroll={(event) =>
-          setView({ top: event.currentTarget.scrollTop, height: event.currentTarget.clientHeight })
-        }
-      >
-        <div style={{ height: count * DISTANCE_ROW }}>{rows}</div>
+        )}
+        {unreached > 0 && (
+          <span className={styles.tileHint}>{t.unreachedCount(formatInt(unreached))}</span>
+        )}
       </div>
     </div>
   );

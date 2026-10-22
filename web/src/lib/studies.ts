@@ -125,6 +125,8 @@ export interface PathAnswer {
   distance: number | null;
   /** From `from` to `to`, both included; empty when unreached. */
   path: number[];
+  /** The distance from `from` to each vertex of `path`, in order. */
+  distances?: number[];
   from_name?: string;
   to_name?: string;
   /** With a names file, the path's vertices by name. */
@@ -157,6 +159,9 @@ export interface WeightedStudy {
   names_file: string | null;
   vertices: number;
   edges: number;
+  /** What normalising the file dropped. */
+  self_loops_dropped: number;
+  duplicates_dropped: number;
   parse_ms: number;
   weights: WeightStats | null;
   representation: Representation;
