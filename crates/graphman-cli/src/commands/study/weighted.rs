@@ -121,6 +121,7 @@ fn shortest_paths(
                 from_name: name(from),
                 to_name: name(to),
                 distance: tree.distance(to),
+                distances: path.iter().filter_map(|&v| tree.distance(v)).collect(),
                 names: names.map(|names| {
                     path.iter()
                         .map(|&v| names.name(v).unwrap_or("?").to_owned())
