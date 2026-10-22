@@ -422,10 +422,11 @@ function frontierTime(study: WeightedStudy, kind: FrontierKind) {
   return null;
 }
 
-/** `grafo_W_1` (or `grafo_1`) → `1`; any other name comes back whole. */
+/** `grafo_W_3` → `W3`, apart from Part 1's graph 3; any other name comes
+    back whole. */
 function weightedNumber(name: string): string {
-  const match = /^grafo_(?:w_?)?(\d+)$/i.exec(name);
-  return match ? match[1] : name;
+  const match = /^grafo_w_?(\d+)$/i.exec(name);
+  return match ? `W${match[1]}` : name;
 }
 
 function graphLabel(t: T, study: WeightedStudy) {
@@ -434,8 +435,10 @@ function graphLabel(t: T, study: WeightedStudy) {
     : t.studies.graph(weightedNumber(study.name));
 }
 
-export function Timing({ t, studies }: { t: T; studies: WeightedStudy[] }) {
+export function Timing({ t, studies: all }: { t: T; studies: WeightedStudy[] }) {
   const s = t.presentation.slides.part2.timing;
+  // The network is only asked for paths: it has no timings to show.
+  const studies = all.filter((study) => study.frontiers.length > 0);
   const c = s.columns;
   const times = studies.flatMap((study) =>
     FRONTIERS.map((kind) => frontierTime(study, kind)?.ms ?? 0),

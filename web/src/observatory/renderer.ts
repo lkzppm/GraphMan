@@ -134,6 +134,7 @@ type ViewValues = {
   incident: number;
   dest: number;
   mute: number;
+  walk: number;
   base: Rgba;
   dim: Rgba;
   colorA: Rgba;
@@ -167,6 +168,7 @@ const EMPTY_VIEW: ViewValues = {
   incident: 0,
   dest: 0,
   mute: 0,
+  walk: -1,
   base: [0.5, 0.5, 0.5, 1],
   dim: [0.5, 0.5, 0.5, 1],
   colorA: [0, 0, 1, 1],
@@ -694,6 +696,18 @@ export class Renderer {
     this.extras.write(bytes(pairs));
     this.extraEdges.set({ extras: this.extras });
     this.viewValues.incident = degree;
+  }
+
+  /**
+   * Walks the path of a distance query to a step (its vertex index along
+   * the path, fractional while moving): the path is drawn up to it and its
+   * vertex ringed. A negative step hands the path back to the wave.
+   */
+  setWalk(step: number) {
+    const walk = step >= 0 ? step : -1;
+    if (walk === this.viewValues.walk) return;
+    this.viewValues.walk = walk;
+    this.touch(true);
   }
 
   /** In a distance query, greys everything but the path (the traversal's colours otherwise). */

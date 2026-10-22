@@ -28,6 +28,7 @@ struct View {
   incident: u32,      // edges at the selected vertex: the first segments of the extras buffer
   dest: u32,          // a distance query's destination (0 = none): the picture is the path; "target" is a reserved word
   mute: u32,          // 1: only the path keeps its colours, the rest of the search goes grey
+  walk: f32,          // >= 0: the path is walked to this step (vertex index along it, fractional while moving); < 0: it follows the wave
   base: vec4f,        // node colour without a search
   dim: vec4f,         // node not (yet) reached
   colorA: vec4f,      // level 0
@@ -127,15 +128,19 @@ fn adjacent(v: u32) -> bool {
   var v = ii * view.nodeStride + 1u;
   var onPath = false;
   var along = 0.0; // position along the path, 0 at the origin, 1 at the destination
+  var step = 0u;    // index along the path
   if (ii >= sampled && ii < sampled + degree) { v = targets[offsets[view.selected] + ii - sampled]; }
   if (ii == sampled + degree) { v = view.hovered; }
   if (ii == sampled + degree + 1u) { v = view.selected; }
   if (ii >= sampled + degree + 2u) {
     let j = ii - sampled - degree - 2u;
-    if (j >= view.pathLength) { v = 0u; } else { v = path[j]; onPath = true; }
+    if (j >= view.pathLength) { v = 0u; } else { v = path[j]; onPath = true; step = j; }
     along = f32(j) / max(f32(view.pathLength - 1u), 1.0);
-    // The path shows as the wave reaches it; until then the sampled twin stands.
-    if (onPath && f32(ranks[v]) > view.reveal) { v = 0u; }
+    // The path shows as the wave reaches it, or, while it is walked, up to
+    // the step the walk is on; until then the sampled twin stands.
+    if (onPath && view.walk >= 0.0) {
+      if (f32(j) > view.walk + 0.001) { v = 0u; }
+    } else if (onPath && f32(ranks[v]) > view.reveal) { v = 0u; }
   }
   var out: VOut;
   if (v == 0u || v > view.n) {
@@ -152,6 +157,11 @@ fn adjacent(v: u32) -> bool {
   if (v == view.hovered) { flags |= 2u; r = max(r * 1.3, 4.0); }
   if (flags == 0u && adjacent(v)) { flags |= 4u; r = max(r * 1.25, 4.0); }
   if (onPath) { flags |= 8u; r = max(r * 1.6, 6.0); }
+  // The vertex the walk stands on wears the selection ring.
+  if (onPath && view.walk >= 0.0 && step == u32(floor(view.walk + 0.001))) {
+    flags |= 1u;
+    r = max(r * 1.25, 7.0);
+  }
   // In a distance query everything off the path shrinks out of the way.
   if (view.dest != 0u && !onPath && flags == 0u) { r = max(r * 0.35, 1.0); }
   // Discovery: the vertex pops to almost twice its size and settles.
@@ -224,8 +234,10 @@ struct VOut {
   let b = path[ii + 1u];
   let pa = (positions[a] - view.offset) * view.scale;
   var pb = (positions[b] - view.offset) * view.scale;
-  // Drawn from a towards b during the rank before b is discovered.
-  let drawn = clamp(view.reveal - (f32(ranks[b]) - 1.0), 0.0, 1.0);
+  // Drawn from a towards b during the rank before b is discovered, or,
+  // while the path is walked, as the walk goes from a to b.
+  var drawn = clamp(view.reveal - (f32(ranks[b]) - 1.0), 0.0, 1.0);
+  if (view.walk >= 0.0) { drawn = clamp(view.walk - f32(ii), 0.0, 1.0); }
   pb = mix(pa, pb, drawn);
   let d = pb - pa;
   let len = max(length(d), 1e-3);

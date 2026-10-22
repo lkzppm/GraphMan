@@ -230,21 +230,23 @@ measured over two whole runs. The results go to
 weight records the refusal. `--only` (also for the Part 1 sections) reruns
 some sections and keeps the rest of the previous JSON.
 
-### Still to do
+### Done, and what is left
 
-- **Run the studies** on the weighted course graphs and the collaboration
-  network once they are published.
-- `petgraph::algo::dijkstra` as a baseline column (dev/bench-only dependency).
-- **Web.** Done in the observatory: Dijkstra as a third search with a
-  vector/heap switch, distance bands for colour and chart, the refusal as a
-  notice, weight labels, and the structure strip under the canvas that
-  draws each search's queue, stack or frontier (the real heap, replayed by
-  `frontierAt`) at the replay's step. Still open there: edges tinted by weight, and the
-  names file (hover, a search box, "Dijkstra to Turing"), whose wasm glue
-  (`setNames`, `vertexNamed`, `searchNames`) is in place. Studies and
-  presentation: the Part 2 tables and the "one Dijkstra, three frontiers"
-  slide. The Library page has its Part 2 chapters (weights, Dijkstra,
-  priority queues, names), each over its block in `tests/wiki.rs`.
+- **Studies run** on the course files (2026-10-22): `grafo_W_{3,4,5}` and
+  the collaboration network, in `studies/weighted/`; the files themselves
+  are described in `spec/ASSIGNMENT.md`. The report draft is
+  `docs/relatorio-P2.md`.
+- **Web.** The observatory has Dijkstra as a third search with a
+  vector/heap switch, distance bands, the refusal as a notice, weight
+  labels, the structure strip that replays each frontier, and the names
+  file (hover, search with suggestions, names on the path). The case
+  studies have a Part 2 sheet (distances from 10 with their paths, the mean
+  per frontier on one log scale, the network's named paths) and the
+  presentation its Part 2 slides, both read from `studies/weighted/results.json`.
+  The Library page has the Part 2 chapters, each over its block in
+  `tests/wiki.rs`.
+- Still open: `petgraph::algo::dijkstra` as a baseline column
+  (dev/bench-only dependency), and edges tinted by weight in the observatory.
 
 ### The rest of the plan (beyond what Part 2 grades)
 
