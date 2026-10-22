@@ -220,7 +220,50 @@ export const en = {
     parts: { label: 'Parts of the project', one: 'Part 1', two: 'Part 2' },
     part2: {
       title: 'Part 2: weighted graphs',
-      lead: "The course's weighted graphs and its collaboration network are not published yet. When they are, graphman study fills this page: the shortest paths from vertex 10, the mean Dijkstra with a vector and with a heap, and the paths from Edsger W. Dijkstra to the five researchers.",
+      lead: "The course's weighted graphs and its collaboration network have not been run yet. When they are, graphman study fills this page: the shortest paths from vertex 10, the mean Dijkstra with a vector and with a heap, and the paths from Edsger W. Dijkstra to the five researchers.",
+      facts: {
+        researchers: 'researchers',
+        collaborations: 'collaborations',
+        weights: (min: string, max: string, noneNegative: boolean) =>
+          `weights from ${min} to ${max}${noneNegative ? ', none negative' : ''}`,
+      },
+      views: 'Part 2 views',
+      vertexCount: (n: string) => `${n} vertices`,
+      networkName: 'Collaboration network',
+      paths: {
+        title: 'Distance and shortest path from vertex 10',
+        to: (v: string) => `to ${v}`,
+        hops: (n: number) => (n === 1 ? '1 edge' : `${n} edges`),
+        unreached: 'another component',
+        lineHint: '// each dot is a vertex of the path, placed at its distance from the origin',
+        at: (d: string, step: string, of: string) => ` at distance ${d}, step ${step} of ${of}`,
+      },
+      timing: {
+        title: 'Mean Dijkstra, vector and heap',
+        label: 'mean time of one Dijkstra, source to every vertex',
+        frontiers: { vector: 'vector', heap: 'heap', lazy_heap: 'lazy heap' },
+        estimated: (time: string) => `≈ ${time}`,
+        estimate: 'estimate',
+        chartHint: '// both axes logarithmic: a steeper line grows faster with the graph',
+        ratioCaption: "times the heap's time",
+        versus: (vector: string, heap: string) => `vector ${vector}, heap ${heap}`,
+        runs: (k: string, n: string) => `${k} of ${n} runs`,
+        ratio: (x: string) => `the vector takes ${x} times the heap's time`,
+        race: {
+          hint: '// one linear time axis: each segment is a whole Dijkstra, source to every vertex',
+          runs: (n: number): string => (n === 1 ? 'run' : 'runs'),
+          replay: 'replay',
+        },
+        note: (runs: string, machine: string) =>
+          `${runs} random sources per frontier, each run timed alone on CSR, reading and writing excluded. Each frontier has a time budget: "k of ${runs} runs" is how many finished in it, and a dashed bar is an estimate, the one run cut short scaled to its whole component. ${machine}`,
+      },
+      network: {
+        title: 'From Edsger W. Dijkstra',
+        from: (name: string) => `From ${name}`,
+        caption:
+          '// a small weight is a close collaboration; names matched with the exact spelling',
+        unreached: 'no path: another component',
+      },
     },
     average: (n: string) => `mean of the ${n} graphs`,
     of: (k: string, n: string) => `${k} of ${n}`,
@@ -301,7 +344,8 @@ export const en = {
       ['drag', 'move a vertex'],
       ['drag bg', 'pan'],
       ['scroll', 'zoom'],
-      ['dbl-click', 'fit the graph'],
+      ['dbl-click vertex', 'pick the target'],
+      ['dbl-click bg', 'fit the graph'],
       ['F', 'fit the graph'],
       ['space', 'play / pause'],
       ['← →', 'step a vertex / component'],
@@ -390,7 +434,7 @@ export const en = {
     distance: 'Distance',
     pathLength: 'Steps',
     target: 'Target',
-    targetPlaceholder: 'and another',
+    targetPlaceholder: 'double-click a vertex',
     theTarget: 'the target',
     runDistance: (kind: string, from: string, to: string) =>
       `${kind} from ${from} until it reaches ${to}`,
@@ -526,8 +570,8 @@ export const en = {
     distributions: { degree: 'Degrees', weight: 'Weights' },
     distributionUnit: { degree: 'vertices per degree', weight: 'edges per weight' },
     distributionBucket: {
-      degree: (range: string, count: string) => `degree ${range}: ${count}`,
-      weight: (range: string, count: string) => `weight ${range}: ${count}`,
+      degree: (range: string, count: string) => `${count} of degree ${range}`,
+      weight: (range: string, count: string) => `${count} weighing ${range}`,
     },
     parseDetails: 'What parsing dropped',
     componentsCount: (n: string) => `Components · ${n}`,
@@ -554,11 +598,21 @@ export const en = {
     verticesPer: (noun: string) => `Vertices per ${noun}`,
     goTo: (noun: string, n: number | string) => `Go to ${noun} ${n}`,
     depthTrace: 'Depth over the traversal',
-    distancesFrom: (root: string) => `Distances from ${root}`,
-    sortByVertex: 'Order by vertex number',
-    sortByDistance: 'Order by distance, nearest first',
     unreachedCount: (n: string) => `${n} unreachable`,
-    drawPathTo: (v: string) => `Draw the shortest path to ${v}`,
+    itinerary: {
+      title: 'Shortest path',
+      treePath: 'Path in the tree',
+      edges: (n: number) => (n === 1 ? '1 edge' : `${n} edges`),
+      goTo: (v: string) => `Walk the path to ${v}`,
+      progress: 'Position along the path',
+    },
+    clearTarget: 'Clear the destination, back to the search',
+    profile: {
+      title: 'Vertices within distance',
+      median: (d: string) => `median ${d}`,
+      farthest: 'farthest',
+      farthestPath: (v: string) => `Draw the shortest path to ${v}`,
+    },
   },
 
   presentation: {
@@ -570,7 +624,13 @@ export const en = {
     hint: '← → to move · F full screen',
     slides: {
       cover: {
-        eyebrow: 'cos 242 · graph theory · ufrj 2026/2 · part 1',
+        eyebrow: 'cos 242 · graph theory · ufrj 2026/2',
+        parts: ['Part 1', 'Part 2'],
+        partsLabel: 'Which part of the project',
+        topics: [
+          'representations · BFS and DFS · components · diameter',
+          'weights · Dijkstra · vector and heap · names',
+        ],
         authors: ['Lucas Pacheco', 'Rogério Santana'],
         stack: ['Rust 2024', 'WebAssembly', 'WebGPU · vgpu', 'Next.js', 'Vercel'],
       },
@@ -638,6 +698,94 @@ export const en = {
         url: 'graphman-ufrj.vercel.app',
         scan: 'point your camera',
         thanks: 'Thank you',
+      },
+      part2: {
+        weights: {
+          eyebrow: '01',
+          title: 'Weights',
+          input: { label: 'input', name: 'figure 1', hint: 'a third column, any real number' },
+          normalise: { name: 'EdgeList', hint: 'a duplicate keeps its smallest weight' },
+          arrays: {
+            label: 'Csr, and a column beside it',
+            offsets: 'offsets',
+            targets: 'targets',
+            weights: 'weights',
+          },
+          notes: [
+            {
+              title: 'Graph never reads it',
+              caption: '// BFS and DFS run unchanged on a weighted graph',
+            },
+            {
+              title: 'Weighted: Graph',
+              caption: '// (neighbour, weight) pairs; an unweighted graph answers 1',
+            },
+            {
+              title: 'A refusal, not a wrong answer',
+              caption: '// 3 4 −9.5: Dijkstra returns NegativeWeight',
+            },
+          ],
+        },
+        frontiers: {
+          eyebrow: '02',
+          title: 'One Dijkstra, three frontiers',
+          driver: '// the driver is written once; a frontier keeps the estimates',
+          items: [
+            {
+              name: 'VectorFrontier',
+              title: 'Vector',
+              cost: 'O(n² + m)',
+              caption: '// pop_min scans every estimate',
+            },
+            {
+              name: 'HeapFrontier',
+              title: 'Heap, decrease-key',
+              cost: 'O((n + m) log n)',
+              caption: '// position[v] finds the entry, which sifts up',
+            },
+            {
+              name: 'LazyHeapFrontier',
+              title: 'Lazy heap',
+              cost: 'O(m log m)',
+              caption: '// a lower estimate is pushed again, the stale one skipped',
+            },
+          ],
+          ties: '// ties go to the smaller vertex: the three build the same tree',
+        },
+        timing: {
+          eyebrow: '03',
+          title: 'Vector against heap',
+          columns: {
+            graph: 'Graph',
+            size: 'Size',
+            time: 'Mean Dijkstra',
+            ratio: 'Vector / heap',
+          },
+          legend: [
+            { key: 'vector', label: 'vector' },
+            { key: 'heap', label: 'heap' },
+            { key: 'lazy_heap', label: 'lazy heap' },
+          ],
+          estimated: (time: string) => `≈ ${time}`,
+          machine: (cpu: string, memory: string) =>
+            `${cpu}, ${memory}. Mean of one single-source Dijkstra from random sources on CSR, reading and writing excluded. A dashed bar is an estimate: the budget ran out and the cut run was scaled to its component.`,
+          pending:
+            "The course's weighted graphs have not been run yet: `graphman study` fills this sheet.",
+          cta: 'Open the case studies',
+        },
+        paths: {
+          eyebrow: '04',
+          title: 'Shortest paths',
+          graphs: { label: 'From vertex 10', caption: '// distance to 20, 30, 40, 50 and 60' },
+          network: {
+            label: 'Collaboration network',
+            caption: '// from Edsger W. Dijkstra, names matched exactly',
+          },
+          unreached: 'no path',
+          hops: (n: number) => (n === 1 ? '1 edge' : `${n} edges`),
+          pending: 'Filled by `graphman study` once the course files are run.',
+        },
+        observatory: '05',
       },
     },
   },

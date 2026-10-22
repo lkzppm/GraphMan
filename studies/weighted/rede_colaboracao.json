@@ -1,0 +1,212 @@
+{
+  "name": "rede_colaboracao",
+  "file": "graphs/rede_colaboracao.txt",
+  "names_file": "graphs/rede_colaboracao_vertices.txt",
+  "vertices": 722385,
+  "edges": 2272543,
+  "self_loops_dropped": 0,
+  "duplicates_dropped": 0,
+  "parse_ms": 142.29208400000002,
+  "weights": {
+    "min": 0.00373459479646458,
+    "max": 113.0,
+    "mean": 5.175175065755027,
+    "negative": 0
+  },
+  "representation": "csr",
+  "refusal": null,
+  "negative_edge": null,
+  "paths": [
+    {
+      "from": 2722,
+      "to": 11365,
+      "distance": null,
+      "path": [],
+      "distances": [],
+      "from_name": "Edsger W. Dijkstra",
+      "to_name": "Alan M. Turing",
+      "names": []
+    },
+    {
+      "from": 2722,
+      "to": 471365,
+      "distance": 3.48036845488905,
+      "path": [
+        2722,
+        9490,
+        7200,
+        10343,
+        646765,
+        490368,
+        10746,
+        3655,
+        471365
+      ],
+      "distances": [
+        0.0,
+        1.0,
+        1.133333333333333,
+        1.432585203657523,
+        1.691205893312695,
+        1.794654169174764,
+        2.08036845488905,
+        2.48036845488905,
+        3.48036845488905
+      ],
+      "from_name": "Edsger W. Dijkstra",
+      "to_name": "J. B. Kruskal",
+      "names": [
+        "Edsger W. Dijkstra",
+        "John R. Rice",
+        "Dan C. Marinescu",
+        "Howard Jay Siegel",
+        "Edwin K. P. Chong",
+        "Ness B. Shroff",
+        "R. Srikant",
+        "Albert G. Greenberg",
+        "J. B. Kruskal"
+      ]
+    },
+    {
+      "from": 2722,
+      "to": 5709,
+      "distance": 2.7069936175564644,
+      "path": [
+        2722,
+        217250,
+        11456,
+        768,
+        11448,
+        101826,
+        12242,
+        11834,
+        9608,
+        5709
+      ],
+      "distances": [
+        0.0,
+        0.4,
+        1.4,
+        1.7076923076923078,
+        1.8049370402692932,
+        2.0103160133744282,
+        2.283043286101701,
+        2.4648614679198833,
+        2.5663843105594775,
+        2.7069936175564644
+      ],
+      "from_name": "Edsger W. Dijkstra",
+      "to_name": "Jon M. Kleinberg",
+      "names": [
+        "Edsger W. Dijkstra",
+        "A. J. M. van Gasteren",
+        "Gerard Tel",
+        "Hans L. Bodlaender",
+        "Dimitrios M. Thilikos",
+        "Prabhakar Ragde",
+        "Avi Wigderson",
+        "Eli Upfal",
+        "Prabhakar Raghavan",
+        "Jon M. Kleinberg"
+      ]
+    },
+    {
+      "from": 2722,
+      "to": 11386,
+      "distance": 2.7535141793573357,
+      "path": [
+        2722,
+        217250,
+        11456,
+        768,
+        6479,
+        8528,
+        10572,
+        357587,
+        11649,
+        3694,
+        318911,
+        11386
+      ],
+      "distances": [
+        0.0,
+        0.4,
+        1.4,
+        1.7076923076923078,
+        1.8743589743589748,
+        1.9796221322537118,
+        2.0879253813511847,
+        2.2255400602502675,
+        2.3260425728130816,
+        2.456477355421778,
+        2.626931900876323,
+        2.7535141793573357
+      ],
+      "from_name": "Edsger W. Dijkstra",
+      "to_name": "Éva Tardos",
+      "names": [
+        "Edsger W. Dijkstra",
+        "A. J. M. van Gasteren",
+        "Gerard Tel",
+        "Hans L. Bodlaender",
+        "Jan van Leeuwen",
+        "Mark H. Overmars",
+        "Micha Sharir",
+        "Haim Kaplan",
+        "Robert Endre Tarjan",
+        "Andrew V. Goldberg",
+        "Serge A. Plotkin",
+        "Éva Tardos"
+      ]
+    },
+    {
+      "from": 2722,
+      "to": 343930,
+      "distance": 2.9428308695367855,
+      "path": [
+        2722,
+        9490,
+        7200,
+        391667,
+        371226,
+        4379,
+        68773,
+        11466,
+        343930
+      ],
+      "distances": [
+        0.0,
+        1.0,
+        1.133333333333333,
+        1.4333333333333331,
+        1.8280701754385962,
+        2.086690865093768,
+        2.304872683275586,
+        2.4703899246548957,
+        2.9428308695367855
+      ],
+      "from_name": "Edsger W. Dijkstra",
+      "to_name": "Daniel R. Figueiredo",
+      "names": [
+        "Edsger W. Dijkstra",
+        "John R. Rice",
+        "Dan C. Marinescu",
+        "Chuang Lin",
+        "Bo Li",
+        "Y. Thomas Hou",
+        "Zhi-Li Zhang",
+        "Donald F. Towsley",
+        "Daniel R. Figueiredo"
+      ]
+    }
+  ],
+  "frontiers": [],
+  "machine": {
+    "os": "macos",
+    "arch": "aarch64",
+    "cpu": "Apple M5",
+    "total_memory_bytes": 17179869184,
+    "threads": 10
+  },
+  "generated_at_unix": 1792687894
+}

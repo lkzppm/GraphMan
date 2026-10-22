@@ -221,7 +221,50 @@ export const pt: Dictionary = {
     parts: { label: 'Partes do trabalho', one: 'Parte 1', two: 'Parte 2' },
     part2: {
       title: 'Parte 2: grafos com pesos',
-      lead: 'Os grafos com pesos da disciplina e a rede de colaboração ainda não foram publicados. Quando forem, graphman study preenche esta página: os caminhos mínimos a partir do vértice 10, o Dijkstra médio com vetor e com heap, e os caminhos de Edsger W. Dijkstra até os cinco pesquisadores.',
+      lead: 'Os grafos com pesos da disciplina e a rede de colaboração ainda não foram rodados. Quando forem, graphman study preenche esta página: os caminhos mínimos a partir do vértice 10, o Dijkstra médio com vetor e com heap, e os caminhos de Edsger W. Dijkstra até os cinco pesquisadores.',
+      facts: {
+        researchers: 'pesquisadores',
+        collaborations: 'colaborações',
+        weights: (min: string, max: string, noneNegative: boolean) =>
+          `pesos de ${min} a ${max}${noneNegative ? ', nenhum negativo' : ''}`,
+      },
+      views: 'Visões da Parte 2',
+      vertexCount: (n: string) => `${n} vértices`,
+      networkName: 'Rede de colaboração',
+      paths: {
+        title: 'Distância e caminho mínimo a partir do vértice 10',
+        to: (v: string) => `até ${v}`,
+        hops: (n: number) => (n === 1 ? '1 aresta' : `${n} arestas`),
+        unreached: 'outra componente',
+        lineHint: '// cada ponto é um vértice do caminho, na sua distância da origem',
+        at: (d: string, step: string, of: string) => ` na distância ${d}, passo ${step} de ${of}`,
+      },
+      timing: {
+        title: 'Dijkstra médio, vetor e heap',
+        label: 'tempo médio de um Dijkstra, da origem a todos os vértices',
+        frontiers: { vector: 'vetor', heap: 'heap', lazy_heap: 'heap lazy' },
+        estimated: (time: string) => `≈ ${time}`,
+        estimate: 'estimativa',
+        chartHint:
+          '// os dois eixos em escala log: linha mais inclinada cresce mais rápido com o grafo',
+        ratioCaption: 'vezes o tempo do heap',
+        versus: (vector: string, heap: string) => `vetor ${vector}, heap ${heap}`,
+        runs: (k: string, n: string) => `${k} de ${n} execuções`,
+        ratio: (x: string) => `o vetor leva ${x} vezes o tempo do heap`,
+        race: {
+          hint: '// um só eixo de tempo, linear: cada segmento é um Dijkstra inteiro, da origem a todos os vértices',
+          runs: (n: number) => (n === 1 ? 'execução' : 'execuções'),
+          replay: 'repetir',
+        },
+        note: (runs: string, machine: string) =>
+          `${runs} origens aleatórias por fronteira, cada execução cronometrada sozinha na CSR, sem leitura nem escrita. Cada fronteira tem um orçamento de tempo: "k de ${runs} execuções" é quantas terminaram nele, e uma barra tracejada é uma estimativa, a execução interrompida escalada para a componente inteira. ${machine}`,
+      },
+      network: {
+        title: 'A partir de Edsger W. Dijkstra',
+        from: (name: string) => `A partir de ${name}`,
+        caption: '// peso pequeno é colaboração próxima; nomes casados com a grafia exata',
+        unreached: 'sem caminho: outra componente',
+      },
     },
     views: 'Visões',
     average: (n: string) => `média dos ${n} grafos`,
@@ -303,7 +346,8 @@ export const pt: Dictionary = {
       ['arrastar', 'move um vértice'],
       ['arrastar fundo', 'desloca a vista'],
       ['scroll', 'zoom'],
-      ['2 cliques', 'enquadra o grafo'],
+      ['2 cliques vértice', 'escolhe o destino'],
+      ['2 cliques fundo', 'enquadra o grafo'],
       ['F', 'enquadra o grafo'],
       ['espaço', 'toca / pausa'],
       ['← →', 'avança um vértice / componente'],
@@ -393,7 +437,7 @@ export const pt: Dictionary = {
     distance: 'Distância',
     pathLength: 'Passos',
     target: 'Destino',
-    targetPlaceholder: 'e outro',
+    targetPlaceholder: 'duplo clique num vértice',
     theTarget: 'o destino',
     runDistance: (kind: string, from: string, to: string) =>
       `${kind} a partir de ${from} até chegar a ${to}`,
@@ -530,8 +574,8 @@ export const pt: Dictionary = {
     distributions: { degree: 'Graus', weight: 'Pesos' },
     distributionUnit: { degree: 'vértices por grau', weight: 'arestas por peso' },
     distributionBucket: {
-      degree: (range: string, count: string) => `grau ${range}: ${count}`,
-      weight: (range: string, count: string) => `peso ${range}: ${count}`,
+      degree: (range: string, count: string) => `${count} com grau ${range}`,
+      weight: (range: string, count: string) => `${count} com peso ${range}`,
     },
     parseDetails: 'O que a leitura descartou',
     componentsCount: (n: string) => `Componentes · ${n}`,
@@ -558,11 +602,21 @@ export const pt: Dictionary = {
     verticesPer: (noun: string) => `Vértices por ${noun}`,
     goTo: (noun: string, n: number | string) => `Ir para ${noun} ${n}`,
     depthTrace: 'Profundidade ao longo da busca',
-    distancesFrom: (root: string) => `Distâncias a partir de ${root}`,
-    sortByVertex: 'Ordenar pelo número do vértice',
-    sortByDistance: 'Ordenar pela distância, mais perto primeiro',
     unreachedCount: (n: string) => `${n} inalcançáveis`,
-    drawPathTo: (v: string) => `Desenhar o caminho mais curto até ${v}`,
+    itinerary: {
+      title: 'Caminho mínimo',
+      treePath: 'Caminho na árvore',
+      edges: (n: number) => (n === 1 ? '1 aresta' : `${n} arestas`),
+      goTo: (v: string) => `Andar pelo caminho até ${v}`,
+      progress: 'Posição no caminho',
+    },
+    clearTarget: 'Limpar o destino e voltar à busca',
+    profile: {
+      title: 'Vértices até a distância',
+      median: (d: string) => `mediana ${d}`,
+      farthest: 'mais distante',
+      farthestPath: (v: string) => `Desenhar o caminho mais curto até ${v}`,
+    },
   },
 
   presentation: {
@@ -574,7 +628,13 @@ export const pt: Dictionary = {
     hint: '← → para navegar · F tela cheia',
     slides: {
       cover: {
-        eyebrow: 'cos 242 · teoria dos grafos · ufrj 2026/2 · parte 1',
+        eyebrow: 'cos 242 · teoria dos grafos · ufrj 2026/2',
+        parts: ['Parte 1', 'Parte 2'],
+        partsLabel: 'Qual parte do trabalho',
+        topics: [
+          'representações · BFS e DFS · componentes · diâmetro',
+          'pesos · Dijkstra · vetor e heap · nomes',
+        ],
         authors: ['Lucas Pacheco', 'Rogério Santana'],
         stack: ['Rust 2024', 'WebAssembly', 'WebGPU · vgpu', 'Next.js', 'Vercel'],
       },
@@ -642,6 +702,101 @@ export const pt: Dictionary = {
         url: 'graphman-ufrj.vercel.app',
         scan: 'aponte a câmera',
         thanks: 'Obrigado',
+      },
+      part2: {
+        weights: {
+          eyebrow: '01',
+          title: 'Pesos',
+          input: {
+            label: 'entrada',
+            name: 'figura 1',
+            hint: 'uma terceira coluna, qualquer número real',
+          },
+          normalise: { name: 'EdgeList', hint: 'uma duplicata fica com o menor peso' },
+          arrays: {
+            label: 'Csr, e uma coluna ao lado',
+            offsets: 'offsets',
+            targets: 'targets',
+            weights: 'weights',
+          },
+          notes: [
+            {
+              title: 'Graph nunca lê o peso',
+              caption: '// BFS e DFS rodam iguais num grafo com pesos',
+            },
+            {
+              title: 'Weighted: Graph',
+              caption: '// pares (vizinho, peso); um grafo sem pesos responde 1',
+            },
+            {
+              title: 'Uma recusa, não uma resposta errada',
+              caption: '// 3 4 −9.5: Dijkstra devolve NegativeWeight',
+            },
+          ],
+        },
+        frontiers: {
+          eyebrow: '02',
+          title: 'Um Dijkstra, três fronteiras',
+          driver: '// o algoritmo é escrito uma vez; a fronteira guarda as estimativas',
+          items: [
+            {
+              name: 'VectorFrontier',
+              title: 'Vetor',
+              cost: 'O(n² + m)',
+              caption: '// pop_min percorre todas as estimativas',
+            },
+            {
+              name: 'HeapFrontier',
+              title: 'Heap, decrease-key',
+              cost: 'O((n + m) log n)',
+              caption: '// position[v] acha a entrada, que sobe no heap',
+            },
+            {
+              name: 'LazyHeapFrontier',
+              title: 'Heap preguiçoso',
+              cost: 'O(m log m)',
+              caption: '// uma estimativa menor entra de novo, a antiga é pulada',
+            },
+          ],
+          ties: '// empates vão para o menor vértice: as três constroem a mesma árvore',
+        },
+        timing: {
+          eyebrow: '03',
+          title: 'Vetor contra heap',
+          columns: {
+            graph: 'Grafo',
+            size: 'Tamanho',
+            time: 'Dijkstra médio',
+            ratio: 'Vetor / heap',
+          },
+          legend: [
+            { key: 'vector', label: 'vetor' },
+            { key: 'heap', label: 'heap' },
+            { key: 'lazy_heap', label: 'heap preguiçoso' },
+          ],
+          estimated: (time: string) => `≈ ${time}`,
+          machine: (cpu: string, memory: string) =>
+            `${cpu}, ${memory}. Média de um Dijkstra de fonte única a partir de fontes aleatórias, em CSR, sem leitura nem escrita. Uma barra tracejada é uma estimativa: o orçamento acabou e a execução interrompida foi escalada para a sua componente.`,
+          pending:
+            'Os grafos com pesos da disciplina ainda não foram rodados: `graphman study` preenche esta tabela.',
+          cta: 'Abrir os estudos de caso',
+        },
+        paths: {
+          eyebrow: '04',
+          title: 'Caminhos mínimos',
+          graphs: {
+            label: 'A partir do vértice 10',
+            caption: '// distância até 20, 30, 40, 50 e 60',
+          },
+          network: {
+            label: 'Rede de colaboração',
+            caption: '// a partir de Edsger W. Dijkstra, nomes com a grafia exata',
+          },
+          unreached: 'sem caminho',
+          hops: (n: number) => (n === 1 ? '1 aresta' : `${n} arestas`),
+          pending: 'Preenchido por `graphman study` quando os arquivos da disciplina rodarem.',
+        },
+        observatory: '05',
       },
     },
   },

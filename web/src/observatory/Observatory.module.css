@@ -855,31 +855,30 @@
   opacity: 1;
 }
 
-/* Dijkstra's answer: one row per settled vertex, closest first, only the
-   rows in view rendered (each placed at its own offset). They reuse the
-   level rows' index, track and bar, lit as the replay settles them. */
-.distList {
-  position: relative;
-  /* Takes the room the panel has left and scrolls the rest. */
+/* Dijkstra to a destination: the path as an itinerary, one row per vertex
+   (the edge's weight, the vertex, the distance so far as a bar and a
+   number). It reuses the level rows' track and bar, lit as the replay
+   settles each vertex, and scrolls when the path is long. */
+.itinerary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   flex: 1 1 0;
   min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
   overflow-y: auto;
   scrollbar-width: thin;
 }
 
-.distList > div {
-  position: relative;
-}
-
-.distRow {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 20px;
+.step {
   display: grid;
-  grid-template-columns: var(--index-width, 32px) minmax(0, 1fr) 52px;
+  grid-template-columns: 44px minmax(0, 1.4fr) minmax(0, 1fr) 46px;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  height: 20px;
   padding: 0 4px 0 0;
   border-radius: var(--radius-sm);
   text-align: left;
@@ -887,50 +886,72 @@
   transition: background 0.15s var(--ease);
 }
 
-.distRow:hover {
+.step:hover {
   background: var(--bg-3);
 }
 
-.distRow .levelIndex {
-  min-width: 0;
-  padding: 0;
-  line-height: 15px;
-  text-align: center;
+.stepWeight {
+  font-size: 10px;
+  color: var(--fg-3);
+  text-align: right;
 }
 
-.distRow:hover .levelIndex,
-.distRow[data-target] .levelIndex {
+.stepVertex {
+  overflow: hidden;
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg-3);
+  transition: color 0.15s var(--ease);
+}
+
+.levelLit .stepVertex {
+  color: var(--fg);
+}
+
+.step[data-end].levelLit .stepVertex,
+.levelCurrent .stepVertex {
   color: var(--accent);
+  font-weight: 500;
 }
 
-.distRow[data-target] {
-  background: var(--accent-muted);
+/* Dijkstra's whole run: the share of reached vertices within each
+   distance, with the median marked by a dashed corner. */
+.profileMedian {
+  stroke: var(--border-2);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
 }
 
-/* The header's tools: the unreachable count and the order switch. */
-.chartTools {
+.profileFoot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The farthest vertex, a click from its path. */
+.farthest {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-}
-
-.sortButton {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
   color: var(--fg-2);
-  transition:
-    color 0.15s var(--ease),
-    border-color 0.15s var(--ease);
+  transition: color 0.15s var(--ease);
 }
 
-.sortButton:hover {
+.farthest:hover {
   color: var(--accent);
-  border-color: var(--accent);
+}
+
+.farthestName {
+  overflow: hidden;
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .distValue {
@@ -1094,8 +1115,22 @@
   animation: swapOut 0.14s var(--ease) both;
 }
 
-.bars span:hover {
+/* Hovering the chart: the column under the pointer stays lit, the rest
+   step back, and its value takes the unit's place in the header. */
+.bars {
+  cursor: crosshair;
+}
+
+.bars[data-hover] span {
+  opacity: 0.3;
+}
+
+.bars[data-hover] span[data-hot] {
   opacity: 1;
+}
+
+.hintValue {
+  color: var(--accent);
 }
 
 .segments {
@@ -2280,10 +2315,11 @@
    important pieces one by one (component bar, histogram, level profile)
    and only scrolls as a last resort. The component bar and the histogram
    only go once a search result needs the room. */
-/* Dijkstra's answer is a list to read, row by row: below 900 px the degree
-   chart makes room for it sooner than for the other searches. */
-@media (max-height: 900px) {
-  .sidebar[data-search='dijkstra'] .shedThird {
+/* A loaded search is what the sidebar is about: the degree chart gives its
+   room to the search's result at any height (a phone keeps it, each panel
+   being a sheet of its own there). */
+@media (min-width: 841px) {
+  .sidebar[data-search] .shedThird {
     display: none;
   }
 }
@@ -2538,63 +2574,69 @@
 
 /* ---- vertex names ------------------------------------------------------- */
 
-/* The names file under the graph file: its name and count, or a link to add one. */
-.namesRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  margin-top: -4px;
-  font-size: 12px;
-  color: var(--fg-3);
-}
-
-.namesFile {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-2);
-}
-
-.namesCount {
+/* The names file, a button beside the memory one: a grey tag that adds a
+   file; blue once one is loaded, when hovering it names the file in a tip
+   and the tag turns into an X that removes it. */
+.namesAction {
+  position: relative;
   flex: none;
-}
-
-.namesRemove,
-.namesAdd {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
-  transition: color 0.15s var(--ease);
-}
-
-.namesRemove {
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
+  display: inline-flex;
   margin-left: auto;
-  padding: 0;
-  border-radius: var(--radius-sm);
-  color: var(--fg-3);
 }
 
-.namesAdd {
-  padding: 0;
-  color: var(--fg-2);
-  text-decoration: underline;
-  text-decoration-color: var(--border-2);
-  text-underline-offset: 3px;
+/* Only the first button of the row pushes to the right edge. */
+.namesAction + .fileAction {
+  margin-left: 0;
 }
 
-.namesRemove:hover,
-.namesAdd:hover {
+.namesAction .fileAction {
+  margin-left: 0;
+}
+
+.namesIcon,
+.namesRemoveIcon {
+  grid-area: 1 / 1;
+  transition:
+    opacity 0.15s var(--ease),
+    transform 0.2s var(--ease);
+}
+
+.namesRemoveIcon {
+  opacity: 0;
+  transform: rotate(-45deg) scale(0.7);
+}
+
+.fileAction[data-names]:hover .namesIcon,
+.fileAction[data-names]:focus-visible .namesIcon {
+  opacity: 0;
+  transform: scale(0.7);
+}
+
+.fileAction[data-names]:hover .namesRemoveIcon,
+.fileAction[data-names]:focus-visible .namesRemoveIcon {
+  opacity: 1;
+  transform: none;
+}
+
+.namesAction:hover .fileInfoTip,
+.namesAction:focus-within .fileInfoTip {
+  opacity: 1;
+  translate: 0 0;
+}
+
+/* Under a button at the row's right end, the tip opens leftwards. */
+.fileInfoTip[data-align='end'] {
+  left: auto;
+  right: 0;
+}
+
+.namesTipFile {
+  color: var(--fg);
+}
+
+.namesTipHint {
+  font-family: var(--font-sans);
   color: var(--accent);
-  text-decoration-color: var(--accent);
 }
 
 /* The origin and target fields, with the matching names under them. */

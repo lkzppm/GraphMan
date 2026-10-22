@@ -19,7 +19,8 @@ export function formatMs(ms: number): string {
   if (ms < 100) return `${ms.toFixed(2)} ms`;
   if (ms < 1000) return `${ms.toFixed(0)} ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(2)} s`;
-  return `${(ms / 60_000).toFixed(1)} min`;
+  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)} min`;
+  return `${(ms / 3_600_000).toFixed(1)} h`;
 }
 
 /** A weight or a weighted distance: at most three decimals, trailing zeros

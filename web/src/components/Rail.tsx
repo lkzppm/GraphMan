@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import styles from './Rail.module.css';
 
 export interface RailStop {
@@ -16,6 +17,11 @@ export interface RailStop {
  * library (chapters, followed while scrolling) and the case studies (the
  * project's parts). It fades out when the footer scrolls up to it and comes
  * back as soon as the footer leaves.
+ *
+ * It is rendered straight into `<body>`: the page's `<main>` rises in with
+ * a transform, and a fixed element inside a transformed ancestor is placed
+ * against that ancestor, so in place the rail would start somewhere down
+ * the page and jump to the viewport's middle when the rise ended.
  */
 export default function Rail({
   label,
@@ -33,6 +39,13 @@ export default function Rail({
   onSelect?: (id: string) => void;
 }) {
   const [hidden, setHidden] = useState(false);
+  // On the client only (the server has no body to portal into); the rail
+  // then mounts once and plays its entrance in place.
+  const client = useSyncExternalStore(
+    noSubscription,
+    () => true,
+    () => false,
+  );
   const railRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -54,14 +67,15 @@ export default function Rail({
       window.removeEventListener('resize', onScroll);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [client]);
 
   const progress = Math.max(
     0,
     stops.findIndex((stop) => stop.id === active),
   );
 
-  return (
+  if (!client) return null;
+  return createPortal(
     <nav ref={railRef} className={styles.rail} aria-label={label} data-hidden={hidden || undefined}>
       <ol style={{ '--progress': progress, '--stops': stops.length } as CSSProperties}>
         {stops.map((stop, i) => {
@@ -96,6 +110,12 @@ export default function Rail({
           );
         })}
       </ol>
-    </nav>
+    </nav>,
+    document.body,
   );
+}
+
+/** `useSyncExternalStore` with nothing to subscribe to. */
+function noSubscription() {
+  return () => {};
 }

@@ -17,6 +17,17 @@ if (existsSync(results)) {
   console.log('[data] no studies yet; wrote an empty results.json');
 }
 
+// The Part 2 study (weighted graphs and the collaboration network), merged
+// by `graphman study` into studies/weighted/results.json.
+const weighted = join(web, '..', 'studies', 'weighted', 'results.json');
+if (existsSync(weighted)) {
+  copyFileSync(weighted, join(dataDir, 'weighted.json'));
+  console.log('[data] synced studies/weighted/results.json');
+} else {
+  writeFileSync(join(dataDir, 'weighted.json'), '[]');
+  console.log('[data] no weighted studies yet; wrote an empty weighted.json');
+}
+
 // The library page's code examples live in crates/graphman/tests/wiki.rs,
 // where `cargo test` proves them; each `// wiki:start <id>` ... `// wiki:end`
 // block is copied here, dedented, for the page to show verbatim.

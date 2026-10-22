@@ -1190,6 +1190,496 @@
 /* ---- keyframes ------------------------------------------------------------
    Redeclared here: CSS modules scope animation names. */
 
+/* ---- cover: the switch between the two parts -------------------------- */
+
+.coverText > :nth-child(5) {
+  animation-delay: 0.34s;
+}
+
+.partRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+}
+
+/* The language pill's twin, larger: the thumb slides to the chosen part. */
+.parts {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.partsThumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--accent-muted);
+  transition: transform 0.4s var(--ease);
+}
+
+.parts[data-part='2'] .partsThumb {
+  transform: translateX(100%);
+}
+
+.partButton {
+  position: relative;
+  padding: 8px 20px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  transition: color 0.25s var(--ease);
+}
+
+.partButton:hover {
+  color: var(--fg);
+}
+
+.partButton[aria-checked='true'] {
+  color: var(--accent);
+}
+
+/* What each part covers, both lines in one cell: the chosen one fades in
+   as the other fades out, so the cover itself never redraws. */
+.topics {
+  display: grid;
+}
+
+.topics > span {
+  grid-area: 1 / 1;
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity 0.35s var(--ease),
+    transform 0.45s var(--ease);
+}
+
+.topics > [data-current] {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.12s;
+}
+
+/* ---- part 2 · 01 weights ------------------------------------------------- */
+
+.weightsMap {
+  display: grid;
+  grid-template-columns: minmax(200px, 0.8fr) 150px minmax(0, 2.6fr);
+  align-items: center;
+  gap: 0 8px;
+  margin-bottom: 40px;
+}
+
+/* The handout's file as text, the weight column in blue. */
+.textFile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.textFile b {
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.textFile [data-negative] {
+  margin: 0 -6px;
+  padding: 0 6px;
+  border: 1px dashed var(--fg-3);
+  border-radius: 3px;
+}
+
+.textFileName {
+  margin-bottom: 4px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--fg-3);
+}
+
+/* The CSR as its arrays, one row each, the weights beside the targets. */
+.arrays {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px 26px;
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.arraysLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.arrayRow {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.arrayName {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.cells {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cell {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  height: 38px;
+  padding: 0 4px;
+  border: 1px solid var(--border-2);
+  border-radius: 3px;
+  background: var(--bg);
+  font-size: 15px;
+  color: var(--fg);
+}
+
+/* A vertex's row starts with a wider gap, so the targets read in groups. */
+.cell[data-row-start] {
+  margin-left: 10px;
+}
+
+.cell[data-row-start]:first-child {
+  margin-left: 0;
+}
+
+.weightCell {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+.weightCell[data-negative] {
+  border-style: dashed;
+  border-color: var(--fg-3);
+  background: var(--bg-3);
+  color: var(--fg-2);
+}
+
+.steps[data-count='3'] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* ---- part 2 · 02 frontiers ----------------------------------------------- */
+
+.frontiers {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.9fr);
+  align-items: start;
+  gap: 0 48px;
+}
+
+.codeCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+
+.codeCard pre {
+  margin: 0;
+  font-size: clamp(11px, 0.85vw, 14px);
+  line-height: 1.6;
+  color: var(--fg);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.kw {
+  color: var(--fg-3);
+}
+
+.name {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.cost {
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.ties {
+  margin-top: 28px;
+  font-size: 14px;
+}
+
+.figValue,
+.figLabelCentre,
+.figNodeText,
+.figKeyText {
+  font-family: var(--font-mono);
+  text-anchor: middle;
+}
+
+.figValue {
+  font-size: 8px;
+  fill: var(--fg);
+}
+
+.figLabelCentre {
+  font-size: 7px;
+  fill: var(--fg-3);
+}
+
+.figNodeText,
+.figKeyText {
+  font-size: 9px;
+  fill: var(--fg);
+}
+
+.figKeyText {
+  fill: #fff;
+}
+
+/* The vector's smallest estimate, lit once the scan has passed it. */
+.figMin {
+  fill: var(--bg);
+  stroke: var(--border-2);
+  stroke-width: 1;
+}
+
+.slideCurrent .figMin {
+  animation: minLit 0.4s var(--ease) var(--d, 0s) both;
+}
+
+/* The cursor sweeping all n estimates, over and over. */
+.figScan {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  opacity: 0;
+}
+
+.slideCurrent .figScan {
+  animation: scan 2.4s linear var(--d, 0s) infinite;
+}
+
+.figHeapNode {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.figKey {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+/* A node of the sift: to its first place, then its second, then held. */
+.figSift {
+  transform-box: view-box;
+}
+
+.slideCurrent .figSift {
+  animation: sift 2.4s var(--ease) var(--d, 0s) both;
+}
+
+.figEntry {
+  fill: var(--accent-muted);
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+
+/* ---- part 2 · 03 the timing sheet ---------------------------------------- */
+
+.sheetHead.timingRow,
+.row.timingRow {
+  grid-template-columns: 170px 130px minmax(0, 1fr) 150px;
+}
+
+.swatch[data-key='vector'] {
+  background: var(--accent-2);
+}
+
+.swatch[data-key='lazy_heap'] {
+  background: var(--level-0);
+}
+
+.pending {
+  padding: 26px 20px;
+  font-size: 14px;
+}
+
+/* ---- part 2 · 04 paths ---------------------------------------------------- */
+
+.pathsGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 0 48px;
+  align-items: start;
+}
+
+.pathsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  position: relative;
+}
+
+.pathsPanel::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 36px;
+  height: 2px;
+  background: var(--accent);
+}
+
+.pathsPanel .pending {
+  padding: 18px 0;
+}
+
+.distanceGrid {
+  display: grid;
+  grid-template-columns: 120px repeat(var(--targets), minmax(0, 1fr));
+  align-items: center;
+  gap: 10px 12px;
+  margin-top: 14px;
+}
+
+.distanceHead {
+  font-size: 13px;
+  color: var(--accent);
+  text-align: center;
+}
+
+.distanceCell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.distanceValue {
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.distanceHops {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.namedPaths {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+}
+
+.namedPath {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.namedPath:last-child {
+  border-bottom: 0;
+}
+
+.namedTo {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.namedRoute {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+@keyframes minLit {
+  to {
+    fill: var(--accent-muted);
+    stroke: var(--accent);
+  }
+}
+
+@keyframes scan {
+  0% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+
+  6% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 1;
+    transform: translateX(144px);
+  }
+
+  92%,
+  100% {
+    opacity: 0;
+    transform: translateX(144px);
+  }
+}
+
+@keyframes sift {
+  0%,
+  20% {
+    transform: translate(0, 0);
+  }
+
+  45%,
+  60% {
+    transform: translate(var(--x1), var(--y1));
+  }
+
+  85%,
+  100% {
+    transform: translate(var(--x2), var(--y2));
+  }
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -1640,5 +2130,61 @@
 
   .wordHalo {
     animation: none !important;
+  }
+}
+
+/* Part 2's layouts, narrower. */
+@media (max-width: 1280px) {
+  .weightsMap {
+    grid-template-columns: minmax(170px, 0.8fr) 120px minmax(0, 2.4fr);
+  }
+
+  .cell {
+    min-width: 38px;
+    height: 34px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 900px) {
+  .weightsMap,
+  .frontiers,
+  .pathsGrid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px 0;
+  }
+
+  .steps[data-count='3'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .steps[data-count='3'] .stepItem:last-child {
+    grid-column: auto;
+  }
+
+  .distanceGrid {
+    grid-template-columns: 90px repeat(var(--targets), minmax(0, 1fr));
+    overflow-x: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topics > span {
+    transition: none;
+  }
+
+  .figScan,
+  .figSift {
+    animation: none !important;
+  }
+
+  .figMin {
+    fill: var(--accent-muted);
+    stroke: var(--accent);
+    animation: none !important;
+  }
+
+  .partsThumb {
+    transition: none;
   }
 }

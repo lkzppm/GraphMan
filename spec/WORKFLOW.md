@@ -59,11 +59,12 @@ the iterative one's tree), `distances`, `components` and `diameter`:
 
 ## Weighted graphs (Part 2)
 
-The weighted course files are not out yet; until they are, `samples/` has
-the handout's figures, a 100-vertex weighted graph and a synthetic named
-network (see `samples/README.md`), and `graphman generate --like
-graphs/grafo_N.txt --weights 0:1 -o grafo_W_N.txt` puts random weights on a
-Part 1 graph. The mechanisms:
+The weighted course files are `graphs/grafo_W_{3,4,5}.txt` and the
+collaboration network `graphs/rede_colaboracao.txt` with its names in
+`graphs/rede_colaboracao_vertices.txt` (gitignored, as the Part 1 graphs;
+see `spec/ASSIGNMENT.md`). `samples/` has the handout's figures, a
+100-vertex weighted graph and a synthetic named network (see
+`samples/README.md`) for tests and the site. The mechanisms:
 
 ```
 graphman dijkstra G --from 10 --to 20 30 40 50 60 --frontier heap     # tree file + paths
@@ -79,8 +80,9 @@ weighted file gets the Part 2 sections, `paths` and `frontiers`, by
 default; `--only` picks either):
 
 ```
-./target/release/graphman study graphs/weighted/*.txt --out studies --dijkstra-budget 600
-./target/release/graphman study R.txt --names R_names.txt --out studies --only paths \
+./target/release/graphman study graphs/grafo_W_*.txt --out studies --dijkstra-budget 900
+./target/release/graphman study graphs/rede_colaboracao.txt --only paths \
+    --names graphs/rede_colaboracao_vertices.txt \
     --from "Edsger W. Dijkstra" \
     --to "Alan M. Turing" "J. B. Kruskal" "Jon M. Kleinberg" "Éva Tardos" "Daniel R. Figueiredo"
 ```

@@ -202,6 +202,10 @@ pub struct PathAnswer {
     pub distance: Option<Weight>,
     /// The vertices from `from` to `to`, both included; empty when unreached.
     pub path: Vec<Vertex>,
+    /// The distance from `from` to each vertex of `path`, in order (so the
+    /// last one is `distance`); the web draws the path to scale with it.
+    #[serde(default)]
+    pub distances: Vec<Weight>,
     /// With a names file: the names of `from` and `to`, and of the path's vertices.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from_name: Option<String>,
