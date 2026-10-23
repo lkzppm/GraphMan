@@ -15,7 +15,7 @@ import {
 import { siNextdotjs, siRust, siVercel, siWebassembly, siWebgpu } from 'simple-icons';
 import { useT } from '@/i18n/LocaleProvider';
 import { at, Bar, Head, type T } from './deck-kit';
-import { Frontiers, Paths, Timing, Weights } from './DeckPart2';
+import { Dijkstra, Frontiers, Names, Network, Paths, Timing, Weights } from './DeckPart2';
 import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/lib/format';
 import { logScale } from '@/lib/scale';
 import type { DiameterMethod, GraphStudy, Representation, WeightedStudy } from '@/lib/studies';
@@ -95,9 +95,12 @@ export default function Deck({
       : [
           <Cover key="cover" t={t} part={part} onPart={setPart} />,
           <Weights key="weights" t={t} />,
+          <Dijkstra key="dijkstra" t={t} />,
           <Frontiers key="frontiers" t={t} />,
           <Timing key="timing" t={t} studies={weighted} />,
           <Paths key="paths" t={t} studies={weighted} />,
+          <Names key="names" t={t} />,
+          <Network key="network" t={t} studies={weighted} />,
           <TryIt key="try" t={t} eyebrow={p.slides.part2.observatory} />,
         ];
   const count = slides.length;

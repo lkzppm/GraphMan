@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
+import { Info } from 'lucide-react';
 import styles from './Rail.module.css';
 
 export interface RailStop {
@@ -9,6 +10,9 @@ export interface RailStop {
   title: string;
   /** A link (the library's chapters) or, without one, a button. */
   href?: string;
+  /** A note behind an info button to the stop's right (how a part was
+      measured), shown on hover, focus or a tap. */
+  info?: string;
 }
 
 /**
@@ -29,8 +33,11 @@ export default function Rail({
   active,
   onSelect,
   numbered = true,
+  infoLabel = '',
 }: {
   label: string;
+  /** The info buttons' accessible name. */
+  infoLabel?: string;
   stops: RailStop[];
   active: string;
   /** The `01`, `02` before each title; off when the titles already count. */
@@ -90,7 +97,7 @@ export default function Rail({
             </>
           );
           return (
-            <li key={stop.id} style={{ '--i': i } as CSSProperties}>
+            <li key={stop.id} className={styles.item} style={{ '--i': i } as CSSProperties}>
               {stop.href ? (
                 <a href={stop.href} className={styles.stop} data-active={current}>
                   {body}
@@ -105,6 +112,16 @@ export default function Rail({
                 >
                   {body}
                 </button>
+              )}
+              {stop.info && (
+                <span className={styles.info}>
+                  <button type="button" className={styles.infoButton} aria-label={infoLabel}>
+                    <Info size={13} aria-hidden="true" />
+                  </button>
+                  <span className={styles.infoTip} role="tooltip">
+                    {stop.info}
+                  </span>
+                </span>
               )}
             </li>
           );

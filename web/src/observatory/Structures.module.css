@@ -415,6 +415,20 @@
     0 0 0 4px color-mix(in srgb, var(--accent) 45%, white);
 }
 
+/* An entry a lower estimate left behind (lazy and radix heaps). */
+.node[data-state='stale'] {
+  background: var(--bg-3);
+  color: var(--fg-3);
+  box-shadow:
+    0 0 0 2px var(--bg),
+    inset 0 0 0 1px var(--border-2);
+}
+
+.queueCell[data-state='stale'] {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
 .node:hover,
 .node[data-hot] {
   box-shadow:
@@ -433,6 +447,50 @@
   font-size: 11px;
   color: var(--fg-3);
   white-space: nowrap;
+}
+
+/* The pairing heap has no array: its tree takes the array's row too. */
+.tree[data-span] {
+  grid-row: 2 / 4;
+}
+
+/* The radix heap's buckets, one column each, the equal bucket first. */
+.buckets {
+  grid-column: 2;
+  grid-row: 2 / 4;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.bucket {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.bucketLabel {
+  font-size: 10px;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+.bucket[data-equal] .bucketLabel {
+  color: var(--accent);
+}
+
+.bucketCells {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .heapArray {

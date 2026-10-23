@@ -10,7 +10,13 @@ import {
 } from 'react';
 import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/lib/format';
 import { logScale } from '@/lib/scale';
-import type { DiameterMethod, GraphStudy, Representation, WeightedStudy } from '@/lib/studies';
+import type {
+  DiameterMethod,
+  GraphStudy,
+  Machine,
+  Representation,
+  WeightedStudy,
+} from '@/lib/studies';
 import { useT } from '@/i18n/LocaleProvider';
 import Rail from './Rail';
 import Reveal from './Reveal';
@@ -434,13 +440,36 @@ export default function Studies({
     return () => window.removeEventListener('keydown', onKey);
   }, [choose, last, stop, part]);
 
+  // How each part was measured, behind the info button beside it.
+  const machineOf = (all: { machine?: Machine }[]) => {
+    const machine = all.find((study) => study.machine)?.machine;
+    return machine ? `${machine.cpu}, ${formatBytes(machine.total_memory_bytes)}.` : '';
+  };
+  const partOneRuns = Math.max(
+    0,
+    ...studies.flatMap((study) => study.representations.map((r) => r.bfs?.runs ?? 0)),
+  );
+  const partOneNote =
+    studies.length > 0
+      ? t.studies.parts.method(formatInt(partOneRuns), machineOf(studies))
+      : undefined;
+  const partTwoRuns = Math.max(
+    0,
+    ...weighted.flatMap((study) => study.frontiers.map((f) => f.requested_runs)),
+  );
+  const partTwoNote =
+    partTwoRuns > 0
+      ? t.studies.part2.timing.note(formatInt(partTwoRuns), machineOf(weighted))
+      : undefined;
+
   const rail = (
     <Rail
       label={t.studies.parts.label}
       stops={[
-        { id: '1', title: t.studies.parts.one },
-        { id: '2', title: t.studies.parts.two },
+        { id: '1', title: t.studies.parts.one, info: partOneNote },
+        { id: '2', title: t.studies.parts.two, info: partTwoNote },
       ]}
+      infoLabel={t.studies.parts.info}
       active={String(part)}
       onSelect={(id) => choosePart(id === '2' ? 2 : 1)}
       numbered={false}
