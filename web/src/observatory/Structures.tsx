@@ -24,6 +24,9 @@ import styles from './Structures.module.css';
 
 type Strings = Dictionary['observatory'];
 
+/** How Dijkstra keeps its estimates, as the observatory names them. */
+export type FrontierName = 'vector' | 'heap' | 'lazy_heap' | 'quad_heap' | 'pairing' | 'radix';
+
 /** What the strip reads of a search (the observatory's `Search` has it all). */
 export interface StructureSearch {
   kind: 'bfs' | 'dfs' | 'dijkstra';
@@ -35,7 +38,7 @@ export interface StructureSearch {
   span: number;
   distances: Float64Array | null;
   ranks: Uint32Array;
-  frontier: 'vector' | 'heap' | null;
+  frontier: FrontierName | null;
   dfs: 'iterative' | 'recursive' | null;
   /** Steps of the replay: `span`, or for a DFS one per push and per pop. */
   steps: number;
@@ -51,6 +54,12 @@ export interface FrontierView {
   /** Entries as stored: heap order, or by vertex for the vector. */
   vertices: Uint32Array;
   estimates: Float64Array;
+  /** Lazy and radix heaps: 1 for an entry left behind by a lower estimate. */
+  stale: Uint8Array;
+  /** Pairing heap: each entry's parent index (-1 the root); else empty. */
+  parents: Int32Array;
+  /** Radix heap: each entry's bucket; else empty. */
+  buckets: Uint8Array;
   total: number;
   /** The estimates that settle lowered: vertex, before, after. */
   relaxed: Uint32Array;
@@ -205,15 +214,25 @@ export default function Structures({
         peek
       />
     );
-  } else if (search?.kind === 'dijkstra') {
-    title = search.frontier === 'vector' ? s.titles.vector : s.titles.heap;
+  } else if (search?.kind === 'dijkstra' && search.frontier) {
+    const kind = search.frontier;
+    title = s.titles[kind];
     body =
       frontier === undefined ? null : frontier === null ? (
         <p className={styles.empty}>{s.tooLarge}</p>
-      ) : search.frontier === 'vector' ? (
+      ) : kind === 'vector' ? (
         <VectorView t={t} search={search} view={frontier} link={link} title={title} />
+      ) : kind === 'radix' ? (
+        <RadixView t={t} search={search} view={frontier} link={link} title={title} />
       ) : (
-        <HeapView t={t} search={search} view={frontier} link={link} title={title} />
+        <HeapView
+          t={t}
+          search={search}
+          view={frontier}
+          link={link}
+          title={title}
+          arity={kind === 'quad_heap' ? 4 : kind === 'pairing' ? null : 2}
+        />
       );
   }
 
@@ -256,12 +275,15 @@ function members(search: StructureSearch, step: number, frontier: FrontierView |
   }
   const vertices = frontier ? Array.from(frontier.vertices) : [];
   let focus = 0;
-  if (frontier && search.frontier === 'heap') focus = frontier.vertices[0] ?? 0;
+  const top = search.frontier === 'heap' || search.frontier === 'quad_heap';
+  if (frontier && (top || search.frontier === 'pairing')) focus = frontier.vertices[0] ?? 0;
   else if (frontier) {
-    // The vector's next minimum: what the next scan will land on.
+    // The next minimum among the live entries: what the next scan (or
+    // pop) will land on.
     let best = Infinity;
     frontier.vertices.forEach((v, i) => {
       const e = frontier.estimates[i];
+      if (frontier.stale[i]) return;
       if (e < best || (e === best && v < focus)) [best, focus] = [e, v];
     });
   }
@@ -681,8 +703,9 @@ function QueueCell({
   link: Link;
   colour: string;
   role: 'current' | 'queue' | 'stack' | 'array';
-  /** The heap array's root ('next') or an estimate just lowered. */
-  state?: 'next' | 'lowered';
+  /** The heap array's root ('next'), an estimate just lowered, or an
+      entry a lower estimate left behind. */
+  state?: 'next' | 'lowered' | 'stale';
   title?: string;
   children?: ReactNode;
 }) {
@@ -915,24 +938,116 @@ function VectorView({
   );
 }
 
-/** The binary heap in the queue's layout: the tree it is (index 0 at the
-    top, the children of `i` at `2i + 1` and `2i + 2`) over the array that
-    stores it, as glued cells with their indices, and the vertex the step
-    settles in the analysing circle with its distance under it. Nodes and
-    cells are keyed by vertex, so a sift slides them between places and
-    the root popped glides into the circle. */
+/** A drawn tree node: its entry index, its place, its parent's entry. */
+interface TreeNode {
+  i: number;
+  x: number;
+  y: number;
+  parent: number;
+}
+
+/** The first `levels` levels of an array heap with `arity` children per
+    node (the children of `i` at `arity·i + 1 ..= arity·i + arity`), each
+    level spread evenly over the width, as many levels as fit across. */
+function arrayTree(
+  count: number,
+  arity: number,
+  levels: number,
+  width: number,
+  unit: number,
+  row: number,
+): TreeNode[] {
+  const across = Math.max(1, Math.floor(Math.log(width / (unit + 2)) / Math.log(arity)) + 1);
+  const nodes: TreeNode[] = [];
+  let first = 0;
+  let size = 1;
+  for (let depth = 0; depth < Math.min(levels, across) && first < count; depth++) {
+    for (let i = first; i < Math.min(first + size, count); i++) {
+      nodes.push({
+        i,
+        x: ((i - first + 0.5) / size) * width,
+        y: unit / 2 + depth * row,
+        parent: i === 0 ? -1 : Math.floor((i - 1) / arity),
+      });
+    }
+    first += size;
+    size *= arity;
+  }
+  return nodes;
+}
+
+/** The pairing heap's tree from its parent links (entries level by level):
+    the levels that fit, as many nodes a level as fit across, each node's
+    width shared among its children by how many leaves they span. */
+function linkedTree(
+  parents: Int32Array,
+  levels: number,
+  width: number,
+  unit: number,
+  row: number,
+): TreeNode[] {
+  const perLevel = Math.max(1, Math.floor(width / (unit + 6)));
+  const depth = new Int32Array(parents.length);
+  const drawn = new Uint8Array(parents.length);
+  const atDepth = new Int32Array(levels);
+  for (let i = 0; i < parents.length; i++) {
+    const p = parents[i];
+    depth[i] = p < 0 ? 0 : depth[p] + 1;
+    if ((p < 0 || drawn[p]) && depth[i] < levels && atDepth[depth[i]] < perLevel) {
+      drawn[i] = 1;
+      atDepth[depth[i]]++;
+    }
+  }
+  // Leaves under each drawn node, children before parents (a parent is
+  // always listed before its children).
+  const leaves = new Float64Array(parents.length);
+  for (let i = parents.length - 1; i >= 0; i--) {
+    if (!drawn[i]) continue;
+    leaves[i] = Math.max(1, leaves[i]);
+    if (parents[i] >= 0) leaves[parents[i]] += leaves[i];
+  }
+  const from = new Float64Array(parents.length);
+  const span = new Float64Array(parents.length);
+  const used = new Float64Array(parents.length);
+  const nodes: TreeNode[] = [];
+  for (let i = 0; i < parents.length; i++) {
+    if (!drawn[i]) continue;
+    const p = parents[i];
+    if (p < 0) {
+      from[i] = 0;
+      span[i] = width;
+    } else {
+      span[i] = (span[p] * leaves[i]) / leaves[p];
+      from[i] = from[p] + used[p];
+      used[p] += span[i];
+    }
+    nodes.push({ i, x: from[i] + span[i] / 2, y: unit / 2 + depth[i] * row, parent: p });
+  }
+  return nodes;
+}
+
+/** A heap in the queue's layout: the tree it is over the array that stores
+    it, as glued cells with their indices, and the vertex the step settles
+    in the analysing circle with its distance under it. `arity` 2 is the
+    binary heap (and the lazy heap, whose stale entries are drawn faded),
+    4 the 4-ary heap; `null` is the pairing heap, a tree of pointers with no
+    array, drawn from its parent links. Nodes and cells are keyed by entry,
+    so a sift or a meld slides them between places and the root popped
+    glides into the circle. */
 function HeapView({
   t,
   search,
   view,
   link,
   title,
+  arity,
 }: {
   t: Strings;
   search: StructureSearch;
   view: FrontierView;
   link: Link;
   title: string;
+  arity: number | null;
 }) {
   const s = t.structures;
   const boxRef = useRef<HTMLDivElement>(null);
@@ -957,17 +1072,41 @@ function HeapView({
     1,
     Math.min(HEAP_LEVELS, Math.floor((tree.height - unit - 14) / row) + 1),
   );
-  const count = Math.min(view.vertices.length, 2 ** levels - 1);
-  const deeper = view.total - count;
-  const place = (i: number): [number, number] => {
-    const depth = Math.floor(Math.log2(i + 1));
-    const first = 2 ** depth - 1;
-    return [((i - first + 0.5) / 2 ** depth) * tree.width, unit / 2 + depth * row];
-  };
-  const nodes = Array.from({ length: count }, (_, i) => i);
-  const shown = Math.min(view.vertices.length, room);
+  const nodes =
+    arity === null
+      ? linkedTree(view.parents, levels, tree.width, unit, row)
+      : arrayTree(view.vertices.length, arity, levels, tree.width, unit, row);
+  const placed = new Map(nodes.map((node) => [node.i, node]));
+  const deeper = view.total - nodes.length;
+  const shown = arity === null ? 0 : Math.min(view.vertices.length, room);
+  // A stale entry shares its vertex with the live one: it is keyed by its
+  // estimate too.
+  const keyOf = (i: number) =>
+    view.stale[i] ? `${view.vertices[i]}~${view.estimates[i]}` : String(view.vertices[i]);
   const stateOf = (i: number, v: number) =>
-    i === 0 ? 'next' : lowered.has(v) ? 'lowered' : undefined;
+    view.stale[i] ? 'stale' : i === 0 ? 'next' : lowered.has(v) ? 'lowered' : undefined;
+  const titleOf = (i: number, v: number) =>
+    view.stale[i] ? s.stale : i === 0 ? s.next : lowered.get(v);
+  // Levels under the root: an array heap's from its size, the pairing
+  // heap's from its links (at least, when the list was cut short).
+  let height = 0;
+  if (arity === null) {
+    const depth = new Int32Array(view.parents.length);
+    view.parents.forEach((p, i) => {
+      depth[i] = p < 0 ? 0 : depth[p] + 1;
+      height = Math.max(height, depth[i]);
+    });
+  } else {
+    for (let cap = 1, size = 1; cap < view.total; height++) {
+      size *= arity;
+      cap += size;
+    }
+  }
+  const last = nodes.reduce<TreeNode | null>(
+    (best, node) =>
+      !best || node.y > best.y || (node.y === best.y && node.x > best.x) ? node : best,
+    null,
+  );
   useFlip(
     boxRef,
     search,
@@ -998,25 +1137,31 @@ function HeapView({
         <span className={`mono ${styles.slotNote}`}>{s.distance(formatWeight(distance))}</span>
       </div>
       <span className={`label ${styles.heapTitle}`}>{title}</span>
-      <div ref={treeRef} className={styles.tree}>
+      <div ref={treeRef} className={styles.tree} data-span={arity === null || undefined}>
         <svg width={tree.width} height={tree.height} aria-hidden="true">
-          {nodes.slice(1).map((i) => {
-            const [x1, y1] = place((i - 1) >> 1);
-            const [x2, y2] = place(i);
+          {nodes.map((node) => {
+            const up = placed.get(node.parent);
+            if (!up) return null;
             return (
-              <line key={`e${i}`} x1={x1} y1={y1} x2={x2} y2={y2} className={styles.treeEdge} />
+              <line
+                key={`e${keyOf(node.i)}`}
+                x1={up.x}
+                y1={up.y}
+                x2={node.x}
+                y2={node.y}
+                className={styles.treeEdge}
+              />
             );
           })}
         </svg>
-        {nodes.map((i) => {
+        {nodes.map(({ i, x, y }) => {
           const v = view.vertices[i];
-          const [x, y] = place(i);
           return (
             <button
-              key={v}
+              key={keyOf(i)}
               type="button"
               className={`mono ${styles.node}`}
-              data-flip={v}
+              data-flip={keyOf(i)}
               data-role="node"
               data-state={stateOf(i, v)}
               data-hot={link.hovered === v || undefined}
@@ -1026,59 +1171,174 @@ function HeapView({
               onFocus={() => link.onHover(v)}
               onBlur={() => link.onHover(0)}
               onClick={() => link.onSelect(v)}
-              title={i === 0 ? s.next : lowered.get(v)}
+              title={titleOf(i, v)}
             >
               {v}
               <span className={styles.nodeEstimate}>{formatWeight(view.estimates[i])}</span>
             </button>
           );
         })}
-        {deeper > 0 &&
-          (() => {
-            // Beside the last node drawn, the bottom level's rightmost:
-            // how many entries the levels under it hold.
-            const [x, y] = place(count - 1);
-            return (
-              <span
-                className={`mono ${styles.deeper}`}
-                style={{ left: x + unit / 2 + 8, top: y }}
-                title={s.deeper(formatInt(deeper))}
-              >
-                <ArrowDown size={11} aria-hidden="true" />+{formatInt(deeper)}
-              </span>
-            );
-          })()}
+        {deeper > 0 && last && (
+          // Beside the bottom level's rightmost node: how many entries the
+          // tree drawn leaves out.
+          <span
+            className={`mono ${styles.deeper}`}
+            style={{ left: last.x + unit / 2 + 8, top: last.y }}
+            title={s.deeper(formatInt(deeper))}
+          >
+            <ArrowDown size={11} aria-hidden="true" />+{formatInt(deeper)}
+          </span>
+        )}
       </div>
-      <div className={styles.heapArray}>
-        <span className={`label ${styles.end}`}>{s.heapArray}</span>
-        <ol className={styles.queueCells}>
-          {Array.from(view.vertices.subarray(0, shown), (v, i) => (
-            <li key={v} className={styles.indexed}>
-              <QueueCell
-                v={v}
-                flip={`a${v}`}
-                link={link}
-                colour="var(--accent)"
-                role="array"
-                state={stateOf(i, v)}
-                title={i === 0 ? s.next : lowered.get(v)}
-              />
-              <small className="mono">{i}</small>
-            </li>
-          ))}
-          {view.total > shown && (
-            <li key="gap" className={`mono ${styles.queueGap}`}>
-              +{formatInt(view.total - shown)}
-            </li>
-          )}
-        </ol>
-      </div>
+      {arity !== null && (
+        <div className={styles.heapArray}>
+          <span className={`label ${styles.end}`}>{s.heapArray}</span>
+          <ol className={styles.queueCells}>
+            {Array.from(view.vertices.subarray(0, shown), (v, i) => (
+              <li key={keyOf(i)} className={styles.indexed}>
+                <QueueCell
+                  v={v}
+                  flip={`a${keyOf(i)}`}
+                  link={link}
+                  colour="var(--accent)"
+                  role="array"
+                  state={stateOf(i, v)}
+                  title={titleOf(i, v)}
+                />
+                <small className="mono">{i}</small>
+              </li>
+            ))}
+            {view.total > shown && (
+              <li key="gap" className={`mono ${styles.queueGap}`}>
+                +{formatInt(view.total - shown)}
+              </li>
+            )}
+          </ol>
+        </div>
+      )}
       <p className={styles.heapSize}>
         {s.heapSize}: <span className="mono">{formatInt(view.total)}</span>
         <span className={styles.sizeGap} aria-hidden="true" />
-        {/* A binary heap of n entries is ⌊log₂ n⌋ levels deep under its root. */}
         {s.heapHeight}:{' '}
-        <span className="mono">{formatInt(view.total ? 31 - Math.clz32(view.total) : 0)}</span>
+        <span className="mono">
+          {arity === null && view.vertices.length < view.total ? '≥ ' : ''}
+          {formatInt(height)}
+        </span>
+      </p>
+    </div>
+  );
+}
+
+/** The radix heap: no tree and no comparisons, the entries filed in
+    buckets by the highest bit where their key differs from the last key
+    popped (bucket 0: equal to it, the vertices at that distance, the
+    smaller id leaving first). A pop empties the first bucket that holds
+    anything into lower ones around its smallest key; an entry only ever
+    moves down. Each bucket is a column of cells, vertex over estimate;
+    stale entries (an estimate lowered since) are drawn faded. */
+function RadixView({
+  t,
+  search,
+  view,
+  link,
+  title,
+}: {
+  t: Strings;
+  search: StructureSearch;
+  view: FrontierView;
+  link: Link;
+  title: string;
+}) {
+  const s = t.structures;
+  const boxRef = useRef<HTMLDivElement>(null);
+  const bucketsRef = useRef<HTMLDivElement>(null);
+  const box = useBox(boxRef);
+  const area = useBox(bucketsRef);
+  const { size, side } = cellSizes(box);
+  const unit = Math.round(Math.max(24, Math.min(32, box.height / 7)));
+  const step = view.step;
+  const current = search.order[step];
+  const lowered = loweredBy(view);
+  const distance = search.distances ? search.distances[current] : 0;
+
+  const groups: { bucket: number; entries: number[] }[] = [];
+  view.buckets.forEach((b, i) => {
+    const group = groups[groups.length - 1];
+    if (group && group.bucket === b) group.entries.push(i);
+    else groups.push({ bucket: b, entries: [i] });
+  });
+  // As many cells a column as the height holds, as many columns as fit.
+  const rows = Math.max(1, Math.floor((area.height - 22) / (unit + 16)));
+  const columns = Math.max(1, Math.floor(area.width / (unit + 14)));
+  const shownGroups = groups.slice(0, columns);
+  const hiddenBuckets = groups.length - shownGroups.length;
+  const keyOf = (i: number) =>
+    view.stale[i] ? `${view.vertices[i]}~${view.estimates[i]}` : String(view.vertices[i]);
+  useFlip(boxRef, search, step, HEAP_MOTION, unit, size, `${rows}:${columns}`);
+
+  return (
+    <div
+      ref={boxRef}
+      className={styles.heapBox}
+      style={{ ...cellVars({ size, cell: unit, side }), '--unit': `${unit}px` } as CSSProperties}
+    >
+      <div className={styles.heapSide}>
+        <span className={`label ${styles.slotLabel}`}>{s.analysing}</span>
+        <div className={styles.slotCell}>
+          <QueueCell
+            key={current}
+            v={current}
+            link={link}
+            colour={rampColour(search.levels[current], search.depth)}
+            role="current"
+          />
+        </div>
+        <span className={`mono ${styles.slotNote}`}>{s.distance(formatWeight(distance))}</span>
+      </div>
+      <span className={`label ${styles.heapTitle}`}>{title}</span>
+      <div ref={bucketsRef} className={styles.buckets} title={s.bucketsLabel}>
+        {shownGroups.map(({ bucket, entries }) => (
+          <div key={bucket} className={styles.bucket} data-equal={bucket === 0 || undefined}>
+            <span className={`mono ${styles.bucketLabel}`}>
+              {bucket === 0 ? s.bucketEqual : s.bucket(bucket)}
+            </span>
+            <ol className={styles.bucketCells}>
+              {entries.slice(0, rows).map((i) => {
+                const v = view.vertices[i];
+                const stale = view.stale[i] === 1;
+                return (
+                  <li key={keyOf(i)} className={styles.indexed}>
+                    <QueueCell
+                      v={v}
+                      flip={keyOf(i)}
+                      link={link}
+                      colour="var(--accent)"
+                      role="array"
+                      state={stale ? 'stale' : lowered.has(v) ? 'lowered' : undefined}
+                      title={stale ? s.stale : lowered.get(v)}
+                    />
+                    <small className="mono">{formatWeight(view.estimates[i])}</small>
+                  </li>
+                );
+              })}
+              {entries.length > rows && (
+                <li className={`mono ${styles.queueGap}`}>+{formatInt(entries.length - rows)}</li>
+              )}
+            </ol>
+          </div>
+        ))}
+        {hiddenBuckets > 0 && (
+          <span className={`mono ${styles.queueGap}`}>+{formatInt(hiddenBuckets)}</span>
+        )}
+      </div>
+      <p className={styles.heapSize}>
+        {s.entries}: <span className="mono">{formatInt(view.total)}</span>
+        {step > 0 && (
+          <>
+            <span className={styles.sizeGap} aria-hidden="true" />
+            {s.lastPopped}: <span className="mono">{formatWeight(distance)}</span>
+          </>
+        )}
       </p>
     </div>
   );

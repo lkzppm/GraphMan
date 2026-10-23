@@ -150,7 +150,7 @@ export const en = {
       },
       frontiers: {
         title: 'Priority queues',
-        body: 'A Frontier keeps the estimates of the vertices reached but not yet settled: decrease inserts a vertex or lowers its estimate, pop_min hands back the closest one, the smaller vertex first on a tie. The course asks for two, a vector and a heap whose keys change efficiently, without writing Dijkstra twice; the library has three, and a new way of keeping estimates is a new Frontier, never a second Dijkstra. For k runs, as in the case study, dijkstra_into reuses one frontier and one tree, each run resetting only what the previous one touched.',
+        body: 'A Frontier keeps the estimates of the vertices reached but not yet settled: decrease inserts a vertex or lowers its estimate, pop_min hands back the closest one, the smaller vertex first on a tie. The course asks for two, a vector and a heap whose keys change efficiently, without writing Dijkstra twice; the library has six, the three the course discusses and three that go faster in practice, and a new way of keeping estimates is a new Frontier, never a second Dijkstra. For k runs, as in the case study, dijkstra_into reuses one frontier and one tree, each run resetting only what the previous one touched.',
         table: [
           ['Frontier', 'How it keeps the estimates', 'pop_min', 'decrease', 'One run'],
           [
@@ -173,6 +173,27 @@ export const en = {
             'O(log m)',
             'O(log m)',
             'O((n + m) log m)',
+          ],
+          [
+            'QuadHeapFrontier',
+            'the same indexed heap with four children per node: shallower',
+            'O(log n)',
+            'O(log n)',
+            'O((n + m) log n)',
+          ],
+          [
+            'PairingHeapFrontier',
+            'a tree of pointers: decrease cuts a subtree and melds it with the root',
+            'O(log n) amortised',
+            'O(log n) amortised',
+            'O((n + m) log n)',
+          ],
+          [
+            'RadixHeapFrontier',
+            'buckets by the bits of the distance: monotone, no comparisons',
+            'O(log C) amortised',
+            'O(1)',
+            'O(m log C)',
           ],
         ],
         state: 'Dijkstra from 1, the farthest vertex ringed',
@@ -217,7 +238,14 @@ export const en = {
   studies: {
     overview: 'Overview',
     views: 'Views',
-    parts: { label: 'Parts of the project', one: 'Part 1', two: 'Part 2' },
+    parts: {
+      label: 'Parts of the project',
+      one: 'Part 1',
+      two: 'Part 2',
+      info: 'How it was measured',
+      method: (runs: string, machine: string) =>
+        `Memory: what each representation holds once built from the parsed file; a bitset matrix the machine's memory cannot hold is refused before it is allocated. BFS and DFS: the mean of ${runs} distinct random sources (one fixed seed) on each representation, each run timed alone, reading and writing excluded. The diameter methods run against a time budget: a value marked ≥ is the bound a cut run reached. ${machine}`,
+    },
     part2: {
       title: 'Part 2: weighted graphs',
       lead: "The course's weighted graphs and its collaboration network have not been run yet. When they are, graphman study fills this page: the shortest paths from vertex 10, the mean Dijkstra with a vector and with a heap, and the paths from Edsger W. Dijkstra to the five researchers.",
@@ -239,20 +267,33 @@ export const en = {
         at: (d: string, step: string, of: string) => ` at distance ${d}, step ${step} of ${of}`,
       },
       timing: {
-        title: 'Mean Dijkstra, vector and heap',
+        title: 'Mean Dijkstra, vector vs heap',
         label: 'mean time of one Dijkstra, source to every vertex',
-        frontiers: { vector: 'vector', heap: 'heap', lazy_heap: 'lazy heap' },
+        frontiers: {
+          vector: 'vector',
+          heap: 'heap',
+          lazy_heap: 'lazy heap',
+          quad_heap: '4-ary heap',
+          pairing: 'pairing heap',
+          radix: 'radix heap',
+        },
         estimated: (time: string) => `≈ ${time}`,
         estimate: 'estimate',
-        chartHint: '// both axes logarithmic: a steeper line grows faster with the graph',
-        ratioCaption: "times the heap's time",
-        versus: (vector: string, heap: string) => `vector ${vector}, heap ${heap}`,
+        chartHint:
+          '// both axes logarithmic: drag to pan, pinch or ctrl + scroll to zoom, click a point to pin it, double-click to fit',
+        zoomIn: 'Zoom in',
+        zoomOut: 'Zoom out',
+        fit: 'Fit the chart',
+        ofHeap: (x: string) => `${x}× the heap's time`,
+        open: (name: string) => `open ${name}`,
+        order: 'fastest first',
+        versusHeap: "×: times the heap's time",
         runs: (k: string, n: string) => `${k} of ${n} runs`,
         ratio: (x: string) => `the vector takes ${x} times the heap's time`,
         race: {
-          hint: '// one linear time axis: each segment is a whole Dijkstra, source to every vertex',
           runs: (n: number): string => (n === 1 ? 'run' : 'runs'),
           replay: 'replay',
+          block: (n: string) => `▮ = ${n} runs`,
         },
         note: (runs: string, machine: string) =>
           `${runs} random sources per frontier, each run timed alone on CSR, reading and writing excluded. Each frontier has a time budget: "k of ${runs} runs" is how many finished in it, and a dashed bar is an estimate, the one run cut short scaled to its whole component. ${machine}`,
@@ -419,11 +460,34 @@ export const en = {
     recursionRefusal: (limit: string) =>
       `The recursive DFS would go deeper than ${limit} levels, more than the browser's stack holds. The iterative DFS builds the same tree without that limit.`,
     frontier: 'Priority queue',
-    frontiers: { vector: 'Vector', heap: 'Heap' },
-    frontierHints: {
-      vector: 'the distance estimates in a vector, scanned for the smallest: O(n²)',
-      heap: 'the distance estimates in a binary heap with decrease-key: O((n + m) log n)',
+    frontiers: {
+      vector: 'Vector',
+      heap: 'Binary heap',
+      lazy_heap: 'Lazy heap',
+      quad_heap: '4-ary heap',
+      pairing: 'Pairing heap',
+      radix: 'Radix heap',
     },
+    frontierCosts: {
+      vector: 'O(n²)',
+      heap: 'O((n + m) log n)',
+      lazy_heap: 'O(m log m)',
+      quad_heap: 'O((n + m) log n)',
+      pairing: 'O((n + m) log n)',
+      radix: 'O(m log C)',
+    },
+    frontierHints: {
+      vector: 'the estimates in a vector, scanned end to end for the smallest',
+      heap: 'a binary heap with decrease-key: a lowered estimate sifts up',
+      lazy_heap:
+        'a binary heap without decrease-key: a lowered estimate is pushed again and the old one skipped',
+      quad_heap:
+        'the same heap with four children per node: shallower, and the children sit side by side',
+      pairing: 'a tree of pointers: decrease-key cuts a subtree and melds it with the root',
+      radix:
+        'files the distances by their bits instead of comparing them, since Dijkstra never asks for a smaller one (C: the key range, 2⁶⁴)',
+    },
+    frontierGroups: { course: 'the course', faster: 'faster in practice' },
     negativeWeights: (n: number) => (n === 1 ? '1 negative weight' : `${n} negative weights`),
     refusal: (u: number, v: number, w: string) =>
       `Dijkstra refuses this graph: the edge ${u} ${v} weighs ${w}, and shortest paths with negative weights are not implemented yet.`,
@@ -499,6 +563,10 @@ export const en = {
         calls: 'Call stack',
         vector: 'Priority queue · vector',
         heap: 'Priority queue · binary heap',
+        lazy_heap: 'Priority queue · lazy heap',
+        quad_heap: 'Priority queue · 4-ary heap',
+        pairing: 'Priority queue · pairing heap',
+        radix: 'Priority queue · radix heap',
       },
       front: 'front',
       back: 'back',
@@ -515,6 +583,12 @@ export const en = {
       settled: 'settled',
       unreached: 'not reached',
       heapArray: 'the array',
+      stale: 'stale: skipped when it surfaces',
+      bucketEqual: '= last',
+      bucket: (b: number) => `bit ${b - 1}`,
+      bucketsLabel: 'buckets, by the highest bit that differs from the last key popped',
+      lastPopped: 'Last popped',
+      entries: 'Entries',
       deeper: (n: string) => `${n} more below`,
       tooLarge: 'Replaying Dijkstra to this step is not possible here.',
     },
@@ -726,10 +800,20 @@ export const en = {
             },
           ],
         },
-        frontiers: {
+        dijkstra: {
           eyebrow: '02',
-          title: 'One Dijkstra, three frontiers',
+          title: 'One Dijkstra, written once',
           driver: '// the driver is written once; a frontier keeps the estimates',
+          ties: '// ties go to the smaller vertex: every frontier builds the same tree',
+          portrait: {
+            name: 'Edsger W. Dijkstra, 1930 to 2002',
+            credit: 'line art after a photo by Hamilton Richards, CC BY-SA 3.0',
+          },
+        },
+        frontiers: {
+          eyebrow: '03',
+          title: 'Six priority queues',
+          groups: ['the course', 'faster in practice'],
           items: [
             {
               name: 'VectorFrontier',
@@ -749,11 +833,29 @@ export const en = {
               cost: 'O(m log m)',
               caption: '// a lower estimate is pushed again, the stale one skipped',
             },
+            {
+              name: 'QuadHeapFrontier',
+              title: '4-ary heap',
+              cost: 'O((n + m) log n)',
+              caption: '// four children a node: half the levels to climb',
+            },
+            {
+              name: 'PairingHeapFrontier',
+              title: 'Pairing heap',
+              cost: 'O((n + m) log n)',
+              caption: '// decrease-key cuts the subtree and melds it with the root',
+            },
+            {
+              name: 'RadixHeapFrontier',
+              title: 'Radix heap',
+              cost: 'O(m log C)',
+              caption: '// buckets by the bits of the distance: no comparisons',
+            },
           ],
-          ties: '// ties go to the smaller vertex: the three build the same tree',
+          ties: '// ties go to the smaller vertex: the six build the same tree',
         },
         timing: {
-          eyebrow: '03',
+          eyebrow: '04',
           title: 'Vector against heap',
           columns: {
             graph: 'Graph',
@@ -765,6 +867,9 @@ export const en = {
             { key: 'vector', label: 'vector' },
             { key: 'heap', label: 'heap' },
             { key: 'lazy_heap', label: 'lazy heap' },
+            { key: 'quad_heap', label: '4-ary heap' },
+            { key: 'pairing', label: 'pairing heap' },
+            { key: 'radix', label: 'radix heap' },
           ],
           estimated: (time: string) => `≈ ${time}`,
           machine: (cpu: string, memory: string) =>
@@ -774,18 +879,52 @@ export const en = {
           cta: 'Open the case studies',
         },
         paths: {
-          eyebrow: '04',
+          eyebrow: '05',
           title: 'Shortest paths',
-          graphs: { label: 'From vertex 10', caption: '// distance to 20, 30, 40, 50 and 60' },
-          network: {
-            label: 'Collaboration network',
-            caption: '// from Edsger W. Dijkstra, names matched exactly',
-          },
+          label: 'From vertex 10',
+          caption: '// distance to 20, 30, 40, 50 and 60, and how many edges it takes',
+          key: '// each dot is a vertex of the path, at its distance from vertex 10',
           unreached: 'no path',
           hops: (n: number) => (n === 1 ? '1 edge' : `${n} edges`),
           pending: 'Filled by `graphman study` once the course files are run.',
         },
-        observatory: '05',
+        names: {
+          eyebrow: '06',
+          title: 'Names',
+          input: {
+            label: 'input',
+            name: 'rede_colaboracao_vertices.txt',
+            hint: '// six of its lines: an index, a comma, and the rest is the name',
+          },
+          parse: { name: 'VertexNames::parse', hint: '// UTF-8, or Latin-1 byte by byte' },
+          arrays: {
+            label: 'VertexNames, the six alone',
+            text: 'text',
+            entries: 'entries',
+            byName: 'by_name',
+          },
+          cost: '// one string plus 20 bytes a name, no hash table',
+          notes: [
+            { title: 'name(v)', caption: '// binary search on entries, sorted by vertex' },
+            { title: 'vertex(name)', caption: '// binary search on by_name: the exact spelling' },
+            {
+              title: 'search(query)',
+              caption: '// case and accents folded: "eva tardos" suggests Éva Tardos',
+            },
+          ],
+        },
+        network: {
+          eyebrow: '07',
+          title: 'From Edsger W. Dijkstra',
+          label: 'Collaboration network',
+          facts: (people: string, links: string) =>
+            ` · ${people} researchers, ${links} collaborations`,
+          caption: '// a small weight means many papers together; names matched exactly',
+          unreached: 'no path: another component',
+          hops: (n: number) => (n === 1 ? '1 collaboration' : `${n} collaborations`),
+          pending: 'Filled by `graphman study` once the course files are run.',
+        },
+        observatory: '08',
       },
     },
   },

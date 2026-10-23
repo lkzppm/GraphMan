@@ -21,7 +21,7 @@ pub struct Args {
     #[arg(short, long, default_value = "bfs")]
     algo: String,
 
-    /// Dijkstra's frontier: vector, heap or lazy-heap.
+    /// Dijkstra's frontier: vector, heap, lazy-heap, quad-heap, pairing or radix.
     #[arg(short, long, default_value = "heap")]
     frontier: FrontierKind,
 

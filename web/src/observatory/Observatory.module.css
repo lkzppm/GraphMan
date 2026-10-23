@@ -2694,6 +2694,124 @@
   color: var(--accent);
 }
 
+/* Dijkstra's priority queue: a button like the inputs, its list under it,
+   wider than the button, grouped, each option with its bound and a line
+   on what it does. */
+.pickerButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: 12px;
+  color: var(--fg);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease);
+}
+
+.pickerButton:hover,
+.pickerButton[aria-expanded='true'] {
+  border-color: var(--accent);
+}
+
+.pickerValue {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickerChevron {
+  flex: none;
+  color: var(--fg-3);
+  transition: rotate 0.2s var(--ease);
+}
+
+.pickerButton[aria-expanded='true'] .pickerChevron {
+  rotate: 180deg;
+}
+
+.pickerList {
+  position: fixed;
+  z-index: 1000;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  border: 1px solid var(--border-2);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+  animation: rise 0.18s var(--ease) both;
+}
+
+.pickerList ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pickerGroup {
+  display: block;
+  padding: 6px 7px 3px;
+  font-size: 10px;
+  color: var(--fg-3);
+}
+
+.pickerOption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 7px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.pickerOption[data-active] {
+  background: var(--accent-muted);
+}
+
+.pickerName {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.pickerOption[aria-selected='true'] .pickerName {
+  color: var(--accent);
+}
+
+.pickerName .mono {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--fg-3);
+}
+
+/* What a queue does, under the highlighted option only: the list stays
+   short and the description follows the pointer or the arrows. */
+.pickerHint {
+  display: none;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.pickerOption[data-active] .pickerHint {
+  display: block;
+}
+
 .tooltipName {
   color: var(--accent);
   font-weight: 500;
