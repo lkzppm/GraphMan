@@ -1104,12 +1104,147 @@ g[data-apart] .sideLabel {
   flex-direction: column;
 }
 
+/* The chart on the left, the panel of the graph pointed at on the right. */
 .growth {
   flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 0 36px;
+  min-width: 0;
+}
+
+.growthMain {
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+
+.dataShow {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  padding-left: 24px;
+  border-left: 1px solid var(--border);
+}
+
+.dataShowHead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dataShowTitle {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+
+.dataShowOrder {
+  font-size: 10.5px;
+  color: var(--fg-3);
+}
+
+.dataShowRows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A frontier: place, swatch, name, time, multiple of the heap's; lit when
+   its point is pointed at or pinned. */
+.dataShowRow {
+  display: grid;
+  grid-template-columns: 14px 12px minmax(0, 1fr) auto 52px;
+  align-items: baseline;
+  gap: 2px 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.2s var(--ease);
+}
+
+.dataShowRow:hover,
+.dataShowRow[data-focus] {
+  background: var(--bg-3);
+}
+
+.dataShowRow[aria-pressed='true'] {
+  box-shadow: inset 2px 0 0 var(--colour);
+}
+
+.dataShowPlace {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.dataShowSwatch {
+  align-self: center;
+  width: 12px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--colour);
+}
+
+.dataShowName {
+  font-size: 13.5px;
+}
+
+.dataShowTime {
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.dataShowRatio {
+  font-size: 12px;
+  text-align: right;
+  color: var(--fg-3);
+}
+
+.dataShowRow[data-focus] .dataShowTime {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.dataShowNote {
+  grid-column: 3 / -1;
+  font-size: 10.5px;
+  color: var(--fg-3);
+}
+
+.dataShowFoot {
+  font-size: 10.5px;
+  color: var(--fg-3);
+}
+
+.dataShow .growthOpen {
+  align-self: flex-start;
+  margin-left: 0;
+}
+
+/* Narrow: the panel under the chart. */
+@media (max-width: 900px) {
+  .growth {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px 0;
+  }
+
+  .dataShow {
+    padding: 20px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
 }
 
 .growthLegend {
@@ -1134,10 +1269,119 @@ g[data-apart] .sideLabel {
   border-radius: 2px;
 }
 
+/* The chart takes the pointer: a drag pans it (grab, then grabbing), so a
+   touch drag is the chart's too, not the page's. */
 .growthBox {
   position: relative;
   flex: 1 1 auto;
   min-height: 240px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+}
+
+.growthBox[data-dragging] {
+  cursor: grabbing;
+}
+
+.growthBox:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-muted);
+  border-radius: var(--radius);
+}
+
+/* Zoom in, out and fit, top right inside the chart. */
+.growthTools {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: 4px;
+}
+
+.growthTools button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg-2);
+  cursor: pointer;
+  transition:
+    color 0.2s var(--ease),
+    border-color 0.2s var(--ease),
+    opacity 0.2s var(--ease);
+}
+
+.growthTools button:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.growthTools button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* A pinned point fades every other frontier. */
+.growthSeries,
+.growthHit {
+  transition: opacity 0.2s var(--ease);
+}
+
+.growthSeries[data-dim],
+.growthHit[data-dim],
+.growthLegend li[data-dim] {
+  opacity: 0.2;
+}
+
+.growthLegend li {
+  transition: opacity 0.2s var(--ease);
+}
+
+/* Each point's hit area, larger than the point. */
+.growthHit {
+  cursor: pointer;
+  outline: none;
+}
+
+.growthTarget {
+  fill: transparent;
+}
+
+.growthHit:focus-visible .growthPoint {
+  stroke: var(--fg);
+}
+
+.growthPoint[data-pinned] {
+  stroke: var(--fg);
+  stroke-width: 2.5;
+}
+
+.growthLabel[data-hot] {
+  fill: var(--accent);
+}
+
+/* The pinned point's link to its graph's tab, at the end of the readout. */
+.growthOpen {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.growthOpen:hover {
+  text-decoration: underline;
 }
 
 .growthChart {
@@ -1206,58 +1450,6 @@ g[data-apart] .sideLabel {
   stroke-dasharray: 2 2;
 }
 
-/* Each graph's ratio inside the chart: a bracket from the heap's point to
-   the vector's and the number beside it, where no line runs (placed by
-   placeRatios); in after the lines have drawn. */
-.growthBracket {
-  stroke: var(--accent);
-  stroke-width: 1.5;
-  opacity: 0;
-  transition: opacity 0.4s var(--ease) calc(0.9s + var(--k) * 0.2s);
-}
-
-.growthBracket[data-estimated] line:first-child {
-  stroke-dasharray: 3 3;
-}
-
-.growthRatio {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--bg);
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.4s var(--ease) calc(0.9s + var(--k) * 0.2s);
-}
-
-/* A card left of its column reads toward it. */
-.growthRatio[data-side='left'] {
-  align-items: flex-end;
-  text-align: right;
-}
-
-.chapter:global(.is-visible) .growthBracket,
-.chapter:global(.is-visible) .growthRatio {
-  opacity: 1;
-}
-
-.growthRatioValue {
-  font-size: clamp(24px, 2.6vw, 34px);
-  font-weight: 500;
-  line-height: 1.1;
-  letter-spacing: -0.03em;
-  color: var(--accent);
-}
-
-.growthRatioCaption {
-  font-size: 12px;
-  color: var(--fg-2);
-}
-
 /* A graph's sheet: the frontiers raced on one linear time axis. The
    playhead sits at --p (0..1) of the tracks' column. */
 .race {
@@ -1266,15 +1458,9 @@ g[data-apart] .sideLabel {
   gap: 14px;
 }
 
-/* The hint, and the replay at the end of its line. */
-.raceFoot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-}
-
+/* Replay, at the right end of the race chapter's heading. */
 .raceReplay {
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1305,14 +1491,14 @@ g[data-apart] .sideLabel {
 }
 
 .raceLanes {
-  --name: 96px;
-  --count: 132px;
+  --name: 180px;
+  --count: 150px;
   --gap: 16px;
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 6px 0 26px;
+  gap: 10px;
+  padding: 4px 0 24px;
 }
 
 .raceLane {
@@ -1322,18 +1508,27 @@ g[data-apart] .sideLabel {
   gap: var(--gap);
 }
 
+/* The frontier's name and its mean time on one line. */
 .raceName {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 12px;
   color: var(--fg);
 }
 
+.raceLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .raceTrack {
   position: relative;
-  height: 28px;
-  border-radius: 3px;
+  height: 14px;
+  border-radius: 2px;
   background: var(--bg-3);
   overflow: hidden;
 }
@@ -1377,18 +1572,26 @@ g[data-apart] .sideLabel {
 
 .raceCount {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 6px;
+  gap: 0 6px;
   min-width: 0;
 }
 
 .raceNumber {
-  font-size: clamp(22px, 2.4vw, 30px);
+  font-size: clamp(16px, 1.4vw, 20px);
   font-weight: 500;
-  line-height: 1;
+  line-height: 1.1;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
   color: var(--accent);
+}
+
+/* How many runs a block of the lane holds, when one run is too thin. */
+.raceBlock {
+  flex-basis: 100%;
+  font-size: 10px;
+  color: var(--fg-3);
 }
 
 .racePlayhead {
@@ -1413,11 +1616,6 @@ g[data-apart] .sideLabel {
   white-space: nowrap;
 }
 
-.raceHint {
-  margin: 0;
-  color: var(--fg-3);
-}
-
 @media (max-width: 600px) {
   .line {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -1437,13 +1635,18 @@ g[data-apart] .sideLabel {
   }
 
   .raceLanes {
-    --name: 64px;
+    --name: 76px;
     --count: 84px;
     --gap: 10px;
   }
 
+  .raceName {
+    flex-direction: column;
+    gap: 2px;
+  }
+
   .raceNumber {
-    font-size: 20px;
+    font-size: 16px;
   }
 }
 
@@ -1455,9 +1658,7 @@ g[data-apart] .sideLabel {
   .lineRail,
   .lineDot,
   .growthLine,
-  .growthPoint,
-  .growthBracket,
-  .growthRatio {
+  .growthPoint {
     transition: none;
   }
 }

@@ -184,9 +184,9 @@ From Edsger W. Dijkstra (2722).
 
 Mean over 100 distinct random sources (the Part 1 seed); a frontier that runs out of its budget reports the runs that finished, or an estimate from the run it cut short.
 
-| Graph | Vertices | Edges | vector | heap | lazy-heap | vector / heap |
-|---|---:|---:|---:|---:|---:|---:|
-| grafo_W_3 | 100000 | 6099868 | 1.86 s | 39.084 ms | 56.310 ms | 48× |
-| grafo_W_4 | 1000000 | 30999944 | 184.09 s (4 of 100 runs in 900 s) | 416.582 ms | 893.559 ms | 442× |
-| grafo_W_5 | 10000000 | 39999991 | ≈ 6.4 h (no run in 900 s; one settled 3.9% of its component) | 5.92 s | 8.78 s | 3903× |
-| rede_colaboracao | 722385 | 2272543 | — | — | — | — |
+| Graph | Vertices | Edges | vector | heap | lazy-heap | quad-heap | pairing | radix | vector / heap |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| grafo_W_3 | 100000 | 6099868 | 1.86 s | 35.302 ms | 55.319 ms | 32.733 ms | 49.986 ms | 26.946 ms | 53× |
+| grafo_W_4 | 1000000 | 30999944 | 184.09 s (4 of 100 runs in 900 s) | 429.353 ms | 895.367 ms | 427.975 ms | 815.864 ms | 267.741 ms | 429× |
+| grafo_W_5 | 10000000 | 39999991 | ≈ 6.4 h (no run in 900 s; one settled 3.9% of its component) | 4.92 s | 8.06 s | 5.06 s | 14.45 s | 2.35 s | 4691× |
+| rede_colaboracao | 722385 | 2272543 | — | — | — | — | — | — | — |

@@ -4,7 +4,8 @@
 //!   DFS written both ways, iterative and recursive ([`DfsKind`], [`dfs_recursive`]).
 //! * [`distance`] / [`eccentricity`] — shortest-path queries built on BFS.
 //! * [`dijkstra`] / [`shortest_path`] — shortest paths on weighted graphs, one
-//!   algorithm over three interchangeable [`Frontier`]s (vector, heap, lazy heap).
+//!   algorithm over six interchangeable [`Frontier`]s (vector, heap, lazy heap,
+//!   4-ary heap, pairing heap, radix heap).
 //! * [`Components`] — connected components, largest first.
 //! * [`diameter`] — exact (brute force or iFUB) and approximate (4-sweep) diameter.
 //! * [`degree_stats`] / [`weight_stats`] — min, max, mean (and median) degree and weight.
@@ -23,7 +24,8 @@ pub use components::Components;
 pub use diameter::{Diameter, DiameterMethod, diameter, diameter_with_progress};
 pub use distance::{distance, distance_into, eccentricity, eccentricity_into};
 pub use frontier::{
-    Frontier, FrontierEntry, FrontierKind, HeapFrontier, LazyHeapFrontier, VectorFrontier,
+    DaryHeapFrontier, Frontier, FrontierEntry, FrontierKind, HeapFrontier, LazyHeapFrontier,
+    PairingHeapFrontier, QuadHeapFrontier, RadixHeapFrontier, VectorFrontier,
 };
 pub use layout::{RadialLayout, radial_layout};
 pub use shortest_path::{

@@ -103,7 +103,7 @@ pub struct Args {
     to: Vec<String>,
 
     /// Part 2: the frontiers to time.
-    #[arg(long, value_delimiter = ',', default_values = ["vector", "heap", "lazy-heap"])]
+    #[arg(long, value_delimiter = ',', default_values = ["vector", "heap", "lazy-heap", "quad-heap", "pairing", "radix"])]
     frontiers: Vec<FrontierKind>,
 
     /// Part 2: wall-clock budget in seconds for each frontier's runs. The

@@ -148,7 +148,7 @@ export const pt: Dictionary = {
       },
       frontiers: {
         title: 'Filas de prioridade',
-        body: 'Uma Frontier guarda as estimativas dos vértices alcançados e ainda não fixados: decrease insere um vértice ou baixa sua estimativa, pop_min devolve o mais próximo, o menor vértice primeiro num empate. A disciplina pede duas, um vetor e um heap cujas chaves mudam de forma eficiente, sem escrever o Dijkstra duas vezes; a biblioteca tem três, e um novo jeito de guardar estimativas é uma nova Frontier, nunca um segundo Dijkstra. Para k execuções, como no estudo de caso, dijkstra_into reaproveita uma fila e uma árvore, e cada execução limpa só o que a anterior tocou.',
+        body: 'Uma Frontier guarda as estimativas dos vértices alcançados e ainda não fixados: decrease insere um vértice ou baixa sua estimativa, pop_min devolve o mais próximo, o menor vértice primeiro num empate. A disciplina pede duas, um vetor e um heap cujas chaves mudam de forma eficiente, sem escrever o Dijkstra duas vezes; a biblioteca tem seis, as três que a disciplina discute e três mais rápidas na prática, e um novo jeito de guardar estimativas é uma nova Frontier, nunca um segundo Dijkstra. Para k execuções, como no estudo de caso, dijkstra_into reaproveita uma fila e uma árvore, e cada execução limpa só o que a anterior tocou.',
         table: [
           ['Fila', 'Como guarda as estimativas', 'pop_min', 'decrease', 'Uma execução'],
           [
@@ -171,6 +171,27 @@ export const pt: Dictionary = {
             'O(log m)',
             'O(log m)',
             'O((n + m) log m)',
+          ],
+          [
+            'QuadHeapFrontier',
+            'o mesmo heap indexado com quatro filhos por nó: mais raso',
+            'O(log n)',
+            'O(log n)',
+            'O((n + m) log n)',
+          ],
+          [
+            'PairingHeapFrontier',
+            'uma árvore de ponteiros: decrease corta uma subárvore e a funde com a raiz',
+            'O(log n) amortizado',
+            'O(log n) amortizado',
+            'O((n + m) log n)',
+          ],
+          [
+            'RadixHeapFrontier',
+            'baldes pelos bits da distância: monótona, sem comparações',
+            'O(log C) amortizado',
+            'O(1)',
+            'O(m log C)',
           ],
         ],
         state: 'Dijkstra a partir de 1, o vértice mais distante em destaque',
@@ -218,7 +239,14 @@ export const pt: Dictionary = {
 
   studies: {
     overview: 'Geral',
-    parts: { label: 'Partes do trabalho', one: 'Parte 1', two: 'Parte 2' },
+    parts: {
+      label: 'Partes do trabalho',
+      one: 'Parte 1',
+      two: 'Parte 2',
+      info: 'Como foi medido',
+      method: (runs: string, machine: string) =>
+        `Memória: o que cada representação ocupa depois de montada a partir do arquivo lido; uma matriz de bits que não cabe na memória da máquina é recusada antes de ser alocada. BFS e DFS: a média de ${runs} origens aleatórias distintas (uma semente fixa) em cada representação, cada execução cronometrada sozinha, sem leitura nem escrita. Os métodos de diâmetro rodam com um orçamento de tempo: um valor marcado com ≥ é o limite que uma execução interrompida alcançou. ${machine}`,
+    },
     part2: {
       title: 'Parte 2: grafos com pesos',
       lead: 'Os grafos com pesos da disciplina e a rede de colaboração ainda não foram rodados. Quando forem, graphman study preenche esta página: os caminhos mínimos a partir do vértice 10, o Dijkstra médio com vetor e com heap, e os caminhos de Edsger W. Dijkstra até os cinco pesquisadores.',
@@ -240,21 +268,33 @@ export const pt: Dictionary = {
         at: (d: string, step: string, of: string) => ` na distância ${d}, passo ${step} de ${of}`,
       },
       timing: {
-        title: 'Dijkstra médio, vetor e heap',
+        title: 'Dijkstra médio, vetor vs heap',
         label: 'tempo médio de um Dijkstra, da origem a todos os vértices',
-        frontiers: { vector: 'vetor', heap: 'heap', lazy_heap: 'heap lazy' },
+        frontiers: {
+          vector: 'vetor',
+          heap: 'heap',
+          lazy_heap: 'heap lazy',
+          quad_heap: 'heap 4-ário',
+          pairing: 'pairing heap',
+          radix: 'radix heap',
+        },
         estimated: (time: string) => `≈ ${time}`,
         estimate: 'estimativa',
         chartHint:
-          '// os dois eixos em escala log: linha mais inclinada cresce mais rápido com o grafo',
-        ratioCaption: 'vezes o tempo do heap',
-        versus: (vector: string, heap: string) => `vetor ${vector}, heap ${heap}`,
+          '// os dois eixos em escala log: arraste para mover, pinça ou ctrl + rolagem para zoom, clique num ponto para fixá-lo, duplo clique para enquadrar',
+        zoomIn: 'Aproximar',
+        zoomOut: 'Afastar',
+        fit: 'Enquadrar o gráfico',
+        ofHeap: (x: string) => `${x}× o tempo do heap`,
+        open: (name: string) => `abrir ${name}`,
+        order: 'do mais rápido ao mais lento',
+        versusHeap: '×: vezes o tempo do heap',
         runs: (k: string, n: string) => `${k} de ${n} execuções`,
         ratio: (x: string) => `o vetor leva ${x} vezes o tempo do heap`,
         race: {
-          hint: '// um só eixo de tempo, linear: cada segmento é um Dijkstra inteiro, da origem a todos os vértices',
           runs: (n: number) => (n === 1 ? 'execução' : 'execuções'),
           replay: 'repetir',
+          block: (n: string) => `▮ = ${n} execuções`,
         },
         note: (runs: string, machine: string) =>
           `${runs} origens aleatórias por fronteira, cada execução cronometrada sozinha na CSR, sem leitura nem escrita. Cada fronteira tem um orçamento de tempo: "k de ${runs} execuções" é quantas terminaram nele, e uma barra tracejada é uma estimativa, a execução interrompida escalada para a componente inteira. ${machine}`,
@@ -422,11 +462,34 @@ export const pt: Dictionary = {
     recursionRefusal: (limit: string) =>
       `A DFS recursiva desceria mais de ${limit} níveis, mais do que a pilha do navegador aguenta. A DFS iterativa constrói a mesma árvore sem esse limite.`,
     frontier: 'Fila de prioridade',
-    frontiers: { vector: 'Vetor', heap: 'Heap' },
-    frontierHints: {
-      vector: 'as estimativas de distância num vetor, varrido em busca da menor: O(n²)',
-      heap: 'as estimativas de distância num heap binário com decrease-key: O((n + m) log n)',
+    frontiers: {
+      vector: 'Vetor',
+      heap: 'Heap binário',
+      lazy_heap: 'Heap preguiçoso',
+      quad_heap: 'Heap 4-ário',
+      pairing: 'Pairing heap',
+      radix: 'Radix heap',
     },
+    frontierCosts: {
+      vector: 'O(n²)',
+      heap: 'O((n + m) log n)',
+      lazy_heap: 'O(m log m)',
+      quad_heap: 'O((n + m) log n)',
+      pairing: 'O((n + m) log n)',
+      radix: 'O(m log C)',
+    },
+    frontierHints: {
+      vector: 'as estimativas num vetor, varrido de ponta a ponta em busca da menor',
+      heap: 'um heap binário com decrease-key: a estimativa reduzida sobe no heap',
+      lazy_heap:
+        'um heap binário sem decrease-key: a estimativa reduzida entra de novo e a antiga é pulada',
+      quad_heap:
+        'o mesmo heap com quatro filhos por nó: mais raso, e os filhos ficam lado a lado na memória',
+      pairing: 'uma árvore de ponteiros: o decrease-key corta uma subárvore e a funde com a raiz',
+      radix:
+        'arquiva as distâncias pelos bits em vez de compará-las, já que o Dijkstra nunca pede uma menor (C: a faixa das chaves, 2⁶⁴)',
+    },
+    frontierGroups: { course: 'a disciplina', faster: 'mais rápidos na prática' },
     negativeWeights: (n: number) => (n === 1 ? '1 peso negativo' : `${n} pesos negativos`),
     refusal: (u: number, v: number, w: string) =>
       `O Dijkstra recusa este grafo: a aresta ${u} ${v} pesa ${w}, e caminhos mínimos com pesos negativos ainda não foram implementados.`,
@@ -502,6 +565,10 @@ export const pt: Dictionary = {
         calls: 'Pilha de chamadas',
         vector: 'Fila de prioridade · vetor',
         heap: 'Fila de prioridade · heap binário',
+        lazy_heap: 'Fila de prioridade · heap preguiçoso',
+        quad_heap: 'Fila de prioridade · heap 4-ário',
+        pairing: 'Fila de prioridade · pairing heap',
+        radix: 'Fila de prioridade · radix heap',
       },
       front: 'início',
       back: 'fim',
@@ -518,6 +585,12 @@ export const pt: Dictionary = {
       settled: 'fixado',
       unreached: 'não alcançado',
       heapArray: 'o vetor',
+      stale: 'obsoleta: pulada quando chega ao topo',
+      bucketEqual: '= última',
+      bucket: (b: number) => `bit ${b - 1}`,
+      bucketsLabel: 'baldes, pelo bit mais alto que difere da última chave retirada',
+      lastPopped: 'Última retirada',
+      entries: 'Entradas',
       deeper: (n: string) => `mais ${n} abaixo`,
       tooLarge: 'Não foi possível refazer o Dijkstra até este passo.',
     },
@@ -734,10 +807,20 @@ export const pt: Dictionary = {
             },
           ],
         },
-        frontiers: {
+        dijkstra: {
           eyebrow: '02',
-          title: 'Um Dijkstra, três fronteiras',
+          title: 'Um Dijkstra, escrito uma vez',
           driver: '// o algoritmo é escrito uma vez; a fronteira guarda as estimativas',
+          ties: '// empates vão para o menor vértice: toda fronteira constrói a mesma árvore',
+          portrait: {
+            name: 'Edsger W. Dijkstra, 1930 a 2002',
+            credit: 'traço a partir de foto de Hamilton Richards, CC BY-SA 3.0',
+          },
+        },
+        frontiers: {
+          eyebrow: '03',
+          title: 'Seis filas de prioridade',
+          groups: ['a disciplina', 'mais rápidas na prática'],
           items: [
             {
               name: 'VectorFrontier',
@@ -757,11 +840,29 @@ export const pt: Dictionary = {
               cost: 'O(m log m)',
               caption: '// uma estimativa menor entra de novo, a antiga é pulada',
             },
+            {
+              name: 'QuadHeapFrontier',
+              title: 'Heap 4-ário',
+              cost: 'O((n + m) log n)',
+              caption: '// quatro filhos por nó: metade dos níveis para subir',
+            },
+            {
+              name: 'PairingHeapFrontier',
+              title: 'Pairing heap',
+              cost: 'O((n + m) log n)',
+              caption: '// o decrease-key corta a subárvore e a funde com a raiz',
+            },
+            {
+              name: 'RadixHeapFrontier',
+              title: 'Radix heap',
+              cost: 'O(m log C)',
+              caption: '// baldes pelos bits da distância: sem comparações',
+            },
           ],
-          ties: '// empates vão para o menor vértice: as três constroem a mesma árvore',
+          ties: '// empates vão para o menor vértice: as seis constroem a mesma árvore',
         },
         timing: {
-          eyebrow: '03',
+          eyebrow: '04',
           title: 'Vetor contra heap',
           columns: {
             graph: 'Grafo',
@@ -773,6 +874,9 @@ export const pt: Dictionary = {
             { key: 'vector', label: 'vetor' },
             { key: 'heap', label: 'heap' },
             { key: 'lazy_heap', label: 'heap preguiçoso' },
+            { key: 'quad_heap', label: 'heap 4-ário' },
+            { key: 'pairing', label: 'pairing heap' },
+            { key: 'radix', label: 'radix heap' },
           ],
           estimated: (time: string) => `≈ ${time}`,
           machine: (cpu: string, memory: string) =>
@@ -782,21 +886,52 @@ export const pt: Dictionary = {
           cta: 'Abrir os estudos de caso',
         },
         paths: {
-          eyebrow: '04',
+          eyebrow: '05',
           title: 'Caminhos mínimos',
-          graphs: {
-            label: 'A partir do vértice 10',
-            caption: '// distância até 20, 30, 40, 50 e 60',
-          },
-          network: {
-            label: 'Rede de colaboração',
-            caption: '// a partir de Edsger W. Dijkstra, nomes com a grafia exata',
-          },
+          label: 'A partir do vértice 10',
+          caption: '// distância até 20, 30, 40, 50 e 60, e quantas arestas ela leva',
+          key: '// cada ponto é um vértice do caminho, na sua distância do vértice 10',
           unreached: 'sem caminho',
           hops: (n: number) => (n === 1 ? '1 aresta' : `${n} arestas`),
           pending: 'Preenchido por `graphman study` quando os arquivos da disciplina rodarem.',
         },
-        observatory: '05',
+        names: {
+          eyebrow: '06',
+          title: 'Nomes',
+          input: {
+            label: 'entrada',
+            name: 'rede_colaboracao_vertices.txt',
+            hint: '// seis das suas linhas: um índice, uma vírgula, e o resto é o nome',
+          },
+          parse: { name: 'VertexNames::parse', hint: '// UTF-8, ou Latin-1 byte a byte' },
+          arrays: {
+            label: 'VertexNames, só os seis',
+            text: 'text',
+            entries: 'entries',
+            byName: 'by_name',
+          },
+          cost: '// uma string só, mais 20 bytes por nome, sem tabela hash',
+          notes: [
+            { title: 'name(v)', caption: '// busca binária em entries, ordenado por vértice' },
+            { title: 'vertex(name)', caption: '// busca binária em by_name: a grafia exata' },
+            {
+              title: 'search(query)',
+              caption: '// sem maiúsculas nem acentos: "eva tardos" sugere Éva Tardos',
+            },
+          ],
+        },
+        network: {
+          eyebrow: '07',
+          title: 'A partir de Edsger W. Dijkstra',
+          label: 'Rede de colaboração',
+          facts: (people: string, links: string) =>
+            ` · ${people} pesquisadores, ${links} colaborações`,
+          caption: '// peso pequeno é muitos artigos juntos; nomes com a grafia exata',
+          unreached: 'sem caminho: outra componente',
+          hops: (n: number) => (n === 1 ? '1 colaboração' : `${n} colaborações`),
+          pending: 'Preenchido por `graphman study` quando os arquivos da disciplina rodarem.',
+        },
+        observatory: '08',
       },
     },
   },

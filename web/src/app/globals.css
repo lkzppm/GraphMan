@@ -35,6 +35,17 @@
     /* The one green: the destination of a distance query. */
     --target: #16a34a;
     --warning: var(--accent);
+    /* The priority queues, wherever they are compared side by side: six
+     hues told apart by colour-blind readers too (validated in this order,
+     adjacent pairs ΔE ≥ 9), the binary heap on the site's blue. Yellow and
+     aqua sit under 3:1 on white: every chart that uses them names its
+     series in a legend and in the hover readout. */
+    --queue-vector: #eb6834;
+    --queue-heap: var(--accent);
+    --queue-lazy-heap: #eda100;
+    --queue-quad-heap: #1baf7a;
+    --queue-pairing: #6250d6;
+    --queue-radix: #e34948;
 
     --node: #0070f3;
     --node-dim: #d6d6d6;

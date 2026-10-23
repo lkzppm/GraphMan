@@ -6,6 +6,7 @@ import {
   Layers,
   Network,
   ChevronDown,
+  Columns3,
   ChevronLeft,
   ChevronRight,
   CircleDashed,
@@ -83,6 +84,7 @@ import {
   type Camera,
   type Renderer,
 } from './renderer';
+import { createPortal } from 'react-dom';
 import Constellation from '@/components/Constellation';
 import RepresentationPicto from '@/components/RepresentationPicto';
 import { useT } from '@/i18n/LocaleProvider';
@@ -92,6 +94,7 @@ import Structures, {
   clampStrip,
   storedStripHeight,
   STRIP_HEIGHT_KEY,
+  type FrontierName,
   type FrontierView,
   type Members,
 } from './Structures';
@@ -203,8 +206,25 @@ type SearchKindName = 'bfs' | 'dfs' | 'dijkstra';
 /** The built-in examples behind the empty sidebar's "Examples" tile. */
 const EXAMPLES = ['plain', 'weighted', 'named'] as const;
 type Example = (typeof EXAMPLES)[number];
-/** How Dijkstra keeps its estimates: the course's two versions. */
-type FrontierName = 'vector' | 'heap';
+/** How Dijkstra keeps its estimates: the course's three, then the three
+    that go faster in practice. */
+const FRONTIER_GROUPS: { group: 'course' | 'faster'; names: FrontierName[] }[] = [
+  { group: 'course', names: ['vector', 'heap', 'lazy_heap'] },
+  { group: 'faster', names: ['quad_heap', 'pairing', 'radix'] },
+];
+
+/** The wasm side's number for a frontier. */
+function frontierType(wasm: GraphmanModule, name: FrontierName) {
+  const types = wasm.FrontierType;
+  return {
+    vector: types.Vector,
+    heap: types.Heap,
+    lazy_heap: types.LazyHeap,
+    quad_heap: types.QuadHeap,
+    pairing: types.Pairing,
+    radix: types.Radix,
+  }[name];
+}
 /** How DFS is written: with an explicit stack, or one call per level. */
 type DfsName = 'iterative' | 'recursive';
 
@@ -1250,10 +1270,7 @@ export default function Observatory() {
         let bandWidth = 0;
         let fullPath: Uint32Array | null = null;
         if (which === 'dijkstra') {
-          const run = graph.dijkstra(
-            root,
-            frontier === 'vector' ? wasm.FrontierType.Vector : wasm.FrontierType.Heap,
-          );
+          const run = graph.dijkstra(root, frontierType(wasm, frontier));
           result = run;
           distances = run.distances();
           settled = run.order();
@@ -1434,7 +1451,7 @@ export default function Observatory() {
       try {
         const snapshot = graph.frontierAt(
           search.root,
-          search.frontier === 'vector' ? wasm.FrontierType.Vector : wasm.FrontierType.Heap,
+          frontierType(wasm, search.frontier ?? 'heap'),
           step,
           limit,
         );
@@ -1442,6 +1459,9 @@ export default function Observatory() {
           step,
           vertices: snapshot.vertices(),
           estimates: snapshot.estimates(),
+          stale: snapshot.stale(),
+          parents: snapshot.parents(),
+          buckets: snapshot.buckets(),
           total: snapshot.total,
           relaxed: snapshot.relaxed(),
           previous: snapshot.previous(),
@@ -2499,14 +2519,7 @@ export default function Observatory() {
                   </div>
                 </div>
                 {kind === 'dijkstra' && (
-                  <Choice
-                    label={t.frontier}
-                    options={['vector', 'heap'] as const}
-                    value={frontier}
-                    onChange={setFrontier}
-                    names={t.frontiers}
-                    hints={t.frontierHints}
-                  />
+                  <QueuePicker t={t} value={frontier} onChange={setFrontier} />
                 )}
                 {kind === 'dfs' && (
                   <Choice
@@ -3132,6 +3145,8 @@ export default function Observatory() {
                         <Layers size={15} />
                       ) : search.frontier === 'vector' ? (
                         <Brackets size={15} />
+                      ) : search.frontier === 'radix' ? (
+                        <Columns3 size={15} />
                       ) : (
                         <Network size={15} />
                       )}
@@ -3332,6 +3347,153 @@ function Panel({
 
 /** Two ways of running the chosen algorithm (Dijkstra's priority queue,
     DFS's iterative or recursive form), as a two-option segmented field. */
+/** Dijkstra's priority queue, picked from a list: the course's three, then
+    the three that go faster in practice, each with its bound, and what it
+    does under the one highlighted. The list floats over the page (a portal,
+    so the sidebar neither clips nor covers it), under its button or above
+    it, whichever has more room, and scrolls when that room runs out. The
+    arrows move through it, Enter picks, Esc, a click outside or a scroll of
+    the page closes it. */
+function QueuePicker({
+  t,
+  value,
+  onChange,
+}: {
+  t: Strings;
+  value: FrontierName;
+  onChange: (next: FrontierName) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(value);
+  const [place, setPlace] = useState<CSSProperties>({});
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const listId = useId();
+  const order = FRONTIER_GROUPS.flatMap((g) => g.names);
+
+  const show = () => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = Math.min(300, window.innerWidth - 16);
+    const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
+    const below = window.innerHeight - rect.bottom - 12;
+    const above = rect.top - 12;
+    setPlace(
+      below >= 280 || below >= above
+        ? { left, width, top: rect.bottom + 4, maxHeight: below }
+        : { left, width, bottom: window.innerHeight - rect.top + 4, maxHeight: above },
+    );
+    setActive(value);
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!buttonRef.current?.contains(target) && !listRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+    const scrolled = (event: Event) => {
+      if (!listRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const close = () => setOpen(false);
+    window.addEventListener('pointerdown', away);
+    window.addEventListener('scroll', scrolled, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('pointerdown', away);
+      window.removeEventListener('scroll', scrolled, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    listRef.current?.querySelector(`[data-name="${active}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [open, active]);
+
+  const pick = (name: FrontierName) => {
+    onChange(name);
+    setOpen(false);
+  };
+
+  return (
+    <div className={styles.field}>
+      <span className={styles.fieldLabel}>{t.frontier}</span>
+      <button
+        ref={buttonRef}
+        type="button"
+        className={styles.pickerButton}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        title={t.frontierHints[value]}
+        onClick={() => (open ? setOpen(false) : show())}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (!open) {
+              show();
+              return;
+            }
+            const at = order.indexOf(active) + (event.key === 'ArrowDown' ? 1 : -1);
+            setActive(order[(at + order.length) % order.length]);
+          } else if (event.key === 'Enter' && open) {
+            event.preventDefault();
+            pick(active);
+          } else if (event.key === 'Escape' && open) {
+            event.preventDefault();
+            setOpen(false);
+          }
+        }}
+      >
+        <span className={styles.pickerValue}>{t.frontiers[value]}</span>
+        <ChevronDown size={13} className={styles.pickerChevron} aria-hidden="true" />
+      </button>
+      {open &&
+        createPortal(
+          <ul
+            ref={listRef}
+            id={listId}
+            className={styles.pickerList}
+            style={place}
+            role="listbox"
+            aria-label={t.frontier}
+          >
+            {FRONTIER_GROUPS.map(({ group, names }) => (
+              <li key={group} role="presentation">
+                <span className={`label ${styles.pickerGroup}`}>{t.frontierGroups[group]}</span>
+                <ul role="presentation">
+                  {names.map((name) => (
+                    <li
+                      key={name}
+                      role="option"
+                      aria-selected={name === value}
+                      data-name={name}
+                      data-active={name === active || undefined}
+                      className={styles.pickerOption}
+                      onPointerEnter={() => setActive(name)}
+                      onClick={() => pick(name)}
+                    >
+                      <span className={styles.pickerName}>
+                        {t.frontiers[name]}
+                        <span className="mono">{t.frontierCosts[name]}</span>
+                      </span>
+                      <span className={styles.pickerHint}>{t.frontierHints[name]}</span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
 function Choice<T extends string>({
   label,
   options,

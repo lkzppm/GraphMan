@@ -109,7 +109,7 @@ export const studies: GraphStudy[] = (results as GraphStudy[])
 // Types of studies/weighted/results.json (the Part 2 study, `WeightedStudy`
 // in crates/graphman-cli/src/report.rs), synced into src/data as weighted.json.
 
-export type FrontierKind = 'vector' | 'heap' | 'lazy_heap';
+export type FrontierKind = 'vector' | 'heap' | 'lazy_heap' | 'quad_heap' | 'pairing' | 'radix';
 
 export interface WeightStats {
   min: number;

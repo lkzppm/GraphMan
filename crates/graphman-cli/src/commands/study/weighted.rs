@@ -16,8 +16,9 @@ use crate::rng::SplitMix64;
 use crate::ui::{self, Ui};
 use anyhow::Result;
 use graphman::algo::{
-    Components, Control, Frontier, FrontierKind, HeapFrontier, LazyHeapFrontier, ShortestPathTree,
-    VectorFrontier, dijkstra, dijkstra_into, weight_stats,
+    Components, Control, Frontier, FrontierKind, HeapFrontier, LazyHeapFrontier,
+    PairingHeapFrontier, QuadHeapFrontier, RadixHeapFrontier, ShortestPathTree, VectorFrontier,
+    dijkstra, dijkstra_into, weight_stats,
 };
 use graphman::{
     AnyGraph, NegativeWeight, Vertex, VertexNames, Visitor, Weight, Weighted, dispatch,
@@ -173,6 +174,15 @@ fn time_frontier(
         }
         FrontierKind::LazyHeap => {
             dispatch!(graph, g => time_runs(g, LazyHeapFrontier::new(n), roots, budget, tick))
+        }
+        FrontierKind::QuadHeap => {
+            dispatch!(graph, g => time_runs(g, QuadHeapFrontier::new(n), roots, budget, tick))
+        }
+        FrontierKind::Pairing => {
+            dispatch!(graph, g => time_runs(g, PairingHeapFrontier::new(n), roots, budget, tick))
+        }
+        FrontierKind::Radix => {
+            dispatch!(graph, g => time_runs(g, RadixHeapFrontier::new(n), roots, budget, tick))
         }
     };
     bar.finish_and_clear();

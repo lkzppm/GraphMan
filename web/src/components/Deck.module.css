@@ -1390,13 +1390,121 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-/* ---- part 2 · 02 frontiers ----------------------------------------------- */
+/* ---- part 2 · 02 Dijkstra, 03 six priority queues ------------------------ */
 
-.frontiers {
+/* 02: the code on the left, the portrait on the right, as tall as the
+   slide lets it be. */
+.dijkstraSlide {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.9fr);
-  align-items: start;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 0 56px;
+}
+
+.dijkstraCode {
+  display: flex;
+  flex-direction: column;
+}
+
+.dijkstraCode .codeCard pre {
+  font-size: clamp(12px, 1vw, 16px);
+}
+
+.portrait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+}
+
+/* The line art, drawn down from the top like a pen going over it. */
+.portraitArt {
+  display: block;
+  width: auto;
+  height: min(56vh, 520px);
+  max-width: 100%;
+  fill: var(--accent);
+  clip-path: inset(0 0 100% 0);
+}
+
+.slideCurrent .portraitArt {
+  animation: portraitDraw 1.6s var(--ease) var(--d, 0s) both;
+}
+
+.portrait figcaption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.portraitName {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.portraitCredit {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+@keyframes portraitDraw {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+/* 03: the course's three and the three faster in practice, side by side,
+   each group under its label. */
+.queueGroups {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0 48px;
+}
+
+.queueGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.queueGroupLabel {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.queueGroups .steps {
+  gap: 0 24px;
+  margin-top: 0;
+}
+
+.queueGroups .stepTitle {
+  font-size: clamp(15px, 1.15vw, 19px);
+}
+
+.queueGroups .caption {
+  font-size: 12.5px;
+}
+
+/* A bucket of the radix heap, and the 4-ary heap's grandchildren. */
+.figTrough {
+  fill: none;
+  stroke: var(--border-2);
+  stroke-width: 1.2;
+}
+
+/* The pairing heap's edge to the key it cuts: drawn, then faded. */
+.slideCurrent .figCutEdge {
+  animation:
+    draw 0.5s var(--ease) var(--d, 0s) both,
+    dim 0.3s var(--ease) calc(var(--d, 0s) + 0.9s) forwards;
 }
 
 .codeCard {
@@ -1417,6 +1525,11 @@
   color: var(--fg);
   white-space: pre;
   overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.codeCard pre::-webkit-scrollbar {
+  display: none;
 }
 
 .kw {
@@ -1523,12 +1636,45 @@
   grid-template-columns: 170px 130px minmax(0, 1fr) 150px;
 }
 
+/* Six bars a graph: tighter than the other sheets' three. */
+.timingRow .group {
+  gap: 2px;
+}
+
+.timingRow .track {
+  height: 7px;
+}
+
+.timingRow .barValue {
+  font-size: 11px;
+}
+
+.timingRow .barRow[data-ghost] .fill {
+  border-color: var(--colour);
+}
+
 .swatch[data-key='vector'] {
-  background: var(--accent-2);
+  background: var(--queue-vector);
+}
+
+.swatch[data-key='heap'] {
+  background: var(--queue-heap);
 }
 
 .swatch[data-key='lazy_heap'] {
-  background: var(--level-0);
+  background: var(--queue-lazy-heap);
+}
+
+.swatch[data-key='quad_heap'] {
+  background: var(--queue-quad-heap);
+}
+
+.swatch[data-key='pairing'] {
+  background: var(--queue-pairing);
+}
+
+.swatch[data-key='radix'] {
+  background: var(--queue-radix);
 }
 
 .pending {
@@ -1536,14 +1682,7 @@
   font-size: 14px;
 }
 
-/* ---- part 2 · 04 paths ---------------------------------------------------- */
-
-.pathsGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  gap: 0 48px;
-  align-items: start;
-}
+/* ---- part 2 · 05 paths, 06 names, 07 the network ------------------------- */
 
 .pathsPanel {
   display: flex;
@@ -1570,14 +1709,14 @@
 
 .distanceGrid {
   display: grid;
-  grid-template-columns: 120px repeat(var(--targets), minmax(0, 1fr));
+  grid-template-columns: 110px repeat(var(--targets), minmax(0, 1fr));
   align-items: center;
-  gap: 10px 12px;
-  margin-top: 14px;
+  gap: 14px 16px;
+  margin-top: 18px;
 }
 
 .distanceHead {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--accent);
   text-align: center;
 }
@@ -1586,14 +1725,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 8px 4px;
+  gap: 3px;
+  padding: 14px 16px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
 
 .distanceValue {
-  font-size: 17px;
+  font-size: clamp(17px, 1.5vw, 24px);
   font-weight: 500;
   color: var(--fg);
 }
@@ -1603,18 +1742,141 @@
   color: var(--fg-3);
 }
 
+/* A path to scale: a hairline from the source to the target, a dot per
+   vertex at its distance, the two ends filled. */
+.pathTrack {
+  position: relative;
+  display: block;
+  align-self: stretch;
+  height: 12px;
+  margin-top: 6px;
+}
+
+.pathTrack[data-drawn]::before {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 1px;
+  background: var(--border-2);
+  transform-origin: left;
+  transform: scaleX(0);
+}
+
+.slideCurrent .pathTrack[data-drawn]::before {
+  animation: trackDraw 0.6s var(--ease) var(--d, 0s) both;
+}
+
+.pathStop {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  background: var(--bg);
+  opacity: 0;
+}
+
+.pathStop[data-end] {
+  background: var(--accent);
+}
+
+.slideCurrent .pathStop {
+  animation: fade 0.3s var(--ease) var(--d, 0s) both;
+}
+
+@keyframes trackDraw {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.namesMap {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.9fr) 150px minmax(0, 2.4fr);
+  align-items: center;
+  gap: 0 8px;
+  margin-bottom: 40px;
+}
+
+.namesFile {
+  font-size: 14px;
+}
+
+.namesElided {
+  line-height: 1;
+  color: var(--fg-3);
+}
+
+/* `text`: the names end to end, each span with its byte offset under it. */
+.nameText {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 22px;
+  padding-bottom: 14px;
+}
+
+.nameSpan {
+  position: relative;
+  padding: 6px 9px;
+  border: 1px solid var(--border-2);
+  margin-right: -1px;
+  background: var(--bg-2);
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.nameSpan:nth-child(even) {
+  background: var(--bg-3);
+}
+
+.nameOffset {
+  position: absolute;
+  top: 100%;
+  left: -1px;
+  padding-top: 3px;
+  font-size: 10px;
+  color: var(--fg-3);
+}
+
+.nameCell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  height: auto;
+  padding: 5px 9px;
+}
+
+.nameCellNote {
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--fg-3);
+}
+
+.weightCell .nameCellNote {
+  color: var(--accent);
+}
+
+.networkFacts {
+  color: var(--fg-3);
+}
+
 .namedPaths {
   list-style: none;
   display: flex;
   flex-direction: column;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .namedPath {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 16px;
-  padding: 10px 0;
+  grid-template-columns: minmax(170px, 220px) minmax(0, 1fr) 80px 130px;
+  align-items: center;
+  gap: 6px 24px;
+  padding: 14px 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -1622,16 +1884,38 @@
   border-bottom: 0;
 }
 
+.namedPath .pathTrack {
+  margin-top: 0;
+}
+
+.namedPath .distanceValue {
+  text-align: right;
+}
+
 .namedTo {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 500;
 }
 
+.namedUnreached {
+  grid-column: 2 / -1;
+}
+
 .namedRoute {
-  grid-column: 1 / -1;
-  font-size: 12px;
-  line-height: 1.4;
+  grid-column: 2 / -1;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--fg-2);
+}
+
+.namedRoute [data-end] {
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.namedArrow {
+  margin: 0 6px;
+  color: var(--fg-3);
 }
 
 @keyframes minLit {
@@ -2057,6 +2341,11 @@
 
 /* With reduced motion every drawing is simply there. */
 @media (prefers-reduced-motion: reduce) {
+  .slideCurrent .portraitArt {
+    animation: none;
+    clip-path: none;
+  }
+
   .rise,
   .pop,
   .figFade,
@@ -2148,8 +2437,9 @@
 
 @media (max-width: 900px) {
   .weightsMap,
-  .frontiers,
-  .pathsGrid {
+  .namesMap,
+  .dijkstraSlide,
+  .queueGroups {
     grid-template-columns: minmax(0, 1fr);
     gap: 20px 0;
   }
@@ -2165,6 +2455,16 @@
   .distanceGrid {
     grid-template-columns: 90px repeat(var(--targets), minmax(0, 1fr));
     overflow-x: auto;
+  }
+
+  .namedPath {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .namedPath .pathTrack,
+  .namedRoute,
+  .namedUnreached {
+    grid-column: 1 / -1;
   }
 }
 
@@ -2186,5 +2486,15 @@
 
   .partsThumb {
     transition: none;
+  }
+
+  .pathStop {
+    opacity: 1;
+    animation: none !important;
+  }
+
+  .pathTrack[data-drawn]::before {
+    transform: none;
+    animation: none !important;
   }
 }

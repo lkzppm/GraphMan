@@ -1,8 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { RotateCcw, Users } from 'lucide-react';
-import { formatBytes, formatCompact, formatInt, formatMs, formatWeight } from '@/lib/format';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
+import { ArrowRight, Maximize2, RotateCcw, Users, ZoomIn, ZoomOut } from 'lucide-react';
+import { formatCompact, formatInt, formatMs, formatWeight } from '@/lib/format';
 import type { FrontierKind, FrontierStudy, PathAnswer, WeightedStudy } from '@/lib/studies';
 import { useT } from '@/i18n/LocaleProvider';
 import Reveal from './Reveal';
@@ -21,11 +30,14 @@ import styles from './Studies.module.css';
 
 type T = ReturnType<typeof useT>;
 
-const FRONTIERS: FrontierKind[] = ['vector', 'heap', 'lazy_heap'];
+const FRONTIERS: FrontierKind[] = ['vector', 'heap', 'lazy_heap', 'quad_heap', 'pairing', 'radix'];
 const FRONTIER_COLOUR: Record<FrontierKind, string> = {
-  vector: 'var(--accent-2)',
-  heap: 'var(--accent)',
-  lazy_heap: 'var(--level-0)',
+  vector: 'var(--queue-vector)',
+  heap: 'var(--queue-heap)',
+  lazy_heap: 'var(--queue-lazy-heap)',
+  quad_heap: 'var(--queue-quad-heap)',
+  pairing: 'var(--queue-pairing)',
+  radix: 'var(--queue-radix)',
 };
 
 /** `grafo_W_3` → `W3`; any other name comes back whole. */
@@ -168,85 +180,132 @@ export default function StudiesPart2({ studies }: { studies: WeightedStudy[] }) 
           ))}
         </div>
       </nav>
-      {study === null ? (
-        <OverviewSheet studies={studies} />
-      ) : study.names_file ? (
-        <NetworkSheet key={study.name} study={study} />
-      ) : (
-        <GraphSheet study={study} view={viewId(study)} />
-      )}
+      <div className={`container ${styles.content}`}>
+        <SheetHead studies={studies} study={study} />
+        {study === null ? (
+          <OverviewSheet studies={studies} onOpen={(study) => choose(studies.indexOf(study))} />
+        ) : study.names_file ? (
+          <NetworkSheet key={study.name} study={study} />
+        ) : (
+          <GraphSheet study={study} view={viewId(study)} />
+        )}
+      </div>
     </>
   );
 }
 
-/** The timing note under the bars: how they were measured, and on what. */
-function TimingNote({ studies }: { studies: WeightedStudy[] }) {
+/** The head every view shares, as in Part 1: it stays in place when the
+    view changes, and only the title and the facts crossfade (`Swap`, keyed
+    by the view): the overview's means, a graph's own counts, the
+    network's researchers. */
+function SheetHead({ studies, study }: { studies: WeightedStudy[]; study: WeightedStudy | null }) {
   const t = useT();
-  const machine = studies.find((study) => study.machine)?.machine;
-  const runs = Math.max(0, ...studies.flatMap((s) => s.frontiers.map((f) => f.requested_runs)));
-  return (
-    <p className={styles.note}>
-      {t.studies.part2.timing.note(
-        formatInt(runs),
-        machine ? `${machine.cpu}, ${formatBytes(machine.total_memory_bytes)}.` : '',
-      )}
-    </p>
+  const p = t.studies.part2;
+  const key = study ? viewId(study) : 'overview';
+  const weightsOf = (min: number, max: number, none: boolean) => (
+    <span className={styles.note}>
+      {p.facts.weights(formatWeight(min), formatWeight(max), none)}
+    </span>
   );
-}
-
-/** How many times the heap's time the vector takes, when both were timed. */
-function vectorRatio(study: WeightedStudy): number | null {
-  const vector = frontierTime(study, 'vector');
-  const heap = frontierTime(study, 'heap');
-  return vector && heap && heap.ms > 0 ? Math.round(vector.ms / heap.ms) : null;
+  let title: string;
+  let facts: ReactNode;
+  if (study === null) {
+    const graphs = studies.filter((s) => !s.names_file);
+    const weights = graphs.flatMap((s) => (s.weights ? [s.weights] : []));
+    const mean = (pick: (s: WeightedStudy) => number) =>
+      graphs.reduce((sum, s) => sum + pick(s), 0) / Math.max(graphs.length, 1);
+    title = t.studies.overview;
+    facts = (
+      <>
+        <span className={styles.subtitle}>{t.studies.average(String(graphs.length))}</span>
+        <span className={`mono ${styles.fact}`}>
+          {formatInt(mean((s) => s.vertices))} <em>{t.studies.facts.vertices}</em>
+        </span>
+        <span className={`mono ${styles.fact}`}>
+          {formatInt(mean((s) => s.edges))} <em>{t.studies.facts.edges}</em>
+        </span>
+        {weights.length > 0 &&
+          weightsOf(
+            mean((s) => s.weights?.min ?? 0),
+            mean((s) => s.weights?.max ?? 0),
+            weights.every((w) => w.negative === 0),
+          )}
+      </>
+    );
+  } else if (study.names_file) {
+    title = studyTitle(t, study);
+    facts = (
+      <>
+        <span className={`mono ${styles.fact}`}>
+          {formatInt(study.vertices)} <em>{p.facts.researchers}</em>
+        </span>
+        <span className={`mono ${styles.fact}`}>
+          {formatInt(study.edges)} <em>{p.facts.collaborations}</em>
+        </span>
+        {study.weights &&
+          weightsOf(study.weights.min, study.weights.max, study.weights.negative === 0)}
+      </>
+    );
+  } else {
+    title = studyTitle(t, study);
+    facts = (
+      <>
+        <span className={`mono ${styles.fact}`}>
+          {formatInt(study.vertices)} <em>{t.studies.facts.vertices}</em>
+        </span>
+        <span className={`mono ${styles.fact}`}>
+          {formatInt(study.edges)} <em>{t.studies.facts.edges}</em>
+        </span>
+        {study.weights &&
+          weightsOf(study.weights.min, study.weights.max, study.weights.negative === 0)}
+        <span className={styles.note}>
+          {t.studies.facts.dropped(
+            formatInt(study.self_loops_dropped),
+            formatInt(study.duplicates_dropped),
+          )}
+        </span>
+      </>
+    );
+  }
+  return (
+    <Reveal className={styles.head}>
+      <h1 className={styles.title}>
+        <Swap view={key}>{title}</Swap>
+      </h1>
+      <div className={styles.facts}>
+        <Swap view={key} className={styles.facts}>
+          {facts}
+        </Swap>
+      </div>
+    </Reveal>
+  );
 }
 
 /** The overview, as in Part 1: the mean of the weighted graphs in its head,
     and only what compares them, the mean Dijkstra of each frontier against
     the graph's size with the vector's ratio to the heap per graph. The
     paths are each graph's own, in its tab. */
-function OverviewSheet({ studies }: { studies: WeightedStudy[] }) {
+function OverviewSheet({
+  studies,
+  onOpen,
+}: {
+  studies: WeightedStudy[];
+  onOpen: (study: WeightedStudy) => void;
+}) {
   const t = useT();
   const p = t.studies.part2;
-  const graphs = studies.filter((study) => !study.names_file);
-  const weights = graphs.flatMap((study) => (study.weights ? [study.weights] : []));
-  const timed = graphs.filter((study) => study.frontiers.length > 0);
-  const mean = (pick: (study: WeightedStudy) => number) =>
-    graphs.reduce((sum, study) => sum + pick(study), 0) / Math.max(graphs.length, 1);
+  const timed = studies.filter((study) => !study.names_file && study.frontiers.length > 0);
 
   return (
-    <div className={`container ${styles.content}`}>
-      <Reveal className={styles.head}>
-        <h1 className={styles.title}>{t.studies.overview}</h1>
-        <div className={styles.facts}>
-          <span className={styles.subtitle}>{t.studies.average(String(graphs.length))}</span>
-          <span className={`mono ${styles.fact}`}>
-            {formatInt(mean((study) => study.vertices))} <em>{t.studies.facts.vertices}</em>
-          </span>
-          <span className={`mono ${styles.fact}`}>
-            {formatInt(mean((study) => study.edges))} <em>{t.studies.facts.edges}</em>
-          </span>
-          {weights.length > 0 && (
-            <span className={styles.note}>
-              {p.facts.weights(
-                formatWeight(mean((study) => study.weights?.min ?? 0)),
-                formatWeight(mean((study) => study.weights?.max ?? 0)),
-                weights.every((w) => w.negative === 0),
-              )}
-            </span>
-          )}
-        </div>
-      </Reveal>
-
+    <>
       {timed.length > 0 && (
         <Chapter index={1} title={p.timing.title} delay={0.05} className={styles.chapterFill}>
           <div className={styles.timingHero}>
-            <GrowthChart studies={timed} />
+            <GrowthChart studies={timed} onOpen={onOpen} />
           </div>
-          <TimingNote studies={timed} />
         </Chapter>
       )}
-    </div>
+    </>
   );
 }
 
@@ -257,39 +316,10 @@ function OverviewSheet({ studies }: { studies: WeightedStudy[] }) {
 function GraphSheet({ study, view }: { study: WeightedStudy; view: string }) {
   const t = useT();
   const p = t.studies.part2;
+  // The race's replays, asked for by the button in its heading.
+  const [round, setRound] = useState(0);
   return (
-    <div className={`container ${styles.content}`}>
-      <Reveal className={styles.head}>
-        <h1 className={styles.title}>
-          <Swap view={view}>{studyTitle(t, study)}</Swap>
-        </h1>
-        <div className={styles.facts}>
-          <Swap view={view} className={styles.facts}>
-            <span className={`mono ${styles.fact}`}>
-              {formatInt(study.vertices)} <em>{t.studies.facts.vertices}</em>
-            </span>
-            <span className={`mono ${styles.fact}`}>
-              {formatInt(study.edges)} <em>{t.studies.facts.edges}</em>
-            </span>
-            {study.weights && (
-              <span className={styles.note}>
-                {p.facts.weights(
-                  formatWeight(study.weights.min),
-                  formatWeight(study.weights.max),
-                  study.weights.negative === 0,
-                )}
-              </span>
-            )}
-            <span className={styles.note}>
-              {t.studies.facts.dropped(
-                formatInt(study.self_loops_dropped),
-                formatInt(study.duplicates_dropped),
-              )}
-            </span>
-          </Swap>
-        </div>
-      </Reveal>
-
+    <>
       <Chapter index={1} title={p.paths.title} delay={0.05} className={styles.chapterFill}>
         <PathLines
           view={view}
@@ -302,12 +332,26 @@ function GraphSheet({ study, view }: { study: WeightedStudy; view: string }) {
       </Chapter>
 
       {study.frontiers.length > 0 && (
-        <Chapter index={2} title={p.timing.title} delay={0.1}>
-          <Race study={study} view={view} />
-          <TimingNote studies={[study]} />
+        <Chapter
+          index={2}
+          title={p.timing.title}
+          delay={0.1}
+          tools={
+            <button
+              type="button"
+              className={styles.raceReplay}
+              onClick={() => setRound((n) => n + 1)}
+              aria-label={p.timing.race.replay}
+              title={p.timing.race.replay}
+            >
+              <RotateCcw size={13} strokeWidth={1.8} aria-hidden />
+            </button>
+          }
+        >
+          <Race study={study} view={view} round={round} />
         </Chapter>
       )}
-    </div>
+    </>
   );
 }
 
@@ -317,31 +361,11 @@ function NetworkSheet({ study }: { study: WeightedStudy }) {
   const p = t.studies.part2;
   const from = study.paths[0]?.from_name ?? String(study.paths[0]?.from ?? '');
   return (
-    <div className={`container ${styles.content}`}>
-      <Reveal className={styles.head}>
-        <h1 className={styles.title}>{studyTitle(t, study)}</h1>
-        <div className={styles.facts}>
-          <span className={`mono ${styles.fact}`}>
-            {formatInt(study.vertices)} <em>{p.facts.researchers}</em>
-          </span>
-          <span className={`mono ${styles.fact}`}>
-            {formatInt(study.edges)} <em>{p.facts.collaborations}</em>
-          </span>
-          {study.weights && (
-            <span className={styles.note}>
-              {p.facts.weights(
-                formatWeight(study.weights.min),
-                formatWeight(study.weights.max),
-                study.weights.negative === 0,
-              )}
-            </span>
-          )}
-        </div>
-      </Reveal>
+    <>
       <Chapter index={1} title={p.network.from(from)} delay={0.05} className={styles.chapterFill}>
         <NetworkPaths study={study} />
       </Chapter>
-    </div>
+    </>
   );
 }
 
@@ -500,102 +524,47 @@ const TIME_TICKS: [number, string][] = [
   [36_000_000, '10 h'],
 ];
 
-type Size = { w: number; h: number };
-type Box = { x: number; y: number; w: number; h: number };
-type Segment = [number, number, number, number];
-
-/** How much of a segment runs inside a box (Liang-Barsky clipping). */
-function clipLength([ax, ay, bx, by]: Segment, box: Box): number {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const p = [-dx, dx, -dy, dy];
-  const q = [ax - box.x, box.x + box.w - ax, ay - box.y, box.y + box.h - ay];
-  let t0 = 0;
-  let t1 = 1;
-  for (let k = 0; k < 4; k++) {
-    if (p[k] === 0) {
-      if (q[k] < 0) return 0;
-      continue;
-    }
-    const t = q[k] / p[k];
-    if (p[k] < 0) t0 = Math.max(t0, t);
-    else t1 = Math.min(t1, t);
-    if (t0 > t1) return 0;
-  }
-  return (t1 - t0) * Math.hypot(dx, dy);
+/** A stretch of the chart in log₁₀ units: graph size across, time up. */
+interface Range {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
 }
 
-function overlap(a: Box, b: Box): number {
-  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
-  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
-  return w > 0 && h > 0 ? w * h : 0;
-}
-
-/**
- * Where each graph's ratio card goes inside the chart: every place in the
- * plot is tried, and the card takes the one that crosses the fewest
- * lines, points, brackets and cards already placed, the nearest to its
- * own bracket among equals. The bracket, heap to vector, stands on the
- * side of the column the card is on.
- */
-function placeRatios<R extends { i: number; col: number; hy: number; vy: number }>(
-  ratios: R[],
-  segments: Segment[],
-  points: (readonly [number, number])[],
-  sizes: Record<number, Size>,
-  bounds: Box,
-) {
-  const STEP = 8;
-  const placed: Box[] = [];
-  const brackets: Segment[] = [];
-  return ratios.map((r) => {
-    const size = sizes[r.i] ?? { w: 200, h: 80 };
-    const mid = (r.hy + r.vy) / 2;
-    let best: { cost: number; card: Box; side: 'left' | 'right'; bx: number } | null = null;
-    for (let cx = bounds.x; cx + size.w <= bounds.x + bounds.w; cx += STEP) {
-      const side = cx + size.w / 2 < r.col ? 'left' : 'right';
-      const bx = r.col + (side === 'right' ? 10 : -10);
-      const own: Segment = [bx, r.hy, bx, r.vy];
-      // How far the card's nearest edge is from the bracket's middle.
-      const dx = Math.max(cx - bx, bx - (cx + size.w), 0);
-      for (let cy = bounds.y; cy + size.h <= bounds.y + bounds.h; cy += STEP) {
-        const card = { x: cx, y: cy, w: size.w, h: size.h };
-        const pad = { x: cx - 4, y: cy - 4, w: size.w + 8, h: size.h + 8 };
-        let cost = 0;
-        for (const segment of [...segments, ...brackets, own])
-          cost += 40 * clipLength(segment, pad);
-        for (const [px, py] of points)
-          if (px > pad.x && px < pad.x + pad.w && py > pad.y && py < pad.y + pad.h) cost += 400;
-        for (const other of placed) cost += 4 * overlap(pad, other);
-        const dy = Math.max(cy - mid, mid - (cy + size.h), 0);
-        cost += Math.hypot(dx, dy);
-        if (!best || cost < best.cost) best = { cost, card, side, bx };
-      }
-    }
-    const chosen = best ?? {
-      cost: 0,
-      card: { x: r.col + 18, y: r.vy, w: size.w, h: size.h },
-      side: 'right' as const,
-      bx: r.col + 10,
-    };
-    placed.push(chosen.card);
-    brackets.push([chosen.bx, r.hy, chosen.bx, r.vy]);
-    return { ...r, ...chosen };
-  });
-}
+/** 1, 2 and 5 in every decade, for a view zoomed in past the named ticks. */
+const FINE_TICKS = Array.from({ length: 12 }, (_, k) => 10 ** (k - 2)).flatMap((d) => [
+  d,
+  2 * d,
+  5 * d,
+]);
 
 /**
  * The mean Dijkstra against the graph's size, both axes logarithmic: one
  * line per frontier through the graphs, smallest first. On a log-log plot
  * a power law is a straight line, so the vector's n² climbs visibly
  * steeper than the heaps' (n + m) log n, and the gap is the ratio. A point
- * that is an estimate is hollow, its segment dashed. Hovering a point
- * reads it out under the chart.
+ * that is an estimate is hollow, its segment dashed.
+ *
+ * It is a chart to handle: dragging pans it, a pinch or ctrl/⌘ + scroll
+ * (or the buttons, or + and −) zooms around the pointer, a double click or
+ * 0 fits it again. Hovering a point shows its graph in the panel on the
+ * right; a click pins it (the other frontiers fade).
  */
-function GrowthChart({ studies }: { studies: WeightedStudy[] }) {
+function GrowthChart({
+  studies,
+  onOpen,
+}: {
+  studies: WeightedStudy[];
+  /** Opens a graph's own tab. */
+  onOpen: (study: WeightedStudy) => void;
+}) {
   const t = useT();
   const s = t.studies.part2.timing;
   const [hot, setHot] = useState<{ study: number; kind: FrontierKind } | null>(null);
+  const [pinned, setPinned] = useState<{ study: number; kind: FrontierKind } | null>(null);
+  // The graph the panel shows: the last one pointed at, the largest at first.
+  const [shown, setShown] = useState(studies.length - 1);
   // Drawn at the size of its box, one unit a pixel, so the chart takes the
   // room the page gives it and its text stays the size it is set in.
   const boxRef = useRef<HTMLDivElement>(null);
@@ -609,33 +578,8 @@ function GrowthChart({ studies }: { studies: WeightedStudy[] }) {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  // The ratio cards' measured sizes, which their placement needs.
-  const cardRefs = useRef(new Map<number, HTMLDivElement>());
-  const [sizes, setSizes] = useState<Record<number, Size>>({});
-  const drawn = box.width > 0;
-  useEffect(() => {
-    if (!drawn) return;
-    const observer = new ResizeObserver(() => {
-      const next: Record<number, Size> = {};
-      cardRefs.current.forEach((el, i) => {
-        next[i] = { w: el.offsetWidth, h: el.offsetHeight };
-      });
-      setSizes((prev) =>
-        Object.keys(next).every((i) => prev[+i]?.w === next[+i].w && prev[+i]?.h === next[+i].h) &&
-        Object.keys(prev).length === Object.keys(next).length
-          ? prev
-          : next,
-      );
-    });
-    cardRefs.current.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, [drawn, studies]);
-  const W = Math.max(box.width, 1);
-  const H = Math.max(box.height, 1);
-  const { left, right, top, bottom } = CHART_MARGIN;
-  // The scales and the cards' places change with the box, not on hover.
-  const layout = useMemo(() => {
-    const m = CHART_MARGIN;
+  // The points, and the view that fits them.
+  const data = useMemo(() => {
     const points = studies.flatMap((study, i) =>
       FRONTIERS.flatMap((kind) => {
         const time = frontierTime(study, kind);
@@ -643,226 +587,513 @@ function GrowthChart({ studies }: { studies: WeightedStudy[] }) {
       }),
     );
     if (points.length === 0) return null;
-    const lx = (n: number) => Math.log10(n);
-    const xs = studies.map((study) => lx(study.vertices));
-    const x0 = Math.min(...xs) - 0.35;
-    const x1 = Math.max(...xs) + 0.35;
+    const xs = studies.map((study) => Math.log10(study.vertices));
     const ys = points.map((point) => Math.log10(point.ms));
-    const y0 = Math.floor(Math.min(...ys));
-    const y1 = Math.ceil(Math.max(...ys));
-    const x = (n: number) => m.left + ((lx(n) - x0) / (x1 - x0)) * (W - m.left - m.right);
-    const y = (ms: number) =>
-      m.top + (1 - (Math.log10(ms) - y0) / Math.max(y1 - y0, 1)) * (H - m.top - m.bottom);
-    const ticks = TIME_TICKS.filter(([ms]) => Math.log10(ms) >= y0 && Math.log10(ms) <= y1);
-    const ratios = placeRatios(
-      studies.flatMap((study, i) => {
-        const vector = frontierTime(study, 'vector');
-        const heap = frontierTime(study, 'heap');
-        const ratio = vectorRatio(study);
-        if (!vector || !heap || ratio === null) return [];
-        return [
-          { i, vector, heap, ratio, col: x(study.vertices), hy: y(heap.ms), vy: y(vector.ms) },
-        ];
-      }),
-      FRONTIERS.flatMap((kind) => {
-        const series = points.filter((p) => p.kind === kind);
-        return series
-          .slice(1)
-          .map((p, j): Segment => [x(series[j].n), y(series[j].ms), x(p.n), y(p.ms)]);
-      }),
-      points.map((p) => [x(p.n), y(p.ms)] as const),
-      sizes,
-      { x: m.left, y: 0, w: W - m.left, h: H - m.bottom },
-    );
-    return { points, x, y, ticks, ratios };
-  }, [studies, W, H, sizes]);
-  if (!layout) return null;
-  const { points, x, y, ticks, ratios } = layout;
-  const hotPoint = hot ? points.find((p) => p.i === hot.study && p.kind === hot.kind) : null;
+    const fit: Range = {
+      x0: Math.min(...xs) - 0.35,
+      x1: Math.max(...xs) + 0.35,
+      y0: Math.floor(Math.min(...ys)),
+      y1: Math.max(Math.ceil(Math.max(...ys)), Math.floor(Math.min(...ys)) + 1),
+    };
+    return { points, fit };
+  }, [studies]);
+
+  // The view the reader moved to (null: the fit).
+  const [view, setView] = useState<Range | null>(null);
+  const drawn = box.width > 0;
+  const W = Math.max(box.width, 1);
+  const H = Math.max(box.height, 1);
+  const { left, right, top, bottom } = CHART_MARGIN;
+  const plotW = Math.max(W - left - right, 1);
+  const plotH = Math.max(H - top - bottom, 1);
+  const scalesFor = useCallback(
+    (r: Range) => ({
+      x: (n: number) => left + ((Math.log10(n) - r.x0) / (r.x1 - r.x0)) * plotW,
+      y: (ms: number) => top + (1 - (Math.log10(ms) - r.y0) / (r.y1 - r.y0)) * plotH,
+    }),
+    [left, top, plotW, plotH],
+  );
+
+  // Panning and zooming, in log units.
+  const current = view ?? data?.fit ?? { x0: 0, x1: 1, y0: 0, y1: 1 };
+  const clamp = useCallback(
+    (r: Range): Range => {
+      if (!data) return r;
+      const f = data.fit;
+      const fit = (a: number, b: number, min: number, max: number): [number, number] => {
+        const mid = (a + b) / 2;
+        const span = Math.min(Math.max(b - a, min), max);
+        return [mid - span / 2, mid + span / 2];
+      };
+      const [x0, x1] = fit(r.x0, r.x1, 0.12, (f.x1 - f.x0) * 4);
+      const [y0, y1] = fit(r.y0, r.y1, 0.25, (f.y1 - f.y0) * 4);
+      return { x0, x1, y0, y1 };
+    },
+    [data],
+  );
+  const zoomAt = useCallback(
+    (factor: number, px: number, py: number) => {
+      setView((v) => {
+        const r = v ?? data?.fit;
+        if (!r) return v;
+        const lx = r.x0 + ((px - left) / plotW) * (r.x1 - r.x0);
+        const ly = r.y1 - ((py - top) / plotH) * (r.y1 - r.y0);
+        return clamp({
+          x0: lx - (lx - r.x0) * factor,
+          x1: lx + (r.x1 - lx) * factor,
+          y0: ly - (ly - r.y0) * factor,
+          y1: ly + (r.y1 - ly) * factor,
+        });
+      });
+    },
+    [data, left, top, plotW, plotH, clamp],
+  );
+  const panBy = useCallback(
+    (dx: number, dy: number) => {
+      setView((v) => {
+        const r = v ?? data?.fit;
+        if (!r) return v;
+        const sx = (dx / plotW) * (r.x1 - r.x0);
+        const sy = (dy / plotH) * (r.y1 - r.y0);
+        return { x0: r.x0 - sx, x1: r.x1 - sx, y0: r.y0 + sy, y1: r.y1 + sy };
+      });
+    },
+    [data, plotW, plotH],
+  );
+  const reset = () => {
+    setView(null);
+  };
+
+  // A pinch on a trackpad arrives as a wheel with ctrl held; so does
+  // ctrl + scroll. A plain scroll is the page's.
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const rect = el.getBoundingClientRect();
+      zoomAt(Math.exp(event.deltaY * 0.01), event.clientX - rect.left, event.clientY - rect.top);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [zoomAt]);
+
+  // One pointer drags; two pinch.
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const [dragging, setDragging] = useState(false);
+  const local = (event: ReactPointerEvent) => {
+    const rect = boxRef.current?.getBoundingClientRect();
+    return { x: event.clientX - (rect?.left ?? 0), y: event.clientY - (rect?.top ?? 0) };
+  };
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if ((event.target as Element).closest('[data-point], button')) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointers.current.set(event.pointerId, local(event));
+    setDragging(true);
+  };
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const was = pointers.current.get(event.pointerId);
+    if (!was) return;
+    const now = local(event);
+    if (pointers.current.size === 1) {
+      panBy(now.x - was.x, now.y - was.y);
+    } else if (pointers.current.size === 2) {
+      const other = [...pointers.current.entries()].find(([id]) => id !== event.pointerId)?.[1];
+      if (other) {
+        const before = Math.hypot(was.x - other.x, was.y - other.y);
+        const after = Math.hypot(now.x - other.x, now.y - other.y);
+        if (before > 0 && after > 0)
+          zoomAt(before / after, (now.x + other.x) / 2, (now.y + other.y) / 2);
+      }
+    }
+    pointers.current.set(event.pointerId, now);
+  };
+  const onPointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    pointers.current.delete(event.pointerId);
+    if (pointers.current.size === 0) setDragging(false);
+  };
+
+  if (!data) return null;
+  const { points } = data;
+  const { x, y } = scalesFor(current);
+  const yIn = (ms: number) => {
+    const l = Math.log10(ms);
+    return l >= current.y0 - 1e-9 && l <= current.y1 + 1e-9;
+  };
+  const named = TIME_TICKS.filter(([ms]) => yIn(ms));
+  const ticks: [number, string][] =
+    named.length >= 3 ? named : FINE_TICKS.filter(yIn).map((ms) => [ms, formatMs(ms)]);
+  const inX = (px: number) => px >= left - 1 && px <= W - right + 1;
+  const focus = pinned ?? hot;
+  const clipId = `growth-${clipIdOf(studies)}`;
 
   return (
-    <div className={styles.growth} onPointerLeave={() => setHot(null)}>
-      <ul className={styles.growthLegend}>
-        {FRONTIERS.map((kind) => (
-          <li key={kind}>
-            <span style={{ background: FRONTIER_COLOUR[kind] }} />
-            {s.frontiers[kind]}
-          </li>
-        ))}
-      </ul>
-      <div ref={boxRef} className={styles.growthBox}>
-        {drawn && (
-          <svg
-            width={W}
-            height={H}
-            viewBox={`0 0 ${W} ${H}`}
-            className={styles.growthChart}
-            role="img"
-            aria-label={s.title}
-          >
-            {ticks.map(([ms, label]) => (
-              <g key={ms}>
-                <line
-                  className={styles.growthGrid}
-                  x1={left}
-                  x2={W - right}
-                  y1={y(ms)}
-                  y2={y(ms)}
-                />
-                <text
-                  className={styles.growthTick}
-                  x={left - 8}
-                  y={y(ms)}
-                  dy="0.32em"
-                  textAnchor="end"
-                >
-                  {label}
-                </text>
-              </g>
-            ))}
-            {studies.map((study) => (
-              <g key={study.name}>
-                <line
-                  className={styles.growthGrid}
-                  x1={x(study.vertices)}
-                  x2={x(study.vertices)}
-                  y1={top}
-                  y2={H - bottom}
-                />
-                <text
-                  className={styles.growthLabel}
-                  x={x(study.vertices)}
-                  y={H - bottom + 16}
-                  textAnchor="middle"
-                >
-                  {weightedName(study.name)}
-                </text>
-                <text
-                  className={styles.growthTick}
-                  x={x(study.vertices)}
-                  y={H - bottom + 30}
-                  textAnchor="middle"
-                >
-                  {t.studies.part2.vertexCount(formatCompact(study.vertices))}
-                </text>
-              </g>
-            ))}
-            {FRONTIERS.map((kind, k) => {
-              const series = points.filter((p) => p.kind === kind);
-              return (
-                <g
-                  key={kind}
-                  style={{ '--colour': FRONTIER_COLOUR[kind], '--k': k } as CSSProperties}
-                >
-                  {series.slice(1).map((p, j) => {
-                    const a = series[j];
-                    return (
-                      <line
-                        key={p.i}
-                        className={styles.growthLine}
-                        data-estimated={p.estimated || a.estimated || undefined}
-                        x1={x(a.n)}
-                        y1={y(a.ms)}
-                        x2={x(p.n)}
-                        y2={y(p.ms)}
-                        pathLength={1}
-                        style={{ '--j': j } as CSSProperties}
-                      />
-                    );
-                  })}
-                  {series.map((p) => (
-                    <circle
-                      key={p.i}
-                      className={styles.growthPoint}
-                      data-estimated={p.estimated || undefined}
-                      data-hot={(hot?.study === p.i && hot.kind === kind) || undefined}
-                      cx={x(p.n)}
-                      cy={y(p.ms)}
-                      r={hot?.study === p.i && hot.kind === kind ? 6 : 4.5}
-                      onPointerEnter={() => setHot({ study: p.i, kind })}
-                    />
-                  ))}
-                </g>
-              );
-            })}
-            {ratios.map((r) => (
-              <g
-                key={r.i}
-                className={styles.growthBracket}
-                data-estimated={r.vector.estimated || undefined}
-                style={{ '--k': r.i } as CSSProperties}
-              >
-                <line x1={r.bx} x2={r.bx} y1={r.hy} y2={r.vy} />
-                <line x1={r.bx - 3} x2={r.bx + 3} y1={r.hy} y2={r.hy} />
-                <line x1={r.bx - 3} x2={r.bx + 3} y1={r.vy} y2={r.vy} />
-              </g>
-            ))}
-          </svg>
-        )}
-        {drawn &&
-          ratios.map((r) => (
-            <div
-              key={r.i}
-              ref={(el) => {
-                if (el) cardRefs.current.set(r.i, el);
-                else cardRefs.current.delete(r.i);
-              }}
-              className={styles.growthRatio}
-              data-side={r.side}
-              style={{ left: r.card.x, top: r.card.y, '--k': r.i } as CSSProperties}
-            >
-              <span className={`mono ${styles.growthRatioValue}`}>
-                {r.vector.estimated ? '≈ ' : ''}×{formatInt(r.ratio)}
-              </span>
-              <span className={styles.growthRatioCaption}>{s.ratioCaption}</span>
-              <span className={`mono ${styles.detail}`}>
-                {s.versus(
-                  r.vector.estimated ? s.estimated(formatMs(r.vector.ms)) : formatMs(r.vector.ms),
-                  formatMs(r.heap.ms),
-                )}
-              </span>
-            </div>
+    <div className={styles.growth}>
+      <div className={styles.growthMain} onPointerLeave={() => setHot(null)}>
+        <ul className={styles.growthLegend}>
+          {FRONTIERS.map((kind) => (
+            <li key={kind} data-dim={(pinned && pinned.kind !== kind) || undefined}>
+              <span style={{ background: FRONTIER_COLOUR[kind] }} />
+              {s.frontiers[kind]}
+            </li>
           ))}
+        </ul>
+        <div
+          ref={boxRef}
+          className={styles.growthBox}
+          data-dragging={dragging || undefined}
+          tabIndex={0}
+          aria-label={s.chartHint}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerEnd}
+          onPointerCancel={onPointerEnd}
+          onDoubleClick={(event) => {
+            if (!(event.target as Element).closest('[data-point], button')) reset();
+          }}
+          onKeyDown={(event) => {
+            const middle = [left + plotW / 2, top + plotH / 2] as const;
+            const step = 40;
+            const keys: Record<string, () => void> = {
+              '+': () => zoomAt(0.8, ...middle),
+              '=': () => zoomAt(0.8, ...middle),
+              '-': () => zoomAt(1.25, ...middle),
+              '0': reset,
+              ArrowLeft: () => panBy(step, 0),
+              ArrowRight: () => panBy(-step, 0),
+              ArrowUp: () => panBy(0, step),
+              ArrowDown: () => panBy(0, -step),
+              Escape: () => setPinned(null),
+            };
+            const run = keys[event.key];
+            if (!run) return;
+            event.preventDefault();
+            event.stopPropagation();
+            run();
+          }}
+        >
+          {drawn && (
+            <svg
+              width={W}
+              height={H}
+              viewBox={`0 0 ${W} ${H}`}
+              className={styles.growthChart}
+              role="img"
+              aria-label={s.title}
+            >
+              <defs>
+                <clipPath id={clipId}>
+                  <rect x={left} y={top - 8} width={plotW} height={plotH + 16} />
+                </clipPath>
+              </defs>
+              {ticks.map(([ms, label]) => (
+                <g key={ms}>
+                  <line
+                    className={styles.growthGrid}
+                    x1={left}
+                    x2={W - right}
+                    y1={y(ms)}
+                    y2={y(ms)}
+                  />
+                  <text
+                    className={styles.growthTick}
+                    x={left - 8}
+                    y={y(ms)}
+                    dy="0.32em"
+                    textAnchor="end"
+                  >
+                    {label}
+                  </text>
+                </g>
+              ))}
+              {studies.map((study, i) => {
+                const cx = x(study.vertices);
+                if (!inX(cx)) return null;
+                return (
+                  <g key={study.name}>
+                    <line className={styles.growthGrid} x1={cx} x2={cx} y1={top} y2={H - bottom} />
+                    <text
+                      className={styles.growthLabel}
+                      x={cx}
+                      y={H - bottom + 16}
+                      textAnchor="middle"
+                      data-hot={focus?.study === i || undefined}
+                    >
+                      {weightedName(study.name)}
+                    </text>
+                    <text
+                      className={styles.growthTick}
+                      x={cx}
+                      y={H - bottom + 30}
+                      textAnchor="middle"
+                    >
+                      {t.studies.part2.vertexCount(formatCompact(study.vertices))}
+                    </text>
+                  </g>
+                );
+              })}
+              <g clipPath={`url(#${clipId})`}>
+                {FRONTIERS.map((kind, k) => {
+                  const series = points.filter((p) => p.kind === kind);
+                  return (
+                    <g
+                      key={kind}
+                      className={styles.growthSeries}
+                      data-dim={(pinned && pinned.kind !== kind) || undefined}
+                      style={{ '--colour': FRONTIER_COLOUR[kind], '--k': k } as CSSProperties}
+                    >
+                      {series.slice(1).map((p, j) => {
+                        const a = series[j];
+                        return (
+                          <line
+                            key={p.i}
+                            className={styles.growthLine}
+                            data-estimated={p.estimated || a.estimated || undefined}
+                            x1={x(a.n)}
+                            y1={y(a.ms)}
+                            x2={x(p.n)}
+                            y2={y(p.ms)}
+                            pathLength={1}
+                            style={{ '--j': j } as CSSProperties}
+                          />
+                        );
+                      })}
+                    </g>
+                  );
+                })}
+                {FRONTIERS.map((kind, k) =>
+                  points
+                    .filter((p) => p.kind === kind)
+                    .map((p) => {
+                      const isPinned = pinned?.study === p.i && pinned.kind === kind;
+                      const isHot = hot?.study === p.i && hot.kind === kind;
+                      const label = `${weightedName(studies[p.i].name)}, ${s.frontiers[kind]}: ${
+                        p.estimated ? s.estimated(formatMs(p.ms)) : formatMs(p.ms)
+                      }`;
+                      const toggle = () => setPinned(isPinned ? null : { study: p.i, kind });
+                      return (
+                        <g
+                          key={`${kind}-${p.i}`}
+                          data-point
+                          className={styles.growthHit}
+                          data-dim={(pinned && pinned.kind !== kind) || undefined}
+                          style={{ '--colour': FRONTIER_COLOUR[kind], '--k': k } as CSSProperties}
+                          role="button"
+                          tabIndex={0}
+                          aria-pressed={isPinned}
+                          aria-label={label}
+                          onPointerEnter={() => {
+                            setHot({ study: p.i, kind });
+                            setShown(p.i);
+                          }}
+                          onClick={() => {
+                            setShown(p.i);
+                            toggle();
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              toggle();
+                            }
+                          }}
+                        >
+                          <circle cx={x(p.n)} cy={y(p.ms)} r={12} className={styles.growthTarget} />
+                          <circle
+                            className={styles.growthPoint}
+                            data-estimated={p.estimated || undefined}
+                            data-hot={isHot || isPinned || undefined}
+                            data-pinned={isPinned || undefined}
+                            cx={x(p.n)}
+                            cy={y(p.ms)}
+                            r={isHot || isPinned ? 6 : 4.5}
+                          />
+                        </g>
+                      );
+                    }),
+                )}
+              </g>
+            </svg>
+          )}
+          {drawn && (
+            <div className={styles.growthTools}>
+              <button
+                type="button"
+                aria-label={s.zoomIn}
+                title={s.zoomIn}
+                onClick={() => zoomAt(0.7, left + plotW / 2, top + plotH / 2)}
+              >
+                <ZoomIn size={14} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                aria-label={s.zoomOut}
+                title={s.zoomOut}
+                onClick={() => zoomAt(1 / 0.7, left + plotW / 2, top + plotH / 2)}
+              >
+                <ZoomOut size={14} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                aria-label={s.fit}
+                title={s.fit}
+                disabled={view === null}
+                onClick={reset}
+              >
+                <Maximize2 size={13} aria-hidden="true" />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
-      <p className={styles.lineCaption}>
-        {hotPoint ? (
-          <>
-            <span className={styles.lineCaptionName}>
-              {weightedName(studies[hotPoint.i].name)}, {s.frontiers[hotPoint.kind]}
-            </span>
-            {hotPoint.estimated
-              ? `${s.estimated(formatMs(hotPoint.ms))} (${s.estimate})`
-              : formatMs(hotPoint.ms)}
-            {!hotPoint.estimated &&
-              (hotPoint.run.timing?.runs ?? 0) < hotPoint.run.requested_runs &&
-              ` · ${s.runs(formatInt(hotPoint.run.timing?.runs ?? 0), formatInt(hotPoint.run.requested_runs))}`}
-          </>
-        ) : (
-          <span className="comment">{s.chartHint}</span>
-        )}
-      </p>
+      <DataShow
+        study={studies[focus?.study ?? shown] ?? studies[studies.length - 1]}
+        index={focus?.study ?? shown}
+        focus={focus?.kind ?? null}
+        pinned={pinned}
+        onPick={(study, kind) => {
+          setShown(study);
+          setPinned(pinned?.study === study && pinned.kind === kind ? null : { study, kind });
+        }}
+        onOpen={onOpen}
+      />
     </div>
   );
 }
 
+/** Beside the chart, the graph a point belongs to: its size, then its six
+    frontiers fastest first, each with its mean time and its multiple of the
+    heap's, the one pointed at or pinned lit. A row pins its point; the
+    link at the foot opens the graph's tab. */
+function DataShow({
+  study,
+  index,
+  focus,
+  pinned,
+  onPick,
+  onOpen,
+}: {
+  study: WeightedStudy;
+  index: number;
+  focus: FrontierKind | null;
+  pinned: { study: number; kind: FrontierKind } | null;
+  onPick: (study: number, kind: FrontierKind) => void;
+  onOpen: (study: WeightedStudy) => void;
+}) {
+  const t = useT();
+  const s = t.studies.part2.timing;
+  const heap = frontierTime(study, 'heap');
+  const rows = FRONTIERS.flatMap((kind) => {
+    const time = frontierTime(study, kind);
+    return time ? [{ kind, ...time }] : [];
+  }).sort((a, b) => a.ms - b.ms);
+  const name = t.studies.graph(weightedName(study.name));
+  return (
+    <aside className={styles.dataShow} aria-live="polite">
+      <div className={styles.dataShowHead}>
+        <span className={styles.dataShowTitle}>
+          <Swap view={study.name}>{name}</Swap>
+        </span>
+        <span className={`mono ${styles.detail}`}>
+          <Swap view={study.name}>
+            {formatCompact(study.vertices)} {t.studies.facts.vertices} ·{' '}
+            {formatCompact(study.edges)} {t.studies.facts.edges}
+          </Swap>
+        </span>
+      </div>
+      <span className={`label ${styles.dataShowOrder}`}>{s.order}</span>
+      <ol className={styles.dataShowRows}>
+        {rows.map((row, place) => {
+          const runs = row.run.timing?.runs ?? 0;
+          const short = !row.estimated && runs < row.run.requested_runs;
+          const isPinned = pinned?.study === index && pinned.kind === row.kind;
+          return (
+            <li key={row.kind}>
+              <button
+                type="button"
+                className={styles.dataShowRow}
+                data-focus={focus === row.kind || undefined}
+                aria-pressed={isPinned}
+                style={{ '--colour': FRONTIER_COLOUR[row.kind] } as CSSProperties}
+                onClick={() => onPick(index, row.kind)}
+              >
+                <span className={`mono ${styles.dataShowPlace}`}>{place + 1}</span>
+                <span className={styles.dataShowSwatch} aria-hidden="true" />
+                <span className={styles.dataShowName}>{s.frontiers[row.kind]}</span>
+                <span className={`mono ${styles.dataShowTime}`}>
+                  {row.estimated ? s.estimated(formatMs(row.ms)) : formatMs(row.ms)}
+                </span>
+                <span className={`mono ${styles.dataShowRatio}`}>
+                  {row.kind === 'heap' || !heap ? '' : `×${formatHeapRatio(row.ms / heap.ms)}`}
+                </span>
+                {(row.estimated || short) && (
+                  <span className={`mono ${styles.dataShowNote}`}>
+                    {row.estimated
+                      ? s.estimate
+                      : s.runs(formatInt(runs), formatInt(row.run.requested_runs))}
+                  </span>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <span className={`mono ${styles.dataShowFoot}`}>{s.versusHeap}</span>
+      <button type="button" className={styles.growthOpen} onClick={() => onOpen(study)}>
+        {s.open(name)}
+        <ArrowRight size={12} aria-hidden="true" />
+      </button>
+    </aside>
+  );
+}
+
+/** A ratio to the heap's time: two significant digits under 10, whole above. */
+function formatHeapRatio(ratio: number): string {
+  return ratio < 10 ? ratio.toFixed(ratio < 1 ? 2 : 1) : formatInt(Math.round(ratio));
+}
+
+/** A stable id for a chart's clip path (one chart per sheet). */
+function clipIdOf(studies: WeightedStudy[]): string {
+  return studies.map((study) => viewId(study)).join('-');
+}
+
 /** How long the race takes on screen, whatever the graph. */
 const RACE_MS = 3200;
-/** Past this many runs a lane's segments are thinner than a hairline,
-    so it draws the fill alone and lets the counter speak. */
-const RACE_TICKS = 160;
+/** The narrowest block a lane draws, in pixels. */
+const RACE_BLOCK_PX = 6;
 
-/** The three frontiers on one linear time axis, the slowest run (the
-    vector's) across the whole width. A playhead sweeps it once: the
-    vector finishes its one run at the end, while each heap lane counts
-    the whole runs it fits in the same time, one segment each, the first
-    one solid. Replays when the graph changes, or on the button. */
-function Race({ study, view }: { study: WeightedStudy; view: string }) {
+/** How many runs one block of a lane stands for: 1, 10, 100…, the
+    fewest that keep a block at least `RACE_BLOCK_PX` wide. */
+function raceBlock(runPx: number): number {
+  let unit = 1;
+  while (runPx * unit < RACE_BLOCK_PX && unit < 1e6) unit *= 10;
+  return unit;
+}
+
+/** The frontiers on one linear time axis, the slowest run (the vector's)
+    across the whole width. A playhead sweeps it once: the vector finishes
+    its one run at the end, while each other lane counts the whole runs it
+    fits in the same time, the first run solid. A lane is cut into blocks of
+    one run, or of 10, 100… runs when one run is too thin to see (W4 and W5
+    fit hundreds), and says so under its counter. Replays when the graph
+    changes, or on the button in the chapter's heading (`round`). */
+function Race({ study, view, round }: { study: WeightedStudy; view: string; round: number }) {
   const t = useT();
   const s = t.studies.part2.timing;
   const ref = useRef<HTMLDivElement>(null);
   const [seen, setSeen] = useState(false);
-  const [round, setRound] = useState(0);
   const [progress, setProgress] = useState(0);
+  // The tracks' width, which decides how many runs a block holds.
+  const trackRef = useRef<HTMLSpanElement>(null);
+  const [trackWidth, setTrackWidth] = useState(0);
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setTrackWidth(entry.contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const el = ref.current;
@@ -911,10 +1142,11 @@ function Race({ study, view }: { study: WeightedStudy; view: string }) {
   return (
     <div ref={ref} className={styles.race} style={{ '--p': progress } as CSSProperties}>
       <div className={styles.raceLanes}>
-        {lanes.map((lane) => {
+        {lanes.map((lane, l) => {
           const runs = slowest.ms / lane.ms;
           const done = progress >= 1 ? Math.round(runs) : Math.floor(progress * runs + 1e-9);
           const segment = lane.ms / slowest.ms;
+          const block = raceBlock(segment * trackWidth);
           return (
             <div
               key={lane.kind}
@@ -923,20 +1155,20 @@ function Race({ study, view }: { study: WeightedStudy; view: string }) {
               style={
                 {
                   '--colour': FRONTIER_COLOUR[lane.kind],
-                  '--segment': `${segment * 100}%`,
+                  '--segment': `${Math.min(1, segment * block) * 100}%`,
                 } as CSSProperties
               }
             >
               <span className={styles.raceName}>
-                <span className="mono">{s.frontiers[lane.kind]}</span>
+                <span className={`mono ${styles.raceLabel}`}>{s.frontiers[lane.kind]}</span>
                 <span className={`mono ${styles.detail}`}>
                   <Swap view={view}>
                     {lane.estimated ? s.estimated(formatMs(lane.ms)) : formatMs(lane.ms)}
                   </Swap>
                 </span>
               </span>
-              <span className={styles.raceTrack}>
-                <span className={styles.raceRuns} data-ticks={runs <= RACE_TICKS || undefined} />
+              <span ref={l === 0 ? trackRef : undefined} className={styles.raceTrack}>
+                <span className={styles.raceRuns} data-ticks={runs > 1.5 || undefined} />
                 <span
                   className={styles.raceFirst}
                   style={{ width: `${Math.min(progress, segment) * 100}%` }}
@@ -946,6 +1178,11 @@ function Race({ study, view }: { study: WeightedStudy; view: string }) {
               <span className={styles.raceCount}>
                 <span className={`mono ${styles.raceNumber}`}>{formatInt(done)}</span>
                 <span className={styles.detail}>{s.race.runs(done)}</span>
+                {block > 1 && (
+                  <span className={`mono ${styles.raceBlock}`}>
+                    {s.race.block(formatInt(block))}
+                  </span>
+                )}
               </span>
             </div>
           );
@@ -956,18 +1193,6 @@ function Race({ study, view }: { study: WeightedStudy; view: string }) {
             {formatMs(clock)}
           </span>
         </span>
-      </div>
-      <div className={styles.raceFoot}>
-        <p className={`mono ${styles.lineCaption} ${styles.raceHint}`}>{s.race.hint}</p>
-        <button
-          type="button"
-          className={styles.raceReplay}
-          onClick={() => setRound((n) => n + 1)}
-          aria-label={s.race.replay}
-          title={s.race.replay}
-        >
-          <RotateCcw size={13} strokeWidth={1.8} aria-hidden />
-        </button>
       </div>
     </div>
   );
