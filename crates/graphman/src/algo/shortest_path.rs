@@ -6,7 +6,10 @@
 //! the BFS [`SearchTree`](super::SearchTree), and the progress is reported
 //! to the same [`Visitor`] the traversals use.
 
-use super::frontier::{Frontier, FrontierKind, HeapFrontier, LazyHeapFrontier, VectorFrontier};
+use super::frontier::{
+    Frontier, FrontierKind, HeapFrontier, LazyHeapFrontier, PairingHeapFrontier, QuadHeapFrontier,
+    RadixHeapFrontier, VectorFrontier,
+};
 use super::traversal::{Control, Visitor};
 use crate::graph::{NO_VERTEX, Vertex, Weight, Weighted, WeightedEdge};
 use std::io::{self, Write};
@@ -215,6 +218,13 @@ pub fn dijkstra<G: Weighted>(
         FrontierKind::LazyHeap => {
             dijkstra_with(graph, root, &mut LazyHeapFrontier::new(n), &mut ())
         }
+        FrontierKind::QuadHeap => {
+            dijkstra_with(graph, root, &mut QuadHeapFrontier::new(n), &mut ())
+        }
+        FrontierKind::Pairing => {
+            dijkstra_with(graph, root, &mut PairingHeapFrontier::new(n), &mut ())
+        }
+        FrontierKind::Radix => dijkstra_with(graph, root, &mut RadixHeapFrontier::new(n), &mut ()),
     }
 }
 

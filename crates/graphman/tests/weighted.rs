@@ -2,7 +2,8 @@
 //! must agree with each other and with a brute-force oracle.
 
 use graphman::algo::{
-    self, Frontier, FrontierKind, HeapFrontier, LazyHeapFrontier, ShortestPathTree, VectorFrontier,
+    self, Frontier, FrontierKind, HeapFrontier, LazyHeapFrontier, PairingHeapFrontier,
+    QuadHeapFrontier, RadixHeapFrontier, ShortestPathTree, VectorFrontier,
 };
 use graphman::{
     AdjacencyList, AdjacencyMatrix, AnyGraph, Build, Csr, EdgeList, Graph, MemoryBudget,
@@ -190,6 +191,22 @@ fn frontiers_and_representations_build_identical_trees() {
                 assert_eq!(
                     lazy, reference,
                     "lazy heap on {at}, seed {seed}, root {root}"
+                );
+                let quad = dispatch!(graph, g => run(g, root, &mut QuadHeapFrontier::default()));
+                let pairing =
+                    dispatch!(graph, g => run(g, root, &mut PairingHeapFrontier::default()));
+                let radix = dispatch!(graph, g => run(g, root, &mut RadixHeapFrontier::default()));
+                assert_eq!(
+                    quad, reference,
+                    "4-ary heap on {at}, seed {seed}, root {root}"
+                );
+                assert_eq!(
+                    pairing, reference,
+                    "pairing heap on {at}, seed {seed}, root {root}"
+                );
+                assert_eq!(
+                    radix, reference,
+                    "radix heap on {at}, seed {seed}, root {root}"
                 );
             }
         }

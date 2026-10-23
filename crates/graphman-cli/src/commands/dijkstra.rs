@@ -27,7 +27,7 @@ pub struct Args {
     #[arg(short, long, num_args = 1..)]
     to: Vec<String>,
 
-    /// How the distance estimates are kept: vector, heap or lazy-heap.
+    /// How the distance estimates are kept: vector, heap, lazy-heap, quad-heap, pairing or radix.
     #[arg(short, long, default_value = "heap")]
     frontier: FrontierKind,
 

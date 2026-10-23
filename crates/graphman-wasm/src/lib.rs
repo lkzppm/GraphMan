@@ -15,8 +15,9 @@
 
 use graphman::algo::{
     self, Components, Control, DegreeStats, DiameterMethod, Frontier, FrontierEntry, FrontierKind,
-    HeapFrontier, LazyHeapFrontier, SearchTree, ShortestPathTree, UNREACHED, VectorFrontier,
-    Visitor, WeightStats, bfs_into, dfs_into, dfs_recursive_into, dijkstra_into, radial_layout,
+    HeapFrontier, LazyHeapFrontier, PairingHeapFrontier, QuadHeapFrontier, RadixHeapFrontier,
+    SearchTree, ShortestPathTree, UNREACHED, VectorFrontier, Visitor, WeightStats, bfs_into,
+    dfs_into, dfs_recursive_into, dijkstra_into, radial_layout,
 };
 use graphman::io::write_summary;
 use graphman::{
@@ -106,6 +107,12 @@ pub enum FrontierType {
     Heap = 1,
     /// A binary heap without decrease-key (stale entries skipped).
     LazyHeap = 2,
+    /// An indexed 4-ary heap with decrease-key.
+    QuadHeap = 3,
+    /// A pairing heap with decrease-key.
+    Pairing = 4,
+    /// A monotone radix heap on the distances' bits (stale entries skipped).
+    Radix = 5,
 }
 
 impl From<FrontierType> for FrontierKind {
@@ -114,6 +121,9 @@ impl From<FrontierType> for FrontierKind {
             FrontierType::Vector => FrontierKind::Vector,
             FrontierType::Heap => FrontierKind::Heap,
             FrontierType::LazyHeap => FrontierKind::LazyHeap,
+            FrontierType::QuadHeap => FrontierKind::QuadHeap,
+            FrontierType::Pairing => FrontierKind::Pairing,
+            FrontierType::Radix => FrontierKind::Radix,
         }
     }
 }
@@ -549,6 +559,8 @@ pub struct FrontierSnapshot {
     vertices: Vec<u32>,
     estimates: Vec<f64>,
     stale: Vec<u8>,
+    parents: Vec<i32>,
+    buckets: Vec<u8>,
     total: u32,
     relaxed: Vec<u32>,
     previous: Vec<f64>,
@@ -557,9 +569,11 @@ pub struct FrontierSnapshot {
 
 #[wasm_bindgen]
 impl FrontierSnapshot {
-    /// The first entries as stored: a heap's array in heap order (index 0
-    /// leaves next, the children of `i` are `2i + 1` and `2i + 2`), the
-    /// vector's finite slots by vertex.
+    /// The first entries as stored: an array heap in heap order (index 0
+    /// leaves next, the children of `i` are `2i + 1` and `2i + 2`, or
+    /// `4i + 1..=4i + 4` in the 4-ary heap), the pairing heap level by
+    /// level, the radix heap bucket by bucket, the vector's finite slots by
+    /// vertex.
     pub fn vertices(&self) -> Vec<u32> {
         self.vertices.clone()
     }
@@ -569,9 +583,20 @@ impl FrontierSnapshot {
         self.estimates.clone()
     }
 
-    /// `1` for a lazy heap's stale entry, `0` otherwise, per entry.
+    /// `1` for a lazy or radix heap's stale entry, `0` otherwise, per entry.
     pub fn stale(&self) -> Vec<u8> {
         self.stale.clone()
+    }
+
+    /// The pairing heap's tree: each entry's parent index, `-1` for the
+    /// root; empty for the other frontiers (an array heap's is implicit).
+    pub fn parents(&self) -> Vec<i32> {
+        self.parents.clone()
+    }
+
+    /// The radix heap's bucket of each entry; empty for the others.
+    pub fn buckets(&self) -> Vec<u8> {
+        self.buckets.clone()
     }
 
     /// How many entries the frontier holds (all of them, past the limit too).
@@ -598,14 +623,14 @@ impl FrontierSnapshot {
 
 /// A frontier that runs `inner` until its `stop`-th pop, then copies it
 /// instead of popping and ends the run. Glue: it only delegates and reads.
-struct Probe<F> {
-    inner: F,
+struct Probe<'a> {
+    inner: &'a mut dyn Frontier,
     pops: usize,
     stop: usize,
     taken: Option<Vec<FrontierEntry>>,
 }
 
-impl<F: Frontier> Frontier for Probe<F> {
+impl Frontier for Probe<'_> {
     fn reset(&mut self, vertex_count: usize) {
         self.inner.reset(vertex_count);
         self.pops = 0;
@@ -959,6 +984,15 @@ impl WasmGraph {
             FrontierType::LazyHeap => {
                 dijkstra_into(g, root, &mut LazyHeapFrontier::new(n), &mut tree, &mut ())
             }
+            FrontierType::QuadHeap => {
+                dijkstra_into(g, root, &mut QuadHeapFrontier::new(n), &mut tree, &mut ())
+            }
+            FrontierType::Pairing => {
+                dijkstra_into(g, root, &mut PairingHeapFrontier::new(n), &mut tree, &mut ())
+            }
+            FrontierType::Radix => {
+                dijkstra_into(g, root, &mut RadixHeapFrontier::new(n), &mut tree, &mut ())
+            }
         });
         let elapsed_ms = now() - start;
         run.map_err(|e| JsError::new(&e.to_string()))?;
@@ -995,29 +1029,24 @@ impl WasmGraph {
             lowered: Vec::new(),
         };
         let stop = step as usize + 1;
+        let graph = &self.graph;
+        let mut replay = |inner: &mut dyn Frontier| -> Result<_, JsError> {
+            let mut probe = Probe {
+                inner,
+                pops: 0,
+                stop,
+                taken: None,
+            };
+            dispatch!(graph, g => dijkstra_into(g, root, &mut probe, &mut tree, &mut lowered))
+                .map_err(|e| JsError::new(&e.to_string()))?;
+            Ok(probe.taken)
+        };
         let taken = match frontier {
-            FrontierType::LazyHeap => {
-                let mut probe = Probe {
-                    inner: LazyHeapFrontier::new(n),
-                    pops: 0,
-                    stop,
-                    taken: None,
-                };
-                dispatch!(&self.graph, g => dijkstra_into(g, root, &mut probe, &mut tree, &mut lowered))
-                    .map_err(|e| JsError::new(&e.to_string()))?;
-                probe.taken
-            }
-            FrontierType::Heap | FrontierType::Vector => {
-                let mut probe = Probe {
-                    inner: HeapFrontier::new(n),
-                    pops: 0,
-                    stop,
-                    taken: None,
-                };
-                dispatch!(&self.graph, g => dijkstra_into(g, root, &mut probe, &mut tree, &mut lowered))
-                    .map_err(|e| JsError::new(&e.to_string()))?;
-                probe.taken
-            }
+            FrontierType::Heap | FrontierType::Vector => replay(&mut HeapFrontier::new(n))?,
+            FrontierType::LazyHeap => replay(&mut LazyHeapFrontier::new(n))?,
+            FrontierType::QuadHeap => replay(&mut QuadHeapFrontier::new(n))?,
+            FrontierType::Pairing => replay(&mut PairingHeapFrontier::new(n))?,
+            FrontierType::Radix => replay(&mut RadixHeapFrontier::new(n))?,
         };
         let mut entries = taken.unwrap_or_default();
         if frontier == FrontierType::Vector {
@@ -1029,6 +1058,15 @@ impl WasmGraph {
             vertices: entries.iter().map(|e| e.vertex).collect(),
             estimates: entries.iter().map(|e| e.estimate).collect(),
             stale: entries.iter().map(|e| u8::from(e.stale)).collect(),
+            parents: if frontier == FrontierType::Pairing {
+                entries
+                    .iter()
+                    .map(|e| e.parent.map_or(-1, |p| p as i32))
+                    .collect()
+            } else {
+                Vec::new()
+            },
+            buckets: entries.iter().filter_map(|e| e.bucket).collect(),
             total,
             relaxed: lowered.relaxed,
             previous: lowered.previous,

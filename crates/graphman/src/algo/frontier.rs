@@ -12,9 +12,17 @@
 //! | [`VectorFrontier`] | `O(1)` | `O(n)` scan | `O(n² + m)` |
 //! | [`HeapFrontier`] | `O(log n)` sift up | `O(log n)` | `O((n + m) log n)` |
 //! | [`LazyHeapFrontier`] | `O(log m)` push | `O(log m)` amortised | `O(m log m)` |
+//! | [`QuadHeapFrontier`] | `O(log₄ n)` sift up | `O(4 log₄ n)` | `O((n + m) log n)` |
+//! | [`PairingHeapFrontier`] | cut and meld, amortised `O(log n)` | `O(log n)` amortised | `O((n + m) log n)` |
+//! | [`RadixHeapFrontier`] | `O(1)` push | amortised `O(log C)`, `C = 2⁶⁴` | `O(m log C)` |
 //!
-//! All three break ties on the smaller vertex id, so the same graph and root
-//! give the same settle order and the same tree whichever is used.
+//! The first three are the course's; the last three are the usual ways to
+//! go faster in practice: a wider heap (shallower, cache-friendlier), a
+//! pointer heap whose decrease-key is a cut and a meld, and a *monotone*
+//! queue that never compares keys at all, it files them by their bits.
+//!
+//! All of them break ties on the smaller vertex id, so the same graph and
+//! root give the same settle order and the same tree whichever is used.
 //!
 //! [`Frontier::entries`] reads a frontier as it is stored (the heap's array,
 //! the vector's slots), for drawing it; the algorithm never calls it.
@@ -47,9 +55,11 @@ pub trait Frontier {
     fn kind(&self) -> FrontierKind;
 
     /// The entries as they are stored: the vector's finite slots by vertex,
-    /// a heap's array in heap order (index 0 is the next to leave, the
-    /// children of `i` are `2i + 1` and `2i + 2`). For showing a frontier,
-    /// not for running one: it allocates and copies.
+    /// a binary heap's array in heap order (index 0 is the next to leave,
+    /// the children of `i` are `2i + 1` and `2i + 2`; `4i + 1..=4i + 4` in
+    /// the 4-ary heap), the pairing heap's tree level by level (each
+    /// entry's parent before it), the radix heap's buckets from the smallest. For showing a frontier, not for
+    /// running one: it allocates and copies.
     fn entries(&self) -> Vec<FrontierEntry>;
 }
 
@@ -60,9 +70,16 @@ pub struct FrontierEntry {
     pub vertex: Vertex,
     /// Its tentative distance.
     pub estimate: Weight,
-    /// [`LazyHeapFrontier`] only: an older estimate of a vertex whose
-    /// estimate has since dropped, left in the heap to be skipped.
+    /// [`LazyHeapFrontier`] and [`RadixHeapFrontier`] only: an older
+    /// estimate of a vertex whose estimate has since dropped, left in the
+    /// queue to be skipped.
     pub stale: bool,
+    /// [`PairingHeapFrontier`] only: the index of this entry's parent in
+    /// the list, `None` for the root (an array heap's parent is implicit).
+    pub parent: Option<u32>,
+    /// [`RadixHeapFrontier`] only: the bucket the entry is filed in, `0`
+    /// for the keys equal to the last one popped.
+    pub bucket: Option<u8>,
 }
 
 /// `true` when `(a_distance, a)` comes before `(b_distance, b)`.
@@ -159,24 +176,35 @@ impl Frontier for VectorFrontier {
                 vertex: v as Vertex,
                 estimate: self.estimate[v],
                 stale: false,
+                parent: None,
+                bucket: None,
             })
             .collect()
     }
 }
 
-/// An indexed binary min-heap with decrease-key.
+/// An indexed `D`-ary min-heap with decrease-key: [`HeapFrontier`] (`D = 2`)
+/// and [`QuadHeapFrontier`] (`D = 4`).
 ///
 /// `heap` holds `(estimate, vertex)` pairs in heap order; `position[v]` is
 /// the index of `v` in `heap` (`ABSENT` outside the frontier), which is what
 /// lets [`decrease`](Frontier::decrease) find a vertex and sift it up in
-/// `O(log n)` instead of inserting a duplicate.
+/// `O(log n)` instead of inserting a duplicate. A wider heap is shallower,
+/// so a sift up (every `decrease`) climbs fewer levels, and a sift down
+/// reads `D` children that sit side by side in memory.
 #[derive(Debug, Clone, Default)]
-pub struct HeapFrontier {
+pub struct DaryHeapFrontier<const D: usize> {
     heap: Vec<(Weight, Vertex)>,
     position: Vec<u32>,
 }
 
-impl HeapFrontier {
+/// The indexed binary heap with decrease-key the course asks for.
+pub type HeapFrontier = DaryHeapFrontier<2>;
+
+/// The same indexed heap with four children per entry.
+pub type QuadHeapFrontier = DaryHeapFrontier<4>;
+
+impl<const D: usize> DaryHeapFrontier<D> {
     const ABSENT: u32 = u32::MAX;
 
     /// An empty frontier for a graph with `vertex_count` vertices.
@@ -191,7 +219,7 @@ impl HeapFrontier {
     fn sift_up(&mut self, mut index: usize) {
         let entry = self.heap[index];
         while index > 0 {
-            let parent = (index - 1) / 2;
+            let parent = (index - 1) / D;
             if !before(entry, self.heap[parent]) {
                 break;
             }
@@ -203,22 +231,22 @@ impl HeapFrontier {
         self.position[entry.1 as usize] = index as u32;
     }
 
-    /// Moves the entry at `index` down until both children come after it.
+    /// Moves the entry at `index` down until all its children come after it.
     #[inline]
     fn sift_down(&mut self, mut index: usize) {
         let entry = self.heap[index];
         let len = self.heap.len();
         loop {
-            let left = 2 * index + 1;
-            if left >= len {
+            let first = D * index + 1;
+            if first >= len {
                 break;
             }
-            let right = left + 1;
-            let child = if right < len && before(self.heap[right], self.heap[left]) {
-                right
-            } else {
-                left
-            };
+            let mut child = first;
+            for other in first + 1..(first + D).min(len) {
+                if before(self.heap[other], self.heap[child]) {
+                    child = other;
+                }
+            }
             if !before(self.heap[child], entry) {
                 break;
             }
@@ -231,7 +259,7 @@ impl HeapFrontier {
     }
 }
 
-impl Frontier for HeapFrontier {
+impl<const D: usize> Frontier for DaryHeapFrontier<D> {
     fn reset(&mut self, vertex_count: usize) {
         if self.position.len() != vertex_count + 1 {
             self.position.clear();
@@ -276,7 +304,11 @@ impl Frontier for HeapFrontier {
     }
 
     fn kind(&self) -> FrontierKind {
-        FrontierKind::Heap
+        match D {
+            2 => FrontierKind::Heap,
+            4 => FrontierKind::QuadHeap,
+            _ => unimplemented!("only the binary and the 4-ary heaps are offered"),
+        }
     }
 
     fn entries(&self) -> Vec<FrontierEntry> {
@@ -286,6 +318,8 @@ impl Frontier for HeapFrontier {
                 vertex,
                 estimate,
                 stale: false,
+                parent: None,
+                bucket: None,
             })
             .collect()
     }
@@ -385,6 +419,342 @@ impl Frontier for LazyHeapFrontier {
                 vertex,
                 estimate,
                 stale: estimate != self.latest[vertex as usize],
+                parent: None,
+                bucket: None,
+            })
+            .collect()
+    }
+}
+
+/// A pairing heap with decrease-key (Fredman, Sedgewick, Sleator and
+/// Tarjan, 1986): a tree where every parent comes before its children, kept
+/// as arrays indexed by vertex, so a vertex is its own node.
+///
+/// Inserting is a *meld*: compare with the root, the loser becomes the
+/// winner's first child. Lowering a key cuts the vertex's subtree from its
+/// parent and melds it with the root. Popping removes the root and melds
+/// its children in two passes (pairs left to right, then the pairs right to
+/// left), which is where all the work is, amortised `O(log n)`. Fibonacci
+/// heaps have better bounds on paper; pairing heaps are what wins on real
+/// machines among heaps that have a decrease-key.
+#[derive(Debug, Clone, Default)]
+pub struct PairingHeapFrontier {
+    /// The estimate of each vertex in the heap, `+∞` outside it.
+    key: Vec<Weight>,
+    /// The first child, the next sibling, and the previous node: the left
+    /// sibling, or the parent for a first child. `NIL` when none.
+    child: Vec<Vertex>,
+    next: Vec<Vertex>,
+    prev: Vec<Vertex>,
+    root: Vertex,
+    len: usize,
+    /// The children of a popped root, reused between pops.
+    scratch: Vec<Vertex>,
+}
+
+impl PairingHeapFrontier {
+    const NIL: Vertex = NO_VERTEX;
+
+    /// An empty frontier for a graph with `vertex_count` vertices.
+    pub fn new(vertex_count: usize) -> Self {
+        let mut frontier = Self::default();
+        frontier.reset(vertex_count);
+        frontier
+    }
+
+    #[inline(always)]
+    fn first(&self, a: Vertex, b: Vertex) -> bool {
+        before((self.key[a as usize], a), (self.key[b as usize], b))
+    }
+
+    /// Melds two roots and returns the new root: the later one becomes the
+    /// earlier one's first child.
+    #[inline]
+    fn meld(&mut self, a: Vertex, b: Vertex) -> Vertex {
+        let (winner, loser) = if self.first(a, b) { (a, b) } else { (b, a) };
+        let old = self.child[winner as usize];
+        self.next[loser as usize] = old;
+        if old != Self::NIL {
+            self.prev[old as usize] = loser;
+        }
+        self.prev[loser as usize] = winner;
+        self.child[winner as usize] = loser;
+        winner
+    }
+
+    /// Detaches `v` (with its subtree) from its parent or siblings.
+    #[inline]
+    fn cut(&mut self, v: Vertex) {
+        let (prev, next) = (self.prev[v as usize], self.next[v as usize]);
+        if self.child[prev as usize] == v {
+            self.child[prev as usize] = next;
+        } else {
+            self.next[prev as usize] = next;
+        }
+        if next != Self::NIL {
+            self.prev[next as usize] = prev;
+        }
+        self.prev[v as usize] = Self::NIL;
+        self.next[v as usize] = Self::NIL;
+    }
+}
+
+impl Frontier for PairingHeapFrontier {
+    fn reset(&mut self, vertex_count: usize) {
+        if self.len > 0 || self.key.len() != vertex_count + 1 {
+            self.key.clear();
+            self.key.resize(vertex_count + 1, Weight::INFINITY);
+            for links in [&mut self.child, &mut self.next, &mut self.prev] {
+                links.clear();
+                links.resize(vertex_count + 1, Self::NIL);
+            }
+        }
+        self.root = Self::NIL;
+        self.len = 0;
+    }
+
+    #[inline]
+    fn decrease(&mut self, v: Vertex, distance: Weight) {
+        let i = v as usize;
+        if self.key[i] == Weight::INFINITY {
+            self.key[i] = distance;
+            self.len += 1;
+            self.root = if self.root == Self::NIL {
+                v
+            } else {
+                self.meld(self.root, v)
+            };
+            return;
+        }
+        debug_assert!(distance <= self.key[i], "estimates only decrease");
+        self.key[i] = distance;
+        if v != self.root {
+            self.cut(v);
+            self.root = self.meld(self.root, v);
+        }
+    }
+
+    fn pop_min(&mut self) -> Option<(Vertex, Weight)> {
+        let top = self.root;
+        if top == Self::NIL {
+            return None;
+        }
+        let distance = self.key[top as usize];
+        // The children, detached, then melded in two passes.
+        let mut children = core::mem::take(&mut self.scratch);
+        children.clear();
+        let mut c = self.child[top as usize];
+        while c != Self::NIL {
+            let next = self.next[c as usize];
+            self.prev[c as usize] = Self::NIL;
+            self.next[c as usize] = Self::NIL;
+            children.push(c);
+            c = next;
+        }
+        let mut pairs = 0;
+        let mut k = 0;
+        while k + 1 < children.len() {
+            children[pairs] = self.meld(children[k], children[k + 1]);
+            pairs += 1;
+            k += 2;
+        }
+        if k < children.len() {
+            children[pairs] = children[k];
+            pairs += 1;
+        }
+        let mut root = Self::NIL;
+        for &tree in children[..pairs].iter().rev() {
+            root = if root == Self::NIL {
+                tree
+            } else {
+                self.meld(tree, root)
+            };
+        }
+        self.scratch = children;
+        self.root = root;
+        self.child[top as usize] = Self::NIL;
+        self.key[top as usize] = Weight::INFINITY;
+        self.len -= 1;
+        Some((top, distance))
+    }
+
+    fn kind(&self) -> FrontierKind {
+        FrontierKind::Pairing
+    }
+
+    fn entries(&self) -> Vec<FrontierEntry> {
+        let mut out = Vec::with_capacity(self.len);
+        if self.root != Self::NIL {
+            out.push(FrontierEntry {
+                vertex: self.root,
+                estimate: self.key[self.root as usize],
+                stale: false,
+                parent: None,
+                bucket: None,
+            });
+        }
+        // Level by level: each entry's children follow every entry of its
+        // level, so a list cut short keeps the top of the tree.
+        let mut at = 0;
+        while at < out.len() {
+            let mut c = self.child[out[at].vertex as usize];
+            while c != Self::NIL {
+                out.push(FrontierEntry {
+                    vertex: c,
+                    estimate: self.key[c as usize],
+                    stale: false,
+                    parent: Some(at as u32),
+                    bucket: None,
+                });
+                c = self.next[c as usize];
+            }
+            at += 1;
+        }
+        out
+    }
+}
+
+/// A radix heap (Ahuja, Mehlhorn, Orlin and Tarjan, 1990): a *monotone*
+/// queue, one that only works because Dijkstra never asks for a key smaller
+/// than the last one it popped, and that never compares two keys to order
+/// them. It files them by their bits instead.
+///
+/// A non-negative `f64` orders exactly like its bit pattern read as a
+/// `u64`, so the distances themselves are the integer keys: no rounding.
+/// An entry sits in bucket `b`, the position of the highest bit where its
+/// key differs from `last` (the last key popped), `0` when equal. Popping
+/// empties the first non-empty bucket into lower ones around its smallest
+/// key, which becomes `last`; an entry only ever moves down, so across a
+/// run it moves at most 64 times. Without decrease-key, a lowered estimate
+/// is pushed again and the old entry is skipped, as in the lazy heap.
+///
+/// Bucket 0 holds every entry whose key equals `last` (vertices at the same
+/// distance), as a small heap of vertex ids so the smaller one leaves first.
+#[derive(Debug, Clone, Default)]
+pub struct RadixHeapFrontier {
+    /// Buckets 1..=64; index 0 is unused (bucket 0 is `equal`).
+    buckets: Vec<Vec<(u64, Vertex)>>,
+    equal: BinaryHeap<core::cmp::Reverse<Vertex>>,
+    last: u64,
+    /// The latest key given to each vertex, `SETTLED` once popped.
+    latest: Vec<u64>,
+}
+
+impl RadixHeapFrontier {
+    const SETTLED: u64 = u64::MAX;
+
+    /// An empty frontier for a graph with `vertex_count` vertices.
+    pub fn new(vertex_count: usize) -> Self {
+        let mut frontier = Self::default();
+        frontier.reset(vertex_count);
+        frontier
+    }
+
+    /// The key of a distance: its bits, `-0.0` taken as `0.0`.
+    #[inline(always)]
+    fn key(distance: Weight) -> u64 {
+        (distance + 0.0).to_bits()
+    }
+
+    /// The bucket of `key` against `last`: 0 when equal, else 1 + the
+    /// highest differing bit.
+    #[inline(always)]
+    fn bucket(&self, key: u64) -> usize {
+        (u64::BITS - (key ^ self.last).leading_zeros()) as usize
+    }
+
+    #[inline(always)]
+    fn file(&mut self, key: u64, v: Vertex) {
+        match self.bucket(key) {
+            0 => self.equal.push(core::cmp::Reverse(v)),
+            b => self.buckets[b].push((key, v)),
+        }
+    }
+
+    /// Refills bucket 0: empties the first non-empty bucket into lower
+    /// ones around its smallest live key. `false` when nothing is left.
+    fn refill(&mut self) -> bool {
+        for b in 1..self.buckets.len() {
+            if self.buckets[b].is_empty() {
+                continue;
+            }
+            let mut bucket = core::mem::take(&mut self.buckets[b]);
+            bucket.retain(|&(key, v)| self.latest[v as usize] == key);
+            if let Some(&(min, _)) = bucket.iter().min_by_key(|&&(key, _)| key) {
+                self.last = min;
+                for &(key, v) in &bucket {
+                    self.file(key, v);
+                }
+            }
+            bucket.clear();
+            self.buckets[b] = bucket;
+            if !self.equal.is_empty() {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+impl Frontier for RadixHeapFrontier {
+    fn reset(&mut self, vertex_count: usize) {
+        self.buckets.resize_with(u64::BITS as usize + 1, Vec::new);
+        for bucket in &mut self.buckets {
+            bucket.clear();
+        }
+        self.equal.clear();
+        self.last = 0;
+        // As in the lazy heap, `latest` is only read for a vertex pushed in
+        // this run, after the push wrote it.
+        self.latest.resize(vertex_count + 1, Self::SETTLED);
+    }
+
+    #[inline]
+    fn decrease(&mut self, v: Vertex, distance: Weight) {
+        let key = Self::key(distance);
+        debug_assert!(key >= self.last, "a radix heap is monotone");
+        self.latest[v as usize] = key;
+        self.file(key, v);
+    }
+
+    #[inline]
+    fn pop_min(&mut self) -> Option<(Vertex, Weight)> {
+        loop {
+            while let Some(core::cmp::Reverse(v)) = self.equal.pop() {
+                let latest = &mut self.latest[v as usize];
+                if *latest == self.last {
+                    *latest = Self::SETTLED;
+                    return Some((v, Weight::from_bits(self.last)));
+                }
+            }
+            if !self.refill() {
+                return None;
+            }
+        }
+    }
+
+    fn kind(&self) -> FrontierKind {
+        FrontierKind::Radix
+    }
+
+    fn entries(&self) -> Vec<FrontierEntry> {
+        let mut equal: Vec<Vertex> = self.equal.iter().map(|r| r.0).collect();
+        equal.sort_unstable();
+        let filed = self
+            .buckets
+            .iter()
+            .enumerate()
+            .flat_map(|(b, bucket)| bucket.iter().map(move |&(key, v)| (b as u8, key, v)));
+        equal
+            .into_iter()
+            .map(|v| (0, self.last, v))
+            .chain(filed)
+            .map(|(bucket, key, vertex)| FrontierEntry {
+                vertex,
+                estimate: Weight::from_bits(key),
+                stale: self.latest[vertex as usize] != key,
+                parent: None,
+                bucket: Some(bucket),
             })
             .collect()
     }
@@ -401,22 +771,35 @@ pub enum FrontierKind {
     Heap,
     /// [`LazyHeapFrontier`]: a binary heap without decrease-key.
     LazyHeap,
+    /// [`QuadHeapFrontier`]: an indexed 4-ary heap with decrease-key.
+    QuadHeap,
+    /// [`PairingHeapFrontier`]: a pairing heap with decrease-key.
+    Pairing,
+    /// [`RadixHeapFrontier`]: a monotone radix heap on the distances' bits.
+    Radix,
 }
 
 impl FrontierKind {
     /// Every frontier, in the order they are usually reported.
-    pub const ALL: [FrontierKind; 3] = [
+    pub const ALL: [FrontierKind; 6] = [
         FrontierKind::Vector,
         FrontierKind::Heap,
         FrontierKind::LazyHeap,
+        FrontierKind::QuadHeap,
+        FrontierKind::Pairing,
+        FrontierKind::Radix,
     ];
 
-    /// Short identifier used on the command line (`vector`, `heap`, `lazy-heap`).
+    /// Short identifier used on the command line (`vector`, `heap`,
+    /// `lazy-heap`, `quad-heap`, `pairing`, `radix`).
     pub fn label(self) -> &'static str {
         match self {
             FrontierKind::Vector => "vector",
             FrontierKind::Heap => "heap",
             FrontierKind::LazyHeap => "lazy-heap",
+            FrontierKind::QuadHeap => "quad-heap",
+            FrontierKind::Pairing => "pairing",
+            FrontierKind::Radix => "radix",
         }
     }
 
@@ -426,6 +809,9 @@ impl FrontierKind {
             FrontierKind::Vector => "vector of estimates",
             FrontierKind::Heap => "binary heap with decrease-key",
             FrontierKind::LazyHeap => "binary heap without decrease-key",
+            FrontierKind::QuadHeap => "4-ary heap with decrease-key",
+            FrontierKind::Pairing => "pairing heap with decrease-key",
+            FrontierKind::Radix => "radix heap (monotone, by bits)",
         }
     }
 }
@@ -444,8 +830,11 @@ impl FromStr for FrontierKind {
             "vector" | "vec" | "array" => Ok(FrontierKind::Vector),
             "heap" => Ok(FrontierKind::Heap),
             "lazy-heap" | "lazy_heap" | "lazy" => Ok(FrontierKind::LazyHeap),
+            "quad-heap" | "quad_heap" | "quad" | "4-ary" => Ok(FrontierKind::QuadHeap),
+            "pairing" | "pairing-heap" | "pairing_heap" => Ok(FrontierKind::Pairing),
+            "radix" | "radix-heap" | "radix_heap" => Ok(FrontierKind::Radix),
             other => Err(format!(
-                "unknown frontier {other:?} (expected vector, heap or lazy-heap)"
+                "unknown frontier {other:?} (expected vector, heap, lazy-heap, quad-heap, pairing or radix)"
             )),
         }
     }
@@ -477,20 +866,116 @@ mod tests {
         assert_eq!(drain(VectorFrontier::default()), expected);
         assert_eq!(drain(HeapFrontier::default()), expected);
         assert_eq!(drain(LazyHeapFrontier::default()), expected);
+        assert_eq!(drain(QuadHeapFrontier::default()), expected);
+        assert_eq!(drain(PairingHeapFrontier::default()), expected);
+        assert_eq!(drain(RadixHeapFrontier::default()), expected);
     }
 
     #[test]
     fn ties_go_to_the_smaller_vertex() {
-        let mut heap = HeapFrontier::new(10);
-        let mut vector = VectorFrontier::new(10);
-        for v in [9, 4, 6, 1, 10] {
-            heap.decrease(v, 2.5);
-            vector.decrease(v, 2.5);
+        fn ties<F: Frontier>(mut frontier: F) {
+            frontier.reset(10);
+            for v in [9, 4, 6, 1, 10] {
+                frontier.decrease(v, 2.5);
+            }
+            for expected in [1, 4, 6, 9, 10] {
+                assert_eq!(
+                    frontier.pop_min(),
+                    Some((expected, 2.5)),
+                    "{}",
+                    frontier.kind()
+                );
+            }
         }
-        for expected in [1, 4, 6, 9, 10] {
-            assert_eq!(heap.pop_min(), Some((expected, 2.5)));
-            assert_eq!(vector.pop_min(), Some((expected, 2.5)));
+        ties(VectorFrontier::default());
+        ties(HeapFrontier::default());
+        ties(LazyHeapFrontier::default());
+        ties(QuadHeapFrontier::default());
+        ties(PairingHeapFrontier::default());
+        ties(RadixHeapFrontier::default());
+    }
+
+    /// A long random Dijkstra-like sequence (pops never go below the last
+    /// one, estimates only drop): every frontier pops what the binary heap
+    /// pops.
+    #[test]
+    fn random_monotone_sequences_agree() {
+        fn run<F: Frontier>(mut frontier: F, seed: u64) -> Vec<(Vertex, Weight)> {
+            let n = 300;
+            frontier.reset(n);
+            let mut state = seed;
+            let mut next = move || {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state
+            };
+            let mut best = vec![Weight::INFINITY; n + 1];
+            let mut settled = vec![false; n + 1];
+            let mut out = Vec::new();
+            frontier.decrease(1, 0.0);
+            best[1] = 0.0;
+            while let Some((u, d)) = frontier.pop_min() {
+                settled[u as usize] = true;
+                out.push((u, d));
+                for _ in 0..(next() % 6) {
+                    let v = (next() % n as u64) as usize + 1;
+                    // Weights from {0, 0.5, ..., 4}: zeros and ties on purpose.
+                    let w = (next() % 9) as Weight / 2.0;
+                    if !settled[v] && d + w < best[v] {
+                        best[v] = d + w;
+                        frontier.decrease(v as Vertex, d + w);
+                    }
+                }
+            }
+            out
         }
+        for seed in 1..40 {
+            let reference = run(HeapFrontier::default(), seed);
+            assert_eq!(run(VectorFrontier::default(), seed), reference);
+            assert_eq!(run(LazyHeapFrontier::default(), seed), reference);
+            assert_eq!(run(QuadHeapFrontier::default(), seed), reference);
+            assert_eq!(run(PairingHeapFrontier::default(), seed), reference);
+            assert_eq!(run(RadixHeapFrontier::default(), seed), reference);
+        }
+    }
+
+    #[test]
+    fn entries_read_the_structure() {
+        let ops = [
+            (5, 4.0),
+            (2, 9.0),
+            (7, 4.0),
+            (3, 1.5),
+            (2, 3.0),
+            (8, 0.5),
+            (6, 6.0),
+        ];
+        let mut pairing = PairingHeapFrontier::new(8);
+        let mut radix = RadixHeapFrontier::new(8);
+        for (v, d) in ops {
+            pairing.decrease(v, d);
+            radix.decrease(v, d);
+        }
+        pairing.pop_min();
+        radix.pop_min();
+        // The pairing tree: every parent listed earlier, and no later.
+        let tree = pairing.entries();
+        assert_eq!(tree.len(), 5);
+        assert_eq!(tree[0].parent, None);
+        for (i, e) in tree.iter().enumerate().skip(1) {
+            let p = e.parent.expect("only the root has no parent") as usize;
+            assert!(p < i && !before((e.estimate, e.vertex), (tree[p].estimate, tree[p].vertex)));
+        }
+        // The radix buckets: ascending, the stale 9.0 of vertex 2 kept and flagged.
+        let filed = radix.entries();
+        assert!(filed.windows(2).all(|w| w[0].bucket <= w[1].bucket));
+        assert!(
+            filed
+                .iter()
+                .any(|e| e.vertex == 2 && e.estimate == 9.0 && e.stale)
+        );
+        assert_eq!(filed.iter().filter(|e| !e.stale).count(), 5);
     }
 
     #[test]
