@@ -6,7 +6,7 @@
   "edges": 6099868,
   "self_loops_dropped": 0,
   "duplicates_dropped": 73,
-  "parse_ms": 370.93575,
+  "parse_ms": 364.49975,
   "weights": {
     "min": 0.0,
     "max": 10.0,
@@ -53,7 +53,7 @@
         0.26,
         0.35,
         0.43999999999999995,
-        0.45999999999999996,
+        0.46,
         0.47,
         0.52,
         0.52,
@@ -94,7 +94,7 @@
         0.27,
         0.37,
         0.37,
-        0.45999999999999996,
+        0.46,
         0.58,
         0.71,
         0.78,
@@ -166,7 +166,7 @@
     {
       "from": 10,
       "to": 60,
-      "distance": 0.9700000000000001,
+      "distance": 0.97,
       "path": [
         10,
         2858,
@@ -193,7 +193,7 @@
         0.14,
         0.15000000000000002,
         0.19000000000000003,
-        0.21000000000000002,
+        0.21,
         0.22000000000000003,
         0.23000000000000004,
         0.36000000000000004,
@@ -203,7 +203,7 @@
         0.72,
         0.76,
         0.93,
-        0.9700000000000001
+        0.97
       ]
     }
   ],
@@ -227,15 +227,15 @@
     {
       "frontier": "heap",
       "requested_runs": 100,
-      "budget_s": 900.0,
+      "budget_s": 1500.0,
       "timing": {
         "runs": 100,
-        "mean_ms": 39.08383083,
-        "median_ms": 40.384958,
-        "min_ms": 35.07125,
-        "max_ms": 50.03575,
-        "stddev_ms": 3.313210759555913,
-        "total_ms": 3908.383083
+        "mean_ms": 35.30173244,
+        "median_ms": 34.7932495,
+        "min_ms": 33.833,
+        "max_ms": 42.6985,
+        "stddev_ms": 1.4366332893267524,
+        "total_ms": 3530.1732440000005
       },
       "budget_exhausted": false,
       "partial": null
@@ -243,15 +243,63 @@
     {
       "frontier": "lazy_heap",
       "requested_runs": 100,
-      "budget_s": 900.0,
+      "budget_s": 1500.0,
       "timing": {
         "runs": 100,
-        "mean_ms": 56.309568679999984,
-        "median_ms": 54.9683955,
-        "min_ms": 53.74,
-        "max_ms": 70.214917,
-        "stddev_ms": 3.5679786617561136,
-        "total_ms": 5630.956867999998
+        "mean_ms": 55.31867079000001,
+        "median_ms": 54.690646,
+        "min_ms": 53.196292,
+        "max_ms": 66.74891600000001,
+        "stddev_ms": 2.1529414733323224,
+        "total_ms": 5531.8670790000015
+      },
+      "budget_exhausted": false,
+      "partial": null
+    },
+    {
+      "frontier": "quad_heap",
+      "requested_runs": 100,
+      "budget_s": 1500.0,
+      "timing": {
+        "runs": 100,
+        "mean_ms": 32.73328709999999,
+        "median_ms": 32.5240835,
+        "min_ms": 31.817583000000003,
+        "max_ms": 42.157791,
+        "stddev_ms": 1.0931439134322205,
+        "total_ms": 3273.3287099999993
+      },
+      "budget_exhausted": false,
+      "partial": null
+    },
+    {
+      "frontier": "pairing",
+      "requested_runs": 100,
+      "budget_s": 1500.0,
+      "timing": {
+        "runs": 100,
+        "mean_ms": 49.98640248000001,
+        "median_ms": 48.986375499999994,
+        "min_ms": 47.778041,
+        "max_ms": 64.624375,
+        "stddev_ms": 2.581397667729391,
+        "total_ms": 4998.640248000001
+      },
+      "budget_exhausted": false,
+      "partial": null
+    },
+    {
+      "frontier": "radix",
+      "requested_runs": 100,
+      "budget_s": 1500.0,
+      "timing": {
+        "runs": 100,
+        "mean_ms": 26.946297169999998,
+        "median_ms": 26.583667,
+        "min_ms": 25.84625,
+        "max_ms": 34.401666,
+        "stddev_ms": 1.38508937706475,
+        "total_ms": 2694.629717
       },
       "budget_exhausted": false,
       "partial": null
@@ -264,5 +312,5 @@
     "total_memory_bytes": 17179869184,
     "threads": 10
   },
-  "generated_at_unix": 1792687883
+  "generated_at_unix": 1792694998
 }
