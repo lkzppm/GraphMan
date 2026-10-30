@@ -15,21 +15,27 @@ const NOTE_PAD = 16;
 const NOTE_OFFSET = 22;
 const PX_PER_UNIT = 1.35;
 
-/** The level ramp, from the origin's navy to the far end's light blue,
-    shared with the wiki's visitor timeline. */
-const LEVEL_FROM = [0x00, 0x2f, 0x66];
-const LEVEL_TO = [0xa9, 0xdc, 0xff];
-
+/** The level ramp, from the origin's deep blue to the far end's light
+    blue (the theme's `--level-0` and `--accent-2`), shared with the wiki's
+    visitor timeline. */
 export function levelColour(level: number, max: number): string {
   const t = max === 0 ? 0 : level / max;
-  const c = LEVEL_FROM.map((a, i) => Math.round(a + (LEVEL_TO[i] - a) * t));
-  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+  const near = Math.round((1 - t) * 1000) / 10;
+  return `color-mix(in srgb, var(--level-0) ${near}%, var(--accent-2))`;
 }
 
-/** Component k's blue: the largest solid, the rest lighter and lighter. */
+/** The ink of a number written on `levelColour`: white on both halves on
+    the light page; on the dark one the near half is pale, so it takes the
+    page's black. */
+export function levelInk(level: number, max: number): string {
+  const t = max === 0 ? 0 : level / max;
+  return t < 0.5 ? 'var(--on-ramp-near)' : 'var(--on-ramp-far)';
+}
+
+/** Component k's blue: the largest solid, the rest fading into the page. */
 function componentColour(k: number): string {
   const share = Math.max(18, 100 - (k - 1) * 22);
-  return `color-mix(in srgb, var(--accent) ${share}%, white)`;
+  return `color-mix(in srgb, var(--accent) ${share}%, var(--bg))`;
 }
 
 interface Props {
@@ -146,6 +152,11 @@ export default function GraphFigure({
             dy="0.35em"
             textAnchor="middle"
             data-light={(coloured && levels?.[v] !== UNREACHED) || undefined}
+            style={
+              !components && levels && levels[v] !== UNREACHED
+                ? { fill: levelInk(levels[v], maxLevel) }
+                : undefined
+            }
           >
             {v}
           </text>

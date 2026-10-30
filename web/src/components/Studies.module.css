@@ -476,7 +476,7 @@ g.swap {
   border-collapse: separate;
   border-spacing: 0;
   font-size: 12.5px;
-  border: 1px solid color-mix(in srgb, var(--accent) 14%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--bg));
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -485,7 +485,7 @@ g.swap {
 .table td {
   padding: 6px 12px;
   text-align: left;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 10%, white);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 10%, var(--bg));
   vertical-align: middle;
 }
 
@@ -499,7 +499,7 @@ g.swap {
   letter-spacing: var(--tracking);
   text-transform: uppercase;
   color: var(--accent-hover);
-  background: color-mix(in srgb, var(--accent) 7%, white);
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
 }
 
 .table tbody th {
@@ -517,7 +517,7 @@ g.swap {
 
 .table tbody tr:nth-child(even) th,
 .table tbody tr:nth-child(even) td {
-  background: color-mix(in srgb, var(--accent) 2.5%, white);
+  background: color-mix(in srgb, var(--accent) 2.5%, var(--bg));
 }
 
 .table td {
@@ -944,7 +944,7 @@ g[data-apart] .sideLabel {
 }
 
 .line[data-hot] {
-  background: color-mix(in srgb, var(--accent) 4%, white);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
 }
 
 .lineTitle {

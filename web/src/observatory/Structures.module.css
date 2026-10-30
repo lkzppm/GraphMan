@@ -318,7 +318,7 @@
 
 @keyframes flash {
   from {
-    background: color-mix(in srgb, var(--accent) 30%, white);
+    background: color-mix(in srgb, var(--accent) 30%, var(--bg));
   }
 }
 
@@ -412,7 +412,7 @@
 .node[data-state='lowered'] {
   box-shadow:
     0 0 0 2px var(--bg),
-    0 0 0 4px color-mix(in srgb, var(--accent) 45%, white);
+    0 0 0 4px color-mix(in srgb, var(--accent) 45%, var(--bg));
 }
 
 /* An entry a lower estimate left behind (lazy and radix heaps). */

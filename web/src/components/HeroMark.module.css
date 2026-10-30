@@ -42,13 +42,13 @@
   overflow: visible;
 }
 
-/* Hexagon: grey, drawn in on load. The
+/* Hexagon: grey (white in the dark theme), drawn in on load. The
    drawing copy is dashed (no join at its start point), so it hands over
    to a plain copy once drawn. */
 .hexagonDraw,
 .hexagon {
   fill: none;
-  stroke: var(--fg-3);
+  stroke: var(--mark-hexagon);
   stroke-width: 40;
   stroke-linejoin: miter;
 }

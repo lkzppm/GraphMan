@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { siGithub } from 'simple-icons';
 import { useLocale } from '@/i18n/LocaleProvider';
 import type { Dictionary } from '@/i18n';
+import { setTheme, useTheme } from '@/lib/theme';
 import BrandIcon from './BrandIcon';
 import Logo from './Logo';
 import styles from './Nav.module.css';
@@ -26,6 +27,7 @@ const TABS: { href: string; label: keyof Dictionary['nav'] }[] = [
 export default function Nav() {
   const pathname = usePathname();
   const { locale, setLocale, t } = useLocale();
+  const theme = useTheme();
   const tabsRef = useRef<HTMLElement>(null);
   const [indicator, setIndicator] = useState<{ left: number; width: number; ready: boolean }>({
     left: 0,
@@ -114,21 +116,43 @@ export default function Nav() {
             })}
           </nav>
           <div
-            className={styles.language}
+            className={`${styles.switch} ${styles.language}`}
             role="group"
             aria-label={t.nav.language}
-            data-locale={locale}
+            data-second={locale === 'en' || undefined}
           >
-            <span className={styles.languageThumb} aria-hidden="true" />
+            <span className={styles.switchThumb} aria-hidden="true" />
             {(['pt', 'en'] as const).map((code) => (
               <button
                 key={code}
                 type="button"
-                className={styles.languageButton}
+                className={styles.switchButton}
                 aria-pressed={locale === code}
                 onClick={() => setLocale(code)}
               >
                 {code}
+              </button>
+            ))}
+          </div>
+          <div
+            className={styles.switch}
+            role="group"
+            aria-label={t.nav.theme}
+            data-second={theme === 'dark' || undefined}
+          >
+            <span className={styles.switchThumb} aria-hidden="true" data-theme-keep />
+            {(['light', 'dark'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={styles.switchButton}
+                aria-pressed={theme === mode}
+                aria-label={t.nav[mode]}
+                title={t.nav[mode]}
+                data-theme-keep
+                onClick={() => setTheme(mode)}
+              >
+                {mode === 'light' ? <SunIcon /> : <MoonIcon />}
               </button>
             ))}
           </div>
@@ -189,5 +213,34 @@ export default function Nav() {
         onClick={() => setOpen(false)}
       />
     </>
+  );
+}
+
+/** The light theme's tag: a disc and eight short rays, in the text colour. */
+function SunIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.06 1.06M11.54 11.54l1.06 1.06M3.4 12.6l1.06-1.06M11.54 4.46l1.06-1.06"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** The dark theme's tag: a crescent. */
+function MoonIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M13.5 9.6A5.75 5.75 0 0 1 6.4 2.5a5.75 5.75 0 1 0 7.1 7.1Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

@@ -4,6 +4,7 @@ import { GeistMono } from 'geist/font/mono';
 import { Analytics } from '@vercel/analytics/next';
 import Nav from '@/components/Nav';
 import LocaleProvider from '@/i18n/LocaleProvider';
+import { THEME_BOOT_SCRIPT } from '@/lib/theme';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -23,13 +24,24 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#ffffff',
-  colorScheme: 'light',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
+  ],
+  colorScheme: 'light dark',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html
+      lang="pt-BR"
+      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      // The boot script sets `data-theme` before React hydrates.
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body>
         <LocaleProvider>
           <Nav />

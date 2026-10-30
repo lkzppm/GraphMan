@@ -19,8 +19,19 @@ drawn for.
    exists only so the level ramp has a far end. One green (`--target`,
    `#16a34a`) exists for exactly one thing: the destination of a distance
    query, on the canvas and in the path balls. No red, no amber.
-3. **Light only.** No dark theme; `color-scheme: light`. The canvas reads
-   the same CSS variables the UI uses.
+3. **Light first, dark on request.** White paper is the default (it is
+   what the icon was drawn for); a dark theme redefines the same tokens on
+   `:root[data-theme='dark']`. A visitor who has not chosen gets the
+   system's theme; the nav's switch remembers a choice (`localStorage`,
+   `graphman.theme`). A boot script in `<head>` sets `data-theme` before
+   the first paint, so there is no white flash. The colour tokens are
+   registered (`@property`, `<color>`), so a switch eases the tokens
+   themselves for 0.6 s on `:root[data-theme-switching]` while every other
+   transition is held; whatever reads them, gradients and colour mixes
+   included, moves on that one clock. The canvases (observatory,
+   constellation, field) read the variables again on every frame of the
+   fade (`lib/theme.ts`, `onThemeFade`). No view transition: a snapshot
+   crossfade froze the moving observatory canvas under the live one.
 4. **Alive, not busy.** Everything actionable answers the pointer: buttons
    lift, ghosts fill with blue, cards rise and grow an accent line, the mark
    shakes, sections rise into view once. Motion is 150–700 ms on
@@ -46,6 +57,26 @@ drawn for.
 | `--glow`                                         | `0 6px 24px -6px var(--accent-muted)` |
 | Container                                        | 1080 px, 24 px gutters                |
 
+Dark overrides mirror the light theme's emphasis, not its values (checked
+in OKLCH and with the dataviz palette validator on `#0a0a0a`):
+
+- Greys keep their contrast steps against the page: `--bg` `#0a0a0a` /
+  `#111` / `#1a1a1a`, `--fg` `#ededed` / `#949494` / `#6f6f6f`, borders
+  `#232323` / `#303030`, `--node-dim` `#2e2e2e`, edges in light ink.
+- The blue keeps its hue a step lighter: `--accent` `#1c7af7` (4.9:1 on the
+  page, white labels on it at 4.1:1).
+- The level ramp swaps its ends: `--level-0` `#a9dcff`, `--accent-2`
+  `#005193`, so the near levels read strongest and the far ones fade into
+  the page, as on white. Numbers written on the ramp take
+  `--on-ramp-near` / `--on-ramp-far` (`levelInk` in `GraphFigure.tsx`);
+  series between the accent and the far end mix towards `--ramp-fade`
+  (white on the light page, `--accent-2` on the dark one).
+- The queue colours are re-stepped into the dark band (L 0.48 to 0.67):
+  `#e0622e`, the accent, `#c48600`, `#1fa170`, `#726add`, `#de4e4b`; the
+  target green is `#009342`, no louder than the blue, as on white.
+- Tints mix the accent with `var(--bg)`, never with `white`, so they
+  darken with the page.
+
 ## Typography
 
 Geist Sans and Geist Mono (the `geist` package). Weights 400, 500, 600.
@@ -68,7 +99,11 @@ Geist Sans and Geist Mono (the `geist` package). Weights 400, 500, 600.
 around a solid blue graph and figure. `graphman-mark.svg` is the one-colour
 version: every gap is a real hole, so it tints with `currentColor` and
 works as a CSS mask. `components/Logo.tsx` renders either (two-tone by
-default) and shakes on hover (`@keyframes shake`); the nav uses it.
+default) and shakes on hover (`@keyframes shake`); the nav uses it. The
+hexagon is the same grey in both themes (`--mark-hexagon`, read by the
+hero's live mark); in the dark theme `Logo` crossfades to
+`graphman-dark.svg` (the dark accent, a near-black gap around the head)
+by CSS alone.
 
 The hero draws the mark live instead (`components/HeroMark.tsx`): the same
 geometry as an inline SVG with one element per vertex and edge. On load the
@@ -101,7 +136,9 @@ link (the wordmark turns blue on the home page), then a tab per other page
 interactive manual), **Case studies** (`/studies`, the seven questions drawn), **Presentation**
 (`/presentation`, the five slides) — then, on the right, the language
 switch (two mono tags, `pt` · `en`, over one blue-muted pill that slides
-to the current one) and a bordered square holding only the GitHub mark. The current tab is marked in blue:
+to the current one), the theme switch (a sun and a moon over the same
+sliding pill) and a bordered square
+holding only the GitHub mark. The current tab is marked in blue:
 blue text, a blue-muted pill and a 2 px underline; the pill slides between
 tabs (a measured indicator, spring easing) and fades out on the home page.
 
@@ -610,8 +647,9 @@ tint, accent text), drawn last so they sit on top.
 The nav folds at 900 px: the tabs leave the bar for a drawer under it
 (one row per page, the current one in blue on the accent edge, a dimmed
 backdrop behind; it grows and shrinks by its grid row, so closing animates
-too), opened by a two-hairline button that crosses into an X; the language switch and the GitHub icon stay in
-the bar, the wordmark leaves it under 400 px. The landing folds at 900 px
+too), opened by a two-hairline button that crosses into an X; the language and
+theme switches and the GitHub icon stay in the bar, the wordmark leaves it
+under 440 px. The landing folds at 900 px
 (hero stacks, mark first; decisions grid becomes one column) and 720/640 px
 (mark 240 px, footer columns stack); the representations figure folds at
 560 px (the drawing full width, the list and the matrix side by side, CSR
