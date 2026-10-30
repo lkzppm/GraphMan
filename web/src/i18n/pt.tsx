@@ -270,6 +270,7 @@ export const pt: Dictionary = {
         lineHint: '// cada ponto é um vértice do caminho, na sua distância da origem',
         at: (d: string, step: string, of: string) => ` na distância ${d}, passo ${step} de ${of}`,
       },
+      chart: { label: 'O que o gráfico mostra', time: 'Tempo', memory: 'Memória' },
       timing: {
         title: 'Dijkstra médio, vetor vs heap',
         label: 'tempo médio de um Dijkstra, da origem a todos os vértices',
@@ -283,15 +284,30 @@ export const pt: Dictionary = {
         },
         estimated: (time: string) => `≈ ${time}`,
         estimate: 'estimativa',
+        estimateNote: (settled: string, reachable: string, elapsed: string, total: string) =>
+          `Uma estimativa: nenhuma execução terminou dentro do orçamento. A interrompida fixou ${settled} de ${reachable} vértices em ${elapsed}; cada passo do vetor varre as n estimativas, então, escalada para a componente inteira, uma execução leva cerca de ${total}.`,
         chartHint:
-          '// os dois eixos em escala log: arraste para mover, pinça ou ctrl + rolagem para zoom, clique num ponto para fixá-lo, duplo clique para enquadrar',
+          '// clique numa fronteira à direita para tirá-la do gráfico ou trazê-la de volta; deslize a escala de linear a log; arraste para mover, pinça ou ctrl + rolagem para zoom, clique num ponto para fixá-lo, duplo clique para enquadrar',
+        scale: { label: 'Escala, de linear a logarítmica', linear: 'linear', log: 'log' },
+        scales: {
+          label: 'Escala dos tempos',
+          log: 'log',
+          vector: '% do vetor',
+          heaps: 'sem vetor',
+          hint: {
+            log: 'Escala logarítmica: o mesmo comprimento a cada fator de dez.',
+            vector: 'Escala linear, o tempo do vetor = 100%.',
+            heaps: 'Escala linear sem o vetor: a fila mais lenta de cada grafo, fora ele, = 100%.',
+          },
+        },
+        toggle: (name: string) => `Tirar ${name} do gráfico, ou trazê-la de volta`,
         zoomIn: 'Aproximar',
         zoomOut: 'Afastar',
         fit: 'Enquadrar o gráfico',
         ofHeap: (x: string) => `${x}× o tempo do heap`,
         open: (name: string) => `abrir ${name}`,
-        order: 'do mais rápido ao mais lento',
         versusHeap: '×: vezes o tempo do heap',
+        versusHeapBytes: '×: vezes os bytes do heap',
         runs: (k: string, n: string) => `${k} de ${n} execuções`,
         ratio: (x: string) => `o vetor leva ${x} vezes o tempo do heap`,
         race: {
@@ -301,6 +317,21 @@ export const pt: Dictionary = {
         },
         note: (runs: string, machine: string) =>
           `${runs} origens aleatórias por fronteira, cada execução cronometrada sozinha na CSR, sem leitura nem escrita. Cada fronteira tem um orçamento de tempo: "k de ${runs} execuções" é quantas terminaram nele, e uma barra tracejada é uma estimativa, a execução interrompida escalada para a componente inteira. ${machine}`,
+      },
+      memory: {
+        title: 'Memória de cada fronteira',
+        label: (frontier: string, base: string, entries: string, slack: string) =>
+          `${frontier}: ${base} indexados por vértice, ${entries} de entradas no pico, ${slack} de folga guardada`,
+        key: {
+          base: 'vetores indexados por vértice',
+          entries: 'entradas no pico',
+          slack: 'folga que o armazenamento guardou',
+        },
+        slots: 'posições: uma por vértice, sempre',
+        ofN: (percent: string) => `entradas no pico, ${percent} de n`,
+        versusHeap: (x: string) => `entradas no pico, ×${x} as do heap`,
+        scale: (graph: string, tree: string, decreases: string, n: string) =>
+          `Para comparar: o próprio grafo ocupa ${graph}, a árvore de caminhos mínimos ${tree}. Uma execução entrega à fila até ${decreases} estimativas, uma por relaxamento que baixa uma. Um heap com decrease-key guarda no máximo uma entrada por vértice (${n}); os heaps lazy e radix inserem de novo cada estimativa que baixa e descartam a cópia velha depois, então podem guardar todas: nenhuma busca pelo vértice, paga em memória.`,
       },
       network: {
         title: 'A partir de Edsger W. Dijkstra',
@@ -865,7 +896,7 @@ export const pt: Dictionary = {
           ties: '// empates vão para o menor vértice: as seis constroem a mesma árvore',
         },
         timing: {
-          eyebrow: '04',
+          eyebrow: '05',
           title: 'Vetor contra heap',
           columns: {
             graph: 'Grafo',
@@ -888,8 +919,70 @@ export const pt: Dictionary = {
             'Os grafos com pesos da disciplina ainda não foram rodados: `graphman study` preenche esta tabela.',
           cta: 'Abrir os estudos de caso',
         },
+        memory: {
+          eyebrow: '04',
+          title: 'O que cada fila guarda',
+          groups: ['a disciplina', 'mais rápidas na prática'],
+          items: [
+            {
+              name: 'VectorFrontier',
+              title: 'Vetor',
+              cost: '8n B, fixo',
+              caption: '// uma estimativa por vértice, ∞ fora da fronteira: nunca cresce',
+            },
+            {
+              name: 'HeapFrontier',
+              title: 'Heap, decrease-key',
+              cost: '4n B + 16 B por entrada',
+              caption: '// position[v] acha a entrada: no máximo uma por vértice, n no total',
+            },
+            {
+              name: 'LazyHeapFrontier',
+              title: 'Heap preguiçoso',
+              cost: '8n B + 16 B por entrada',
+              caption:
+                '// a estimativa que baixa entra de novo: até uma por relaxamento, m no total',
+            },
+            {
+              name: 'QuadHeapFrontier',
+              title: 'Heap 4-ário',
+              cost: '4n B + 16 B por entrada',
+              caption: '// exatamente os bytes do heap binário: só a forma muda',
+            },
+            {
+              name: 'PairingHeapFrontier',
+              title: 'Pairing heap',
+              cost: '20n B, fixo',
+              caption: '// uma chave e três ligações por vértice: o vértice é o próprio nó',
+            },
+            {
+              name: 'RadixHeapFrontier',
+              title: 'Radix heap',
+              cost: '8n B + 16 B por entrada',
+              caption:
+                '// insere de novo como o heap preguiçoso, e cada balde guarda o maior tamanho que teve',
+            },
+          ],
+          key: '// inserir de novo poupa a busca pelo vértice; o preço é memória, até m entradas em vez de n',
+        },
+        memoryMeasured: {
+          eyebrow: '06',
+          title: 'Memória, medida',
+          columns: {
+            graph: 'Grafo',
+            size: 'Tamanho',
+            bytes: 'Bytes durante um Dijkstra',
+            peak: 'Heap no pico',
+            lazy: 'Preguiçoso ÷ heap',
+          },
+          share: (percent: number) => `${percent}% de n`,
+          note: (graph: string, bytes: string) =>
+            `O que cada fila ocupa durante um Dijkstra a partir de cinco origens aleatórias: seus vetores indexados por vértice e suas entradas, como alocados. As barras têm escala por grafo; o vetor é dimensionado, não executado. Heap no pico: o máximo de entradas que ele guardou, contra n. Preguiçoso ÷ heap: o máximo de entradas do heap preguiçoso contra o do heap. Para comparar, o ${graph} ocupa ${bytes}.`,
+          pending: 'Preenchido por `graphman study --only frontier-memory`.',
+          cta: 'Abrir os estudos de caso',
+        },
         paths: {
-          eyebrow: '05',
+          eyebrow: '07',
           title: 'Caminhos mínimos',
           label: 'A partir do vértice 10',
           caption: '// distância até 20, 30, 40, 50 e 60, e quantas arestas ela leva',
@@ -899,7 +992,7 @@ export const pt: Dictionary = {
           pending: 'Preenchido por `graphman study` quando os arquivos da disciplina rodarem.',
         },
         names: {
-          eyebrow: '06',
+          eyebrow: '08',
           title: 'Nomes',
           input: {
             label: 'entrada',
@@ -924,7 +1017,7 @@ export const pt: Dictionary = {
           ],
         },
         network: {
-          eyebrow: '07',
+          eyebrow: '09',
           title: 'A partir de Edsger W. Dijkstra',
           label: 'Rede de colaboração',
           facts: (people: string, links: string) =>
@@ -934,7 +1027,7 @@ export const pt: Dictionary = {
           hops: (n: number) => (n === 1 ? '1 colaboração' : `${n} colaborações`),
           pending: 'Preenchido por `graphman study` quando os arquivos da disciplina rodarem.',
         },
-        observatory: '08',
+        observatory: '10',
       },
     },
   },

@@ -47,7 +47,7 @@ export function Chapter({
   children,
 }: {
   index: number;
-  title: string;
+  title: ReactNode;
   delay: number;
   /** Controls at the right end of the heading. */
   tools?: ReactNode;

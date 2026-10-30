@@ -25,22 +25,25 @@ export function Head({ eyebrow, title }: { eyebrow: string; title: string }) {
 
 /** One bar: a track, a fill that grows to its share of the shared scale,
     the measurement after it. A ghost bar (a refused representation, an
-    estimated time) is dashed. */
+    estimated time) is dashed; an off bar (left out of the current scale)
+    shrinks away and keeps only its value, dimmed. */
 export function Bar({
   width,
   colour,
   value,
   ghost,
+  off,
   delay,
 }: {
   width: number;
   colour: string;
   value: ReactNode;
   ghost?: boolean;
+  off?: boolean;
   delay: number;
 }) {
   return (
-    <span className={styles.barRow} data-ghost={ghost || undefined}>
+    <span className={styles.barRow} data-ghost={ghost || undefined} data-off={off || undefined}>
       <span className={styles.track}>
         <span
           className={styles.fill}
@@ -49,7 +52,7 @@ export function Bar({
               ...at(delay),
               // Rounded: Math.log10 differs in its last digit between Node and
               // the browser, and a different string would break hydration.
-              '--w': `${Math.max(1.5, width * 100).toFixed(2)}%`,
+              '--w': off ? '0%' : `${Math.max(1.5, width * 100).toFixed(2)}%`,
               '--colour': colour,
             } as CSSProperties
           }
