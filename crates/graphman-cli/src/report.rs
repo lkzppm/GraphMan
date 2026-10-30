@@ -246,6 +246,47 @@ pub struct FrontierStudy {
     pub partial: Option<PartialRun>,
 }
 
+/// One untimed Dijkstra of a frontier, counted by `Measured`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryRun {
+    pub root: Vertex,
+    /// Vertices settled, one pop each.
+    pub settled: usize,
+    /// Estimates handed to the frontier: the root's, then one per
+    /// relaxation that lowered an estimate. The same for every frontier.
+    pub decreases: usize,
+    /// The most entries the frontier held at once, stale ones included.
+    pub peak_entries: usize,
+}
+
+/// What one frontier costs in memory during a Dijkstra.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrontierMemory {
+    pub frontier: FrontierKind,
+    /// Bytes of the frontier sized for the graph, before any run: its
+    /// arrays indexed by vertex.
+    pub base_bytes: usize,
+    /// Bytes it owns after the runs: those arrays plus the entry storage
+    /// the largest run needed (as allocated, so with the growth slack).
+    pub allocated_bytes: usize,
+    /// The bytes of one stored entry (`0` when the entries are the arrays
+    /// indexed by vertex: the vector and the pairing heap).
+    pub entry_bytes: usize,
+    /// The measured runs. None for the vector: its one array of estimates
+    /// is sized up front and never grows, and its runs are `O(n²)`.
+    pub runs: Vec<MemoryRun>,
+}
+
+/// Part 2's memory question: what each frontier holds during a Dijkstra.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryStudy {
+    /// Bytes of the graph Dijkstra runs on, for scale.
+    pub graph_bytes: usize,
+    /// Bytes of the shortest-path tree, which every frontier fills alike.
+    pub tree_bytes: usize,
+    pub frontiers: Vec<FrontierMemory>,
+}
+
 /// Everything the Part 2 case study measures for one weighted graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WeightedStudy {
@@ -267,6 +308,9 @@ pub struct WeightedStudy {
     pub negative_edge: Option<WeightedEdge>,
     pub paths: Vec<PathAnswer>,
     pub frontiers: Vec<FrontierStudy>,
+    /// `None` until the `frontier-memory` section has run.
+    #[serde(default)]
+    pub memory: Option<MemoryStudy>,
     pub machine: MachineInfo,
     pub generated_at_unix: u64,
 }
