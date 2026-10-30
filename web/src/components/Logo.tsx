@@ -2,7 +2,8 @@ import styles from './Logo.module.css';
 
 interface Props {
   size?: number;
-  /** `full` is the two-tone logo (grey hexagon, blue graph); `mark` the one-colour mask. */
+  /** `full` is the two-tone logo (grey hexagon, blue graph; a white
+      hexagon in the dark theme); `mark` the one-colour mask. */
   variant?: 'mark' | 'full';
   className?: string;
   shake?: boolean;
@@ -25,8 +26,30 @@ export default function Logo({ size = 28, variant = 'full', className = '', shak
           }}
         />
       ) : (
-        // eslint-disable-next-line @next/next/no-img-element -- static SVG, no optimisation needed
-        <img src="/brand/graphman.svg" alt="" width={size} height={size} draggable={false} />
+        // Both drawings, the theme shows one (CSS only, so no flash before
+        // hydration; the switch crossfades them). Static SVGs.
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className={styles.light}
+            src="/brand/graphman.svg"
+            alt=""
+            width={size}
+            height={size}
+            draggable={false}
+            data-theme-keep
+          />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className={styles.dark}
+            src="/brand/graphman-dark.svg"
+            alt=""
+            width={size}
+            height={size}
+            draggable={false}
+            data-theme-keep
+          />
+        </>
       )}
     </span>
   );

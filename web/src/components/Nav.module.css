@@ -140,11 +140,15 @@
   color: var(--accent);
 }
 
-/* The language switch: two small mono tags over one accent pill that
-   slides to the current one. */
+/* The two switches, language and theme: two small tags over one accent
+   pill that slides to the current one. The language one also pushes the
+   rest of the bar to the right. */
 .language {
-  position: relative;
   margin-left: auto;
+}
+
+.switch {
+  position: relative;
   display: inline-grid;
   grid-template-columns: 1fr 1fr;
   padding: 2px;
@@ -152,7 +156,7 @@
   border-radius: var(--radius);
 }
 
-.languageThumb {
+.switchThumb {
   position: absolute;
   top: 2px;
   bottom: 2px;
@@ -163,12 +167,14 @@
   transition: transform 0.32s var(--ease);
 }
 
-.language[data-locale='en'] .languageThumb {
+.switch[data-second] .switchThumb {
   transform: translateX(100%);
 }
 
-.languageButton {
+.switchButton {
   position: relative;
+  display: inline-grid;
+  place-items: center;
   padding: 4px 8px;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -179,12 +185,17 @@
   transition: color 0.25s var(--ease);
 }
 
-.languageButton:hover {
+.switchButton:hover {
   color: var(--fg);
 }
 
-.languageButton[aria-pressed='true'] {
+.switchButton[aria-pressed='true'] {
   color: var(--accent);
+}
+
+/* The theme's tags are a sun and a moon, both still. */
+.switchButton svg {
+  display: block;
 }
 
 /* The source link: the GitHub mark alone, a square the bar's height. */
@@ -398,14 +409,14 @@
     display: none;
   }
 
-  .languageButton {
+  .switchButton {
     padding: 4px 6px;
   }
 }
 
 /* With the tabs in a drawer the wordmark fits again on all but the
    narrowest phones. */
-@media (min-width: 400px) and (max-width: 900px) {
+@media (min-width: 440px) and (max-width: 900px) {
   .wordmark {
     display: inline;
   }

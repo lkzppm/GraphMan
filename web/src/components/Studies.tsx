@@ -50,7 +50,7 @@ const METHODS: DiameterMethod[] = ['exact', 'bounds', 'i_fub', 'sweep'];
 const METHOD_COLOUR: Record<DiameterMethod, string> = {
   exact: 'var(--level-0)',
   bounds: 'var(--accent)',
-  i_fub: 'color-mix(in srgb, var(--accent) 55%, white)',
+  i_fub: 'color-mix(in srgb, var(--accent) 55%, var(--ramp-fade))',
   sweep: 'var(--accent-2)',
 };
 
@@ -727,7 +727,7 @@ function Components({ split, view }: { split: Sheet['components']; view: string 
     {
       key: 'others',
       value: others,
-      colour: 'color-mix(in srgb, var(--accent) 45%, white)',
+      colour: 'color-mix(in srgb, var(--accent) 45%, var(--ramp-fade))',
       label: c.others(formatInt(Math.max(0, count - 2))),
     },
     {

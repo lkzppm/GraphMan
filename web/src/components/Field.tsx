@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, type RefObject } from 'react';
+import { onThemeFade } from '@/lib/theme';
 import styles from './Field.module.css';
 
 /* The field behind "in the browser": a grid of grey dots filling the
@@ -56,8 +57,14 @@ export default function Field({ origin }: Props) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
-    const grey = getComputedStyle(document.documentElement).getPropertyValue('--border-2').trim();
+    let accent = '';
+    let grey = '';
+    const readColours = () => {
+      const style = getComputedStyle(document.documentElement);
+      accent = style.getPropertyValue('--accent').trim();
+      grey = style.getPropertyValue('--border-2').trim();
+    };
+    readColours();
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     // Everything the frames share, in one object the closures may change.
@@ -193,8 +200,15 @@ export default function Field({ origin }: Props) {
       threshold: 0,
     });
     visible.observe(section);
+    // A theme switch repaints the field as its colours ease (a running
+    // field draws anyway, so it only needs the colours).
+    const offTheme = onThemeFade(() => {
+      readColours();
+      if (!st.running) draw(0);
+    });
     return () => {
       run(false);
+      offTheme();
       resize.disconnect();
       visible.disconnect();
     };

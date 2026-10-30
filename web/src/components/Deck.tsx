@@ -624,7 +624,7 @@ function FigBudget() {
 const METHODS: DiameterMethod[] = ['exact', 'i_fub', 'bounds', 'sweep'];
 const METHOD_COLOURS: Record<DiameterMethod, string> = {
   exact: 'var(--level-0)',
-  i_fub: 'color-mix(in srgb, var(--accent) 55%, white)',
+  i_fub: 'color-mix(in srgb, var(--accent) 55%, var(--ramp-fade))',
   bounds: 'var(--accent)',
   sweep: 'var(--accent-2)',
 };

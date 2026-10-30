@@ -1,7 +1,169 @@
 /* GraphMan design tokens (see spec/DESIGN.md): white paper, a Geist-style
-   scale of greys, one blue, hairline borders and small radii. The site is
-   light only (it is what the icon was drawn for); the observatory canvas
-   reads these variables at runtime. */
+   scale of greys, one blue, hairline borders and small radii. A dark
+   theme redefines the same tokens on `[data-theme='dark']` (set on <html>
+   by the boot script in app/layout.tsx and the nav's switch); the
+   observatory canvas reads these variables at runtime. */
+
+/* Every colour the themes change is a registered colour, so a theme
+   switch can animate the tokens themselves (see `[data-theme-switching]`
+   below): everything built on them, gradients, colour mixes and the
+   canvases that read them each frame, fades on one clock. The initial
+   values are the light theme's. */
+@property --bg {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #ffffff;
+}
+
+@property --bg-2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #fafafa;
+}
+
+@property --bg-3 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #f2f2f2;
+}
+
+@property --fg {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #171717;
+}
+
+@property --fg-2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #666666;
+}
+
+@property --fg-3 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #8f8f8f;
+}
+
+@property --border {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #e6e6e6;
+}
+
+@property --border-2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #cfcfcf;
+}
+
+@property --accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #0070f3;
+}
+
+@property --accent-hover {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #0a5fd0;
+}
+
+@property --accent-muted {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(0, 112, 243, 0.12);
+}
+
+@property --accent-2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #a9dcff;
+}
+
+@property --level-0 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #002f66;
+}
+
+@property --ramp-fade {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #ffffff;
+}
+
+@property --on-ramp-near {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #ffffff;
+}
+
+@property --on-ramp-far {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #ffffff;
+}
+
+@property --target {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #16a34a;
+}
+
+@property --queue-vector {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #eb6834;
+}
+
+@property --queue-lazy-heap {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #eda100;
+}
+
+@property --queue-quad-heap {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #1baf7a;
+}
+
+@property --queue-pairing {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #6250d6;
+}
+
+@property --queue-radix {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #e34948;
+}
+
+@property --node {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #0070f3;
+}
+
+@property --node-dim {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #d6d6d6;
+}
+
+@property --edge {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(23, 23, 23, 0.14);
+}
+
+@property --edge-dim {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(23, 23, 23, 0.06);
+}
 
 /* Everything here sits in one cascade layer, below the (unlayered) CSS
    modules. Next.js orders global and module stylesheets differently in
@@ -32,6 +194,11 @@
     /* Search level ramp ends: level 0 is a deep navy (the accent at 42 %),
      the deepest level the light blue. */
     --level-0: #002f66;
+    /* What the ramp's blues fade towards (the page on white), and the ink
+     of a number written on the ramp, at its near and its far half. */
+    --ramp-fade: #ffffff;
+    --on-ramp-near: #ffffff;
+    --on-ramp-far: #ffffff;
     /* The one green: the destination of a distance query. */
     --target: #16a34a;
     --warning: var(--accent);
@@ -46,6 +213,9 @@
     --queue-quad-heap: #1baf7a;
     --queue-pairing: #6250d6;
     --queue-radix: #e34948;
+
+    /* The logo's hexagon: grey on white, white on black. */
+    --mark-hexagon: #8f8f8f;
 
     --node: #0070f3;
     --node-dim: #d6d6d6;
@@ -67,6 +237,88 @@
     --nav-height: 64px;
     --ease: cubic-bezier(0.22, 1, 0.36, 1);
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* The dark theme mirrors the light one's emphasis, not its values: the
+     greys keep their contrast steps against the page, the blue stays the
+     same hue a step lighter, and the level ramp swaps its two ends, so the
+     near levels read strongest and the far ones fade into the page, as on
+     white. The queue colours are re-stepped into the dark band (OKLCH L
+     0.48 to 0.67), validated for colour-blind separation on #0a0a0a. */
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+
+    --bg: #0a0a0a;
+    --bg-2: #111111;
+    --bg-3: #1a1a1a;
+    --fg: #ededed;
+    --fg-2: #949494;
+    --fg-3: #6f6f6f;
+    --border: #232323;
+    --border-2: #303030;
+
+    --accent: #1c7af7;
+    --accent-hover: #4793ff;
+    --accent-muted: rgba(28, 122, 247, 0.16);
+    --accent-2: #005193;
+    --level-0: #a9dcff;
+    --ramp-fade: var(--accent-2);
+    --on-ramp-near: #0a0a0a;
+    --on-ramp-far: #ffffff;
+    --target: #009342;
+
+    --queue-vector: #e0622e;
+    --queue-lazy-heap: #c48600;
+    --queue-quad-heap: #1fa170;
+    --queue-pairing: #726add;
+    --queue-radix: #de4e4b;
+
+    --node: #1c7af7;
+    --node-dim: #2e2e2e;
+    --edge: rgba(237, 237, 237, 0.14);
+    --edge-dim: rgba(237, 237, 237, 0.06);
+
+    --shadow-hover: 0 8px 24px -12px rgba(0, 0, 0, 0.7);
+  }
+
+  /* The switch (lib/theme.ts): for 0.6 s the tokens ease from one theme
+     to the other on <html>, and every other transition is held, so nothing
+     eases twice or chases a moving colour. The switch itself (its pill and
+     tags) and the logo's crossfade keep theirs. */
+  :root[data-theme-switching] {
+    transition:
+      --bg 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --bg-2 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --bg-3 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --fg 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --fg-2 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --fg-3 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --border 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --border-2 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --accent 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --accent-hover 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --accent-muted 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --accent-2 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --level-0 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --ramp-fade 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --on-ramp-near 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --on-ramp-far 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --target 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --queue-vector 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --queue-lazy-heap 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --queue-quad-heap 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --queue-pairing 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --queue-radix 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --node 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --node-dim 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --edge 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --edge-dim 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  :root[data-theme-switching] *:not([data-theme-keep]),
+  :root[data-theme-switching] *::before,
+  :root[data-theme-switching] *::after {
+    transition: none !important;
   }
 
   * {

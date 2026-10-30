@@ -9,9 +9,9 @@
   font-size: 13px;
   line-height: 1.65;
   padding: 18px 20px;
-  border: 1px solid color-mix(in srgb, var(--accent) 14%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--bg));
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--accent) 5%, white);
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg));
   color: var(--fg);
   overflow-x: auto;
   tab-size: 4;
@@ -57,7 +57,7 @@
   height: 28px;
   border-radius: var(--radius);
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 5%, white);
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg));
   opacity: 0;
   transition:
     opacity 0.2s var(--ease),

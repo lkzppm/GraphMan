@@ -21,7 +21,7 @@ import {
 } from '@/lib/sample';
 import Code from './Code';
 import Rail from './Rail';
-import GraphFigure, { levelColour } from './GraphFigure';
+import GraphFigure, { levelColour, levelInk } from './GraphFigure';
 import Representations from './Representations';
 import Reveal from './Reveal';
 import styles from './Wiki.module.css';
@@ -416,7 +416,10 @@ function Settles() {
             <li key={v} data-last={i === DIJKSTRA.order.length - 1 || undefined}>
               <span
                 className={`mono ${styles.callBall}`}
-                style={{ background: levelColour(DIJKSTRA.distances[v], max) }}
+                style={{
+                  background: levelColour(DIJKSTRA.distances[v], max),
+                  color: levelInk(DIJKSTRA.distances[v], max),
+                }}
               >
                 {v}
               </span>
@@ -569,7 +572,10 @@ function Sequence({ order }: { order: number[] }) {
             <li key={v} data-last={i === order.length - 1 || undefined}>
               <span
                 className={`mono ${styles.callBall}`}
-                style={{ background: levelColour(BFS.levels[v], max) }}
+                style={{
+                  background: levelColour(BFS.levels[v], max),
+                  color: levelInk(BFS.levels[v], max),
+                }}
               >
                 {v}
               </span>
