@@ -6,7 +6,7 @@
   "edges": 30999944,
   "self_loops_dropped": 0,
   "duplicates_dropped": 34,
-  "parse_ms": 1973.24325,
+  "parse_ms": 1909.485917,
   "weights": {
     "min": 0.0,
     "max": 10.0,
@@ -262,7 +262,7 @@
         "runs": 100,
         "mean_ms": 429.35281084,
         "median_ms": 425.4220415,
-        "min_ms": 396.88849999999996,
+        "min_ms": 396.8885,
         "max_ms": 564.55825,
         "stddev_ms": 29.987777820709677,
         "total_ms": 42935.281084
@@ -280,7 +280,7 @@
         "median_ms": 847.059771,
         "min_ms": 812.6496669999999,
         "max_ms": 1479.03225,
-        "stddev_ms": 108.07435025030209,
+        "stddev_ms": 108.07435025030207,
         "total_ms": 89536.73941400005
       },
       "budget_exhausted": false,
@@ -312,7 +312,7 @@
         "median_ms": 769.872063,
         "min_ms": 743.489959,
         "max_ms": 1102.298042,
-        "stddev_ms": 91.12322633512943,
+        "stddev_ms": 91.12322633512944,
         "total_ms": 81586.35737600001
       },
       "budget_exhausted": false,
@@ -329,12 +329,215 @@
         "min_ms": 255.448834,
         "max_ms": 290.502541,
         "stddev_ms": 6.4711409721131785,
-        "total_ms": 26774.109295000002
+        "total_ms": 26774.109295
       },
       "budget_exhausted": false,
       "partial": null
     }
   ],
+  "memory": {
+    "graph_bytes": 747998664,
+    "tree_bytes": 20125020,
+    "frontiers": [
+      {
+        "frontier": "vector",
+        "base_bytes": 8000008,
+        "allocated_bytes": 8000008,
+        "entry_bytes": 0,
+        "runs": []
+      },
+      {
+        "frontier": "heap",
+        "base_bytes": 4000004,
+        "allocated_bytes": 20777220,
+        "entry_bytes": 16,
+        "runs": [
+          {
+            "root": 275414,
+            "settled": 1000000,
+            "decreases": 3713300,
+            "peak_entries": 917275
+          },
+          {
+            "root": 892292,
+            "settled": 1000000,
+            "decreases": 3714817,
+            "peak_entries": 917388
+          },
+          {
+            "root": 763859,
+            "settled": 1000000,
+            "decreases": 3714686,
+            "peak_entries": 917261
+          },
+          {
+            "root": 255765,
+            "settled": 1000000,
+            "decreases": 3717193,
+            "peak_entries": 917421
+          },
+          {
+            "root": 963251,
+            "settled": 1000000,
+            "decreases": 3713765,
+            "peak_entries": 917300
+          }
+        ]
+      },
+      {
+        "frontier": "lazy_heap",
+        "base_bytes": 8000008,
+        "allocated_bytes": 75108872,
+        "entry_bytes": 16,
+        "runs": [
+          {
+            "root": 275414,
+            "settled": 1000000,
+            "decreases": 3713300,
+            "peak_entries": 2981483
+          },
+          {
+            "root": 892292,
+            "settled": 1000000,
+            "decreases": 3714817,
+            "peak_entries": 2983323
+          },
+          {
+            "root": 763859,
+            "settled": 1000000,
+            "decreases": 3714686,
+            "peak_entries": 2981611
+          },
+          {
+            "root": 255765,
+            "settled": 1000000,
+            "decreases": 3717193,
+            "peak_entries": 2984677
+          },
+          {
+            "root": 963251,
+            "settled": 1000000,
+            "decreases": 3713765,
+            "peak_entries": 2981379
+          }
+        ]
+      },
+      {
+        "frontier": "quad_heap",
+        "base_bytes": 4000004,
+        "allocated_bytes": 20777220,
+        "entry_bytes": 16,
+        "runs": [
+          {
+            "root": 275414,
+            "settled": 1000000,
+            "decreases": 3713300,
+            "peak_entries": 917275
+          },
+          {
+            "root": 892292,
+            "settled": 1000000,
+            "decreases": 3714817,
+            "peak_entries": 917388
+          },
+          {
+            "root": 763859,
+            "settled": 1000000,
+            "decreases": 3714686,
+            "peak_entries": 917261
+          },
+          {
+            "root": 255765,
+            "settled": 1000000,
+            "decreases": 3717193,
+            "peak_entries": 917421
+          },
+          {
+            "root": 963251,
+            "settled": 1000000,
+            "decreases": 3713765,
+            "peak_entries": 917300
+          }
+        ]
+      },
+      {
+        "frontier": "pairing",
+        "base_bytes": 20000020,
+        "allocated_bytes": 20002068,
+        "entry_bytes": 0,
+        "runs": [
+          {
+            "root": 275414,
+            "settled": 1000000,
+            "decreases": 3713300,
+            "peak_entries": 917275
+          },
+          {
+            "root": 892292,
+            "settled": 1000000,
+            "decreases": 3714817,
+            "peak_entries": 917388
+          },
+          {
+            "root": 763859,
+            "settled": 1000000,
+            "decreases": 3714686,
+            "peak_entries": 917261
+          },
+          {
+            "root": 255765,
+            "settled": 1000000,
+            "decreases": 3717193,
+            "peak_entries": 917421
+          },
+          {
+            "root": 963251,
+            "settled": 1000000,
+            "decreases": 3713765,
+            "peak_entries": 917300
+          }
+        ]
+      },
+      {
+        "frontier": "radix",
+        "base_bytes": 8001568,
+        "allocated_bytes": 169024800,
+        "entry_bytes": 16,
+        "runs": [
+          {
+            "root": 275414,
+            "settled": 1000000,
+            "decreases": 3713300,
+            "peak_entries": 2872047
+          },
+          {
+            "root": 892292,
+            "settled": 1000000,
+            "decreases": 3714817,
+            "peak_entries": 2879398
+          },
+          {
+            "root": 763859,
+            "settled": 1000000,
+            "decreases": 3714686,
+            "peak_entries": 2700577
+          },
+          {
+            "root": 255765,
+            "settled": 1000000,
+            "decreases": 3717193,
+            "peak_entries": 2798708
+          },
+          {
+            "root": 963251,
+            "settled": 1000000,
+            "decreases": 3713765,
+            "peak_entries": 2112211
+          }
+        ]
+      }
+    ]
+  },
   "machine": {
     "os": "macos",
     "arch": "aarch64",
@@ -342,5 +545,5 @@
     "total_memory_bytes": 17179869184,
     "threads": 10
   },
-  "generated_at_unix": 1792695284
+  "generated_at_unix": 1793344517
 }
