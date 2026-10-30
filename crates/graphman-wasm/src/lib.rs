@@ -650,6 +650,14 @@ impl Frontier for Probe<'_> {
         self.inner.pop_min()
     }
 
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn heap_bytes(&self) -> usize {
+        self.inner.heap_bytes()
+    }
+
     fn kind(&self) -> FrontierKind {
         self.inner.kind()
     }
