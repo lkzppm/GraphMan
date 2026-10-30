@@ -59,7 +59,7 @@ the iterative one's tree), `distances`, `components` and `diameter`:
 
 ## Weighted graphs (Part 2)
 
-The weighted course files are `graphs/grafo_W_{3,4,5}.txt` and the
+The weighted course files are `graphs/grafo_W_{3,4,5,6,7}.txt` and the
 collaboration network `graphs/rede_colaboracao.txt` with its names in
 `graphs/rede_colaboracao_vertices.txt` (gitignored, as the Part 1 graphs;
 see `spec/ASSIGNMENT.md`). `samples/` has the handout's figures, a
@@ -76,8 +76,8 @@ The vector frontier is `O(n²)` per source: fine up to grafo_2's 50 000
 vertices, about 16 s per source at 375 000 and hours at 4.8M.
 
 The study runner answers the Part 2 questions on any weighted file (a
-weighted file gets the Part 2 sections, `paths` and `frontiers`, by
-default; `--only` picks either):
+weighted file gets the Part 2 sections, `paths`, `frontiers` and
+`frontier-memory`, by default; `--only` picks some):
 
 ```
 ./target/release/graphman study graphs/grafo_W_*.txt --out studies --dijkstra-budget 900
@@ -96,7 +96,13 @@ default; `--only` picks either):
   that finished and says so; when none finished, the run that was cut short
   gives an estimate (its time scaled to its root's component, close to exact
   for the vector, whose every step scans all `n` estimates). Rerunning one
-  frontier (`--only frontiers --frontiers vector`) keeps the others.
+  frontier (`--only frontiers --frontiers vector`) keeps the others. The
+  list is comma separated: `--frontiers lazy-heap,radix`, not spaces.
+- `frontier-memory`: the bytes each frontier holds during a Dijkstra and
+  the most entries it held, from `--memory-runs` (5) untimed runs per
+  frontier from the first of the same sources; the vector is sized, not
+  run. Minutes on every graph:
+  `--only frontier-memory` refreshes it alone.
 
 Results go to `studies/weighted/<name>.json`, merged into
 `studies/weighted/results.json` and a "Part 2" block of `studies/RESULTS.md`.
