@@ -476,7 +476,7 @@ g.swap {
   border-collapse: separate;
   border-spacing: 0;
   font-size: 12.5px;
-  border: 1px solid color-mix(in srgb, var(--accent) 14%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--bg));
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -485,7 +485,7 @@ g.swap {
 .table td {
   padding: 6px 12px;
   text-align: left;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 10%, white);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 10%, var(--bg));
   vertical-align: middle;
 }
 
@@ -499,7 +499,7 @@ g.swap {
   letter-spacing: var(--tracking);
   text-transform: uppercase;
   color: var(--accent-hover);
-  background: color-mix(in srgb, var(--accent) 7%, white);
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
 }
 
 .table tbody th {
@@ -517,7 +517,7 @@ g.swap {
 
 .table tbody tr:nth-child(even) th,
 .table tbody tr:nth-child(even) td {
-  background: color-mix(in srgb, var(--accent) 2.5%, white);
+  background: color-mix(in srgb, var(--accent) 2.5%, var(--bg));
 }
 
 .table td {
@@ -944,7 +944,7 @@ g[data-apart] .sideLabel {
 }
 
 .line[data-hot] {
-  background: color-mix(in srgb, var(--accent) 4%, white);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
 }
 
 .lineTitle {
@@ -1142,11 +1142,6 @@ g[data-apart] .sideLabel {
   color: var(--fg);
 }
 
-.dataShowOrder {
-  font-size: 10.5px;
-  color: var(--fg-3);
-}
-
 .dataShowRows {
   display: flex;
   flex-direction: column;
@@ -1172,7 +1167,9 @@ g[data-apart] .sideLabel {
   text-align: left;
   color: var(--fg);
   cursor: pointer;
-  transition: background 0.2s var(--ease);
+  transition:
+    background 0.2s var(--ease),
+    opacity 0.25s var(--ease);
 }
 
 .dataShowRow:hover,
@@ -1180,8 +1177,31 @@ g[data-apart] .sideLabel {
   background: var(--bg-3);
 }
 
-.dataShowRow[aria-pressed='true'] {
-  box-shadow: inset 2px 0 0 var(--colour);
+/* A frontier taken off the chart: struck through and greyed, its swatch
+   faded, until it is clicked back. */
+.dataShowRow[data-off] {
+  color: var(--fg-3);
+}
+
+.dataShowRow[data-off] .dataShowName,
+.dataShowRow[data-off] .dataShowTime {
+  text-decoration: line-through;
+  text-decoration-color: var(--fg-3);
+}
+
+.dataShowRow[data-off] .dataShowTime {
+  color: var(--fg-3);
+}
+
+.dataShowRow[data-off] .dataShowSwatch {
+  opacity: 0.3;
+}
+
+/* The rows, and the chart's time or byte ticks, fade in when the metric
+   changes. */
+.dataShowRows,
+.growthFade {
+  animation: swapIn 0.45s var(--ease) both;
 }
 
 .dataShowPlace {
@@ -1217,6 +1237,76 @@ g[data-apart] .sideLabel {
   font-weight: 500;
 }
 
+/* The ⓘ beside an estimated frontier's name, and its note: under the row,
+   on hover over the mark or while the row has the keyboard's focus. */
+.dataShowInfo {
+  position: relative;
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: -1px;
+  color: var(--fg-3);
+  cursor: help;
+}
+
+.dataShowInfo:hover,
+.dataShowInfo:focus-visible,
+.dataShowRow:focus-visible .dataShowInfo {
+  color: var(--accent);
+}
+
+.dataShowTip {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 10px);
+  left: -60px;
+  width: 300px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: var(--shadow-hover);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1.55;
+  text-align: left;
+  white-space: normal;
+  color: var(--fg-2);
+  opacity: 0;
+  visibility: hidden;
+  translate: 0 -4px;
+  pointer-events: none;
+  transition:
+    opacity 0.2s var(--ease),
+    translate 0.2s var(--ease),
+    visibility 0s linear 0.2s;
+}
+
+.dataShowInfo:hover .dataShowTip,
+.dataShowInfo:focus-visible .dataShowTip,
+.dataShowRow:focus-visible .dataShowTip {
+  opacity: 1;
+  visibility: visible;
+  translate: 0 0;
+  transition:
+    opacity 0.2s var(--ease),
+    translate 0.2s var(--ease),
+    visibility 0s;
+}
+
+/* A note that opens to the left of its mark (at the page's right edge),
+   or above it (at the chapter's foot). */
+.tipLeft {
+  left: auto;
+  right: -8px;
+  width: 260px;
+}
+
+.tipAbove {
+  top: auto;
+  bottom: calc(100% + 10px);
+}
+
 .dataShowNote {
   grid-column: 3 / -1;
   font-size: 10.5px;
@@ -1247,26 +1337,101 @@ g[data-apart] .sideLabel {
   }
 }
 
-.growthLegend {
+/* A chapter's controls at the right end of its heading: the race's replay,
+   the scale of the times, the switch between time and memory. */
+.chapterTools {
   display: flex;
-  gap: 16px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 12px;
-  color: var(--fg-2);
-}
-
-.growthLegend li {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+  margin-left: auto;
 }
 
-.growthLegend span {
-  width: 14px;
-  height: 3px;
-  border-radius: 2px;
+.chapterTools > * {
+  margin-left: 0;
+}
+
+/* A switch between a few choices (`--n`, the chosen one at `--i`): the
+   nav's switch, a thumb sliding under the chosen one. */
+.chartSwitch {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: repeat(var(--n, 2), 1fr);
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: opacity 0.3s var(--ease);
+}
+
+.chartSwitch[data-hidden] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chartSwitchThumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / var(--n, 2));
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--accent-muted);
+  transform: translateX(calc(100% * var(--i, 0)));
+  transition: transform 0.32s var(--ease);
+}
+
+.chartSwitchButton {
+  position: relative;
+  padding: 4px 12px;
+  border: 0;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  cursor: pointer;
+  transition: color 0.25s var(--ease);
+}
+
+.chartSwitchButton:hover {
+  color: var(--fg);
+}
+
+.chartSwitchButton[aria-pressed='true'] {
+  color: var(--accent);
+}
+
+/* The scale, centred under the chart: linear at one end, log at the
+   other, a slider between. */
+.growthScale {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.growthScale button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--fg-3);
+  cursor: pointer;
+  transition: color 0.2s var(--ease);
+}
+
+.growthScale button:hover,
+.growthScale button[data-on] {
+  color: var(--accent);
+}
+
+.growthScale input {
+  width: 140px;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 /* The chart takes the pointer: a drag pans it (grab, then grabbing), so a
@@ -1333,13 +1498,8 @@ g[data-apart] .sideLabel {
 }
 
 .growthSeries[data-dim],
-.growthHit[data-dim],
-.growthLegend li[data-dim] {
+.growthHit[data-dim] {
   opacity: 0.2;
-}
-
-.growthLegend li {
-  transition: opacity 0.2s var(--ease);
 }
 
 /* Each point's hit area, larger than the point. */
@@ -1474,11 +1634,17 @@ g[data-apart] .sideLabel {
   cursor: pointer;
   transition:
     color 0.2s var(--ease),
-    border-color 0.2s var(--ease);
+    border-color 0.2s var(--ease),
+    opacity 0.3s var(--ease);
 }
 
 .raceReplay svg {
   transition: rotate 0.4s var(--ease);
+}
+
+.raceReplay[data-hidden] {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .raceReplay:hover {
@@ -1587,13 +1753,6 @@ g[data-apart] .sideLabel {
   color: var(--accent);
 }
 
-/* How many runs a block of the lane holds, when one run is too thin. */
-.raceBlock {
-  flex-basis: 100%;
-  font-size: 10px;
-  color: var(--fg-3);
-}
-
 .racePlayhead {
   position: absolute;
   top: 0;
@@ -1614,6 +1773,165 @@ g[data-apart] .sideLabel {
   font-size: 11px;
   color: var(--fg);
   white-space: nowrap;
+}
+
+/* A graph's sheet in memory: the race's lanes keep their place while its
+   fill fades out and three segments grow over the same track. Solid: the
+   arrays indexed by vertex; tinted: the entries at their peak; hatched:
+   the room the storage kept. */
+.raceRuns,
+.raceFirst,
+.racePlayhead {
+  transition: opacity 0.4s var(--ease);
+}
+
+.race[data-metric='memory'] .raceRuns,
+.race[data-metric='memory'] .raceFirst,
+.race[data-metric='memory'] .racePlayhead,
+.race[data-scale='log'] .raceRuns,
+.race[data-scale='log'] .raceFirst,
+.race[data-scale='log'] .racePlayhead,
+.raceLane[data-off] .raceRuns,
+.raceLane[data-off] .raceFirst {
+  opacity: 0;
+}
+
+/* Without the vector, its lane keeps its name and time, dimmed. */
+.raceName,
+.raceCount {
+  transition: opacity 0.4s var(--ease);
+}
+
+.raceLane[data-off] .raceName,
+.raceLane[data-off] .raceCount {
+  opacity: 0.45;
+}
+
+/* On the log scale, the race gives way to one still bar a lane, growing
+   over the same track; an estimate hatched. */
+.logBar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--colour);
+  pointer-events: none;
+  transition: width 0.8s var(--ease) calc(var(--k, 0) * 50ms);
+}
+
+.logBar[data-estimated] {
+  background: repeating-linear-gradient(-45deg, var(--colour) 0 4px, transparent 4px 8px);
+}
+
+.memoryBars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  pointer-events: none;
+}
+
+.memoryBase,
+.memoryUsed,
+.memorySlack {
+  flex: none;
+  height: 100%;
+  transition: width 0.8s var(--ease) calc(var(--k, 0) * 50ms);
+}
+
+.memoryBase,
+.memoryKeyBase {
+  background: var(--colour, var(--fg-2));
+}
+
+.memoryUsed,
+.memoryKeyUsed {
+  background: color-mix(in srgb, var(--colour, var(--fg-2)) 42%, transparent);
+}
+
+.memorySlack,
+.memoryKeySlack {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--colour, var(--fg-2)) 34%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+/* What sits after a counter: the word "runs", or the ⓘ of a memory lane. */
+.laneCountDetail {
+  animation: swapIn 0.4s var(--ease) both;
+}
+
+/* Under the lanes, the note of each drawing on one spot: how many runs a
+   block of the race holds, and the key of the memory bars. Both are laid
+   out, only the current one shows, so switching never changes the
+   chapter's height. */
+.raceFoot {
+  display: grid;
+  margin-top: -6px;
+}
+
+.raceFoot > * {
+  grid-area: 1 / 1;
+}
+
+.raceKey {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--fg-3);
+  transition:
+    opacity 0.4s var(--ease) 0.15s,
+    visibility 0s;
+}
+
+.race[data-metric='memory'] .raceKey,
+.race[data-scale='log'] .raceKey {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.4s var(--ease),
+    visibility 0s linear 0.4s;
+}
+
+.memoryKey {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 20px;
+  font-size: 12px;
+  color: var(--fg-2);
+  opacity: 0;
+  visibility: hidden;
+  translate: 0 4px;
+  transition:
+    opacity 0.4s var(--ease),
+    translate 0.4s var(--ease),
+    visibility 0s linear 0.4s;
+}
+
+.race[data-metric='memory'] .memoryKey {
+  opacity: 1;
+  visibility: visible;
+  translate: 0 0;
+  transition:
+    opacity 0.4s var(--ease) 0.15s,
+    translate 0.4s var(--ease) 0.15s,
+    visibility 0s;
+}
+
+.memoryKey > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.memoryKeyBase,
+.memoryKeyUsed,
+.memoryKeySlack {
+  flex: none;
+  width: 16px;
+  height: 8px;
+  border-radius: 2px;
 }
 
 @media (max-width: 600px) {
@@ -1658,7 +1976,14 @@ g[data-apart] .sideLabel {
   .lineRail,
   .lineDot,
   .growthLine,
-  .growthPoint {
+  .growthPoint,
+  .raceRuns,
+  .raceFirst,
+  .racePlayhead,
+  .memoryKey,
+  .memoryBase,
+  .memoryUsed,
+  .memorySlack {
     transition: none;
   }
 }

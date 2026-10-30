@@ -24,8 +24,9 @@ pub use components::Components;
 pub use diameter::{Diameter, DiameterMethod, diameter, diameter_with_progress};
 pub use distance::{distance, distance_into, eccentricity, eccentricity_into};
 pub use frontier::{
-    DaryHeapFrontier, Frontier, FrontierEntry, FrontierKind, HeapFrontier, LazyHeapFrontier,
-    PairingHeapFrontier, QuadHeapFrontier, RadixHeapFrontier, VectorFrontier,
+    DaryHeapFrontier, Frontier, FrontierCounts, FrontierEntry, FrontierKind, HeapFrontier,
+    LazyHeapFrontier, Measured, PairingHeapFrontier, QuadHeapFrontier, RadixHeapFrontier,
+    VectorFrontier,
 };
 pub use layout::{RadialLayout, radial_layout};
 pub use shortest_path::{

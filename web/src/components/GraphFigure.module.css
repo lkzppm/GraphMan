@@ -36,7 +36,7 @@
 }
 
 .vertex[data-marked] circle {
-  /* Visible on white and on the blues alike. */
+  /* Visible on the page and on the blues alike. */
   stroke: var(--level-0);
   stroke-width: 3;
 }

@@ -158,8 +158,8 @@
   align-items: start;
   padding: 16px 18px;
   border-radius: var(--radius-lg);
-  border: 1px solid color-mix(in srgb, var(--accent) 10%, white);
-  background: color-mix(in srgb, var(--accent) 2.5%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 10%, var(--bg));
+  background: color-mix(in srgb, var(--accent) 2.5%, var(--bg));
 }
 
 .normalise > div {
@@ -212,8 +212,8 @@
 
 .chip[data-kept] {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 40%, white);
-  background: color-mix(in srgb, var(--accent) 6%, white);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--bg));
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
 }
 
 /* The visitor's calls beside the search: two pieces under tracked labels. */
@@ -351,7 +351,7 @@
   border-collapse: separate;
   border-spacing: 0;
   font-size: 13px;
-  border: 1px solid color-mix(in srgb, var(--accent) 14%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--bg));
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -360,7 +360,7 @@
 .table td {
   padding: 10px 14px;
   text-align: left;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 10%, white);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 10%, var(--bg));
   vertical-align: top;
 }
 
@@ -370,7 +370,7 @@
   letter-spacing: var(--tracking);
   text-transform: uppercase;
   color: var(--accent-hover);
-  background: color-mix(in srgb, var(--accent) 7%, white);
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
 }
 
 .table tbody tr:last-child td {
@@ -378,7 +378,7 @@
 }
 
 .table tbody tr:nth-child(even) td {
-  background: color-mix(in srgb, var(--accent) 2.5%, white);
+  background: color-mix(in srgb, var(--accent) 2.5%, var(--bg));
 }
 
 .table td {

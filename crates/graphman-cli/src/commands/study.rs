@@ -8,8 +8,8 @@
 //! (4-sweep bound, iFUB exact, and brute force when affordable).
 //!
 //! Part 2 (weighted graphs, [`weighted`]): the distance and shortest path
-//! from one source to a few targets, and the mean time of one Dijkstra per
-//! frontier.
+//! from one source to a few targets, the mean time of one Dijkstra per
+//! frontier, and the memory each frontier holds during one.
 //!
 //! A weighted file gets the Part 2 study and an unweighted one the Part 1
 //! study, unless `--only` names the sections. Sections left out keep the
@@ -102,8 +102,12 @@ pub struct Args {
     #[arg(long, num_args = 1.., default_values = ["20", "30", "40", "50", "60"])]
     to: Vec<String>,
 
-    /// Part 2: the frontiers to time.
-    #[arg(long, value_delimiter = ',', default_values = ["vector", "heap", "lazy-heap", "quad-heap", "pairing", "radix"])]
+    /// Part 2: the frontiers to time and measure, comma separated.
+    #[arg(
+        long,
+        value_delimiter = ',',
+        default_value = "vector,heap,lazy-heap,quad-heap,pairing,radix"
+    )]
     frontiers: Vec<FrontierKind>,
 
     /// Part 2: wall-clock budget in seconds for each frontier's runs. The
@@ -111,6 +115,11 @@ pub struct Args {
     /// finished are reported, or an estimate from the one cut short.
     #[arg(long, default_value_t = 600.0)]
     dijkstra_budget: f64,
+
+    /// Part 2: untimed Dijkstra runs per frontier for the memory question,
+    /// from the first of the timing's sources.
+    #[arg(long, default_value_t = 5)]
+    memory_runs: usize,
 
     /// Part 2: the representation Dijkstra runs on.
     #[arg(long, default_value = "csr")]
@@ -136,6 +145,8 @@ pub enum Section {
     Paths,
     /// Part 2, question 2: mean Dijkstra time per frontier.
     Frontiers,
+    /// Part 2: the memory each frontier holds during a Dijkstra.
+    FrontierMemory,
 }
 
 impl Section {
@@ -147,7 +158,7 @@ impl Section {
         Section::Components,
         Section::Diameter,
     ];
-    const PART2: [Section; 2] = [Section::Paths, Section::Frontiers];
+    const PART2: [Section; 3] = [Section::Paths, Section::Frontiers, Section::FrontierMemory];
 }
 
 /// A parsed graph file, shared by both parts.

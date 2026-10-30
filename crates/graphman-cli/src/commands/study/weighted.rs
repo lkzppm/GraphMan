@@ -8,6 +8,11 @@
 //! source, so each frontier gets a wall-clock budget: when it runs out the
 //! cell records the runs that finished, and when none did, how far the one
 //! cut short got and what a whole run would take at that pace.
+//!
+//! A third measure goes with the second: the memory each frontier holds,
+//! counted on a few untimed runs from the same sources. A decrease-key
+//! frontier never holds more than one entry per vertex; one that pushes a
+//! lowered estimate again holds up to one per improving relaxation.
 
 use super::{Args, Input, Section};
 use crate::load::{GraphArgs, display_vertex, resolve_vertex};
@@ -16,7 +21,7 @@ use crate::rng::SplitMix64;
 use crate::ui::{self, Ui};
 use anyhow::Result;
 use graphman::algo::{
-    Components, Control, Frontier, FrontierKind, HeapFrontier, LazyHeapFrontier,
+    Components, Control, Frontier, FrontierKind, HeapFrontier, LazyHeapFrontier, Measured,
     PairingHeapFrontier, QuadHeapFrontier, RadixHeapFrontier, ShortestPathTree, VectorFrontier,
     dijkstra, dijkstra_into, weight_stats,
 };
@@ -25,6 +30,7 @@ use graphman::{
 };
 use std::fmt::Write as _;
 use std::hint::black_box;
+use std::mem::size_of;
 use std::time::{Duration, Instant};
 
 /// Runs the Part 2 questions in `sections` on one weighted graph; the
@@ -54,24 +60,32 @@ pub fn study(
     if let Some(refusal) = &refusal {
         ui.warn(refusal);
     }
-    let (mut paths, mut frontiers) = previous.map(|p| (p.paths, p.frontiers)).unwrap_or_default();
+    let (mut paths, mut frontiers, mut memory) = previous
+        .map(|p| (p.paths, p.frontiers, p.memory))
+        .unwrap_or_default();
 
     if refusal.is_some() {
-        (paths, frontiers) = (Vec::new(), Vec::new());
+        (paths, frontiers, memory) = (Vec::new(), Vec::new(), None);
     } else {
         if sections.contains(&Section::Paths) {
             paths = shortest_paths(&graph, args, names.as_ref(), ui)?;
         }
+        let roots =
+            SplitMix64::new(args.seed).distinct_vertices(n, args.runs.max(args.memory_runs));
         if sections.contains(&Section::Frontiers) {
-            let roots = SplitMix64::new(args.seed).distinct_vertices(n, args.runs);
+            let roots = &roots[..args.runs.min(roots.len())];
             let budget = Duration::from_secs_f64(args.dijkstra_budget);
             let mut components = None;
             for &kind in &args.frontiers {
-                let result = time_frontier(&graph, kind, &roots, budget, &mut components, ui);
+                let result = time_frontier(&graph, kind, roots, budget, &mut components, ui);
                 frontiers.retain(|f| f.frontier != kind);
                 frontiers.push(result);
             }
             frontiers.sort_by_key(|f| FrontierKind::ALL.iter().position(|&k| k == f.frontier));
+        }
+        if sections.contains(&Section::FrontierMemory) {
+            let roots = &roots[..args.memory_runs.min(roots.len())];
+            memory = Some(measure_memory(&graph, &args.frontiers, roots, memory, ui));
         }
     }
 
@@ -90,6 +104,7 @@ pub fn study(
         negative_edge,
         paths,
         frontiers,
+        memory,
         machine: MachineInfo::detect(),
         generated_at_unix: super::now_unix(),
     })
@@ -262,6 +277,115 @@ fn time_runs<G: Weighted, F: Frontier>(
         tick();
     }
     (samples, None)
+}
+
+/// The memory question: one untimed Dijkstra per root with each frontier
+/// counted by [`Measured`]. The frontiers left out keep `previous`'s answers.
+fn measure_memory(
+    graph: &AnyGraph,
+    kinds: &[FrontierKind],
+    roots: &[Vertex],
+    previous: Option<MemoryStudy>,
+    ui: &Ui,
+) -> MemoryStudy {
+    let n = graph.vertex_count();
+    let mut tree = ShortestPathTree::new(n);
+    let mut frontiers = previous.map(|p| p.frontiers).unwrap_or_default();
+    for &kind in kinds {
+        // The vector is sized, not run: its one array of estimates never
+        // grows, and a run on the large graphs takes hours.
+        let roots = match kind {
+            FrontierKind::Vector => &[][..],
+            _ => roots,
+        };
+        let bar = ui.progress(
+            Some(roots.len() as u64),
+            &format!("memory ({}) × {}", kind.label(), roots.len()),
+        );
+        let tick = || bar.inc(1);
+        let t = &mut tree;
+        let result = match kind {
+            FrontierKind::Vector => {
+                dispatch!(graph, g => count_runs(g, VectorFrontier::new(n), roots, t, tick))
+            }
+            FrontierKind::Heap => {
+                dispatch!(graph, g => count_runs(g, HeapFrontier::new(n), roots, t, tick))
+            }
+            FrontierKind::LazyHeap => {
+                dispatch!(graph, g => count_runs(g, LazyHeapFrontier::new(n), roots, t, tick))
+            }
+            FrontierKind::QuadHeap => {
+                dispatch!(graph, g => count_runs(g, QuadHeapFrontier::new(n), roots, t, tick))
+            }
+            FrontierKind::Pairing => {
+                dispatch!(graph, g => count_runs(g, PairingHeapFrontier::new(n), roots, t, tick))
+            }
+            FrontierKind::Radix => {
+                dispatch!(graph, g => count_runs(g, RadixHeapFrontier::new(n), roots, t, tick))
+            }
+        };
+        bar.finish_and_clear();
+        let peak = result.runs.iter().map(|r| r.peak_entries).max();
+        ui.kv(
+            &format!("{} memory", kind.label()),
+            match peak {
+                Some(peak) => format!(
+                    "{} (at most {peak} entries)",
+                    ui::bytes(result.allocated_bytes)
+                ),
+                None => ui::bytes(result.allocated_bytes),
+            },
+        );
+        frontiers.retain(|f| f.frontier != kind);
+        frontiers.push(result);
+    }
+    frontiers.sort_by_key(|f| FrontierKind::ALL.iter().position(|&k| k == f.frontier));
+    MemoryStudy {
+        graph_bytes: graph.heap_bytes(),
+        tree_bytes: tree.heap_bytes(),
+        frontiers,
+    }
+}
+
+/// One counted Dijkstra per root with `frontier`, reused across the runs
+/// as in the timing, so its storage ends at the largest run's size.
+fn count_runs<G: Weighted, F: Frontier>(
+    graph: &G,
+    frontier: F,
+    roots: &[Vertex],
+    tree: &mut ShortestPathTree,
+    tick: impl Fn(),
+) -> FrontierMemory {
+    let kind = frontier.kind();
+    let base_bytes = frontier.heap_bytes();
+    let mut frontier = Measured::new(frontier);
+    let runs = roots
+        .iter()
+        .map(|&root| {
+            dijkstra_into(graph, root, &mut frontier, tree, &mut ())
+                .expect("negative weights are refused before measuring");
+            let counts = frontier.counts();
+            tick();
+            MemoryRun {
+                root,
+                settled: counts.pops,
+                decreases: counts.decreases,
+                peak_entries: counts.peak_len,
+            }
+        })
+        .collect();
+    FrontierMemory {
+        frontier: kind,
+        base_bytes,
+        allocated_bytes: frontier.heap_bytes(),
+        // An estimate and a vertex, padded to 16 bytes; the vector and the
+        // pairing heap keep theirs in the arrays indexed by vertex.
+        entry_bytes: match kind {
+            FrontierKind::Vector | FrontierKind::Pairing => 0,
+            _ => size_of::<(Weight, Vertex)>(),
+        },
+        runs,
+    }
 }
 
 /// Stops a run once the budget's deadline has passed. The clock is read
@@ -453,5 +577,67 @@ pub fn markdown(md: &mut String, studies: &[WeightedStudy]) {
             _ => "—".into(),
         };
         let _ = writeln!(md, " {ratio} |");
+    }
+
+    let measured: Vec<&WeightedStudy> = studies.iter().filter(|s| s.memory.is_some()).collect();
+    if measured.is_empty() {
+        return;
+    }
+    let _ = writeln!(md, "\n## 3. Memory of each frontier\n");
+    let _ = writeln!(
+        md,
+        "Bytes each frontier owns after a few untimed runs from the first sources: its arrays indexed by vertex, plus the entry storage the largest run needed (as allocated). In brackets, the most entries it held at once. The vector is sized, not run: one estimate per vertex, never grown. Decreases are the estimates handed in, one per relaxation that lowered one (the root's included): the ceiling for a frontier that pushes again instead of lowering a key.\n"
+    );
+    let kinds: Vec<FrontierKind> = FrontierKind::ALL
+        .into_iter()
+        .filter(|&k| {
+            measured.iter().any(|s| {
+                s.memory
+                    .as_ref()
+                    .is_some_and(|m| m.frontiers.iter().any(|f| f.frontier == k))
+            })
+        })
+        .collect();
+    let _ = write!(
+        md,
+        "| Graph | Vertices | Edges | Graph bytes | Tree bytes | Decreases |"
+    );
+    for k in &kinds {
+        let _ = write!(md, " {} |", k.label());
+    }
+    let _ = writeln!(
+        md,
+        "\n|---|---:|---:|---:|---:|---:|{}",
+        "---:|".repeat(kinds.len())
+    );
+    for s in measured {
+        let Some(memory) = &s.memory else { continue };
+        let decreases = memory
+            .frontiers
+            .iter()
+            .flat_map(|f| &f.runs)
+            .map(|r| r.decreases)
+            .max()
+            .map_or("—".into(), |d| d.to_string());
+        let _ = write!(
+            md,
+            "| {} | {} | {} | {} | {} | {decreases} |",
+            s.name,
+            s.vertices,
+            s.edges,
+            ui::bytes(memory.graph_bytes),
+            ui::bytes(memory.tree_bytes)
+        );
+        for &k in &kinds {
+            let cell = match memory.frontiers.iter().find(|f| f.frontier == k) {
+                None => "—".into(),
+                Some(f) => match f.runs.iter().map(|r| r.peak_entries).max() {
+                    Some(peak) => format!("{} ({peak})", ui::bytes(f.allocated_bytes)),
+                    None => ui::bytes(f.allocated_bytes),
+                },
+            };
+            let _ = write!(md, " {cell} |");
+        }
+        let _ = writeln!(md);
     }
 }

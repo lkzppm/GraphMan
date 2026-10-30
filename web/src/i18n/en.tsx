@@ -15,6 +15,9 @@ export const en = {
     presentation: 'Presentation',
     source: 'Source on GitHub',
     language: 'Language',
+    theme: 'Theme',
+    light: 'Light',
+    dark: 'Dark',
     menu: 'Menu',
     close: 'Close the menu',
   },
@@ -266,6 +269,7 @@ export const en = {
         lineHint: '// each dot is a vertex of the path, placed at its distance from the origin',
         at: (d: string, step: string, of: string) => ` at distance ${d}, step ${step} of ${of}`,
       },
+      chart: { label: 'What the chart shows', time: 'Time', memory: 'Memory' },
       timing: {
         title: 'Mean Dijkstra, vector vs heap',
         label: 'mean time of one Dijkstra, source to every vertex',
@@ -279,15 +283,30 @@ export const en = {
         },
         estimated: (time: string) => `≈ ${time}`,
         estimate: 'estimate',
+        estimateNote: (settled: string, reachable: string, elapsed: string, total: string) =>
+          `An estimate: no run finished within the budget. The one cut short settled ${settled} of ${reachable} vertices in ${elapsed}; every step of the vector scans all n estimates, so scaled to the whole component one run takes about ${total}.`,
         chartHint:
-          '// both axes logarithmic: drag to pan, pinch or ctrl + scroll to zoom, click a point to pin it, double-click to fit',
+          '// click a frontier on the right to take it off the chart or bring it back; slide the scale from linear to log; drag to pan, pinch or ctrl + scroll to zoom, click a point to pin it, double-click to fit',
+        scale: { label: 'Scale, from linear to logarithmic', linear: 'linear', log: 'log' },
+        scales: {
+          label: 'Scale of the times',
+          log: 'log',
+          vector: '% of vector',
+          heaps: 'no vector',
+          hint: {
+            log: 'Logarithmic scale: the same length for every factor of ten.',
+            vector: "Linear scale, the vector's time = 100%.",
+            heaps: "Linear scale without the vector: each graph's slowest other queue = 100%.",
+          },
+        },
+        toggle: (name: string) => `Take ${name} off the chart, or bring it back`,
         zoomIn: 'Zoom in',
         zoomOut: 'Zoom out',
         fit: 'Fit the chart',
         ofHeap: (x: string) => `${x}× the heap's time`,
         open: (name: string) => `open ${name}`,
-        order: 'fastest first',
         versusHeap: "×: times the heap's time",
+        versusHeapBytes: "×: times the heap's bytes",
         runs: (k: string, n: string) => `${k} of ${n} runs`,
         ratio: (x: string) => `the vector takes ${x} times the heap's time`,
         race: {
@@ -297,6 +316,21 @@ export const en = {
         },
         note: (runs: string, machine: string) =>
           `${runs} random sources per frontier, each run timed alone on CSR, reading and writing excluded. Each frontier has a time budget: "k of ${runs} runs" is how many finished in it, and a dashed bar is an estimate, the one run cut short scaled to its whole component. ${machine}`,
+      },
+      memory: {
+        title: 'Memory of each frontier',
+        label: (frontier: string, base: string, entries: string, slack: string) =>
+          `${frontier}: ${base} indexed by vertex, ${entries} of entries at the peak, ${slack} of room kept`,
+        key: {
+          base: 'arrays indexed by vertex',
+          entries: 'entries at the peak',
+          slack: 'room the storage kept',
+        },
+        slots: 'slots: one per vertex, always',
+        ofN: (percent: string) => `entries at the peak, ${percent} of n`,
+        versusHeap: (x: string) => `entries at the peak, ×${x} the heap's`,
+        scale: (graph: string, tree: string, decreases: string, n: string) =>
+          `For scale: the graph itself takes ${graph}, the shortest-path tree ${tree}. A run hands its queue up to ${decreases} estimates, one per relaxation that lowers one. A heap with decrease-key holds at most one entry per vertex (${n}); the lazy and radix heaps push every lowered estimate again and skip the stale copy later, so they can hold all of them: no search for the vertex, paid for in memory.`,
       },
       network: {
         title: 'From Edsger W. Dijkstra',
@@ -855,7 +889,7 @@ export const en = {
           ties: '// ties go to the smaller vertex: the six build the same tree',
         },
         timing: {
-          eyebrow: '04',
+          eyebrow: '05',
           title: 'Vector against heap',
           columns: {
             graph: 'Graph',
@@ -878,8 +912,69 @@ export const en = {
             "The course's weighted graphs have not been run yet: `graphman study` fills this sheet.",
           cta: 'Open the case studies',
         },
+        memory: {
+          eyebrow: '04',
+          title: 'What each queue keeps',
+          groups: ['the course', 'faster in practice'],
+          items: [
+            {
+              name: 'VectorFrontier',
+              title: 'Vector',
+              cost: '8n B, fixed',
+              caption: '// one estimate a vertex, ∞ outside the frontier: never grows',
+            },
+            {
+              name: 'HeapFrontier',
+              title: 'Heap, decrease-key',
+              cost: '4n B + 16 B an entry',
+              caption: '// position[v] finds the entry: at most one a vertex, n in all',
+            },
+            {
+              name: 'LazyHeapFrontier',
+              title: 'Lazy heap',
+              cost: '8n B + 16 B an entry',
+              caption: '// a lowered estimate is pushed again: up to one a relaxation, m in all',
+            },
+            {
+              name: 'QuadHeapFrontier',
+              title: '4-ary heap',
+              cost: '4n B + 16 B an entry',
+              caption: "// the binary heap's bytes exactly: only the shape changes",
+            },
+            {
+              name: 'PairingHeapFrontier',
+              title: 'Pairing heap',
+              cost: '20n B, fixed',
+              caption: '// a key and three links a vertex: the vertex is its own node',
+            },
+            {
+              name: 'RadixHeapFrontier',
+              title: 'Radix heap',
+              cost: '8n B + 16 B an entry',
+              caption:
+                '// pushes again like the lazy heap, and every bucket keeps its largest size',
+            },
+          ],
+          key: '// pushing again spares the search for the vertex; the price is memory, up to m entries instead of n',
+        },
+        memoryMeasured: {
+          eyebrow: '06',
+          title: 'Memory, measured',
+          columns: {
+            graph: 'Graph',
+            size: 'Size',
+            bytes: 'Bytes during one Dijkstra',
+            peak: 'Heap at its peak',
+            lazy: 'Lazy ÷ heap',
+          },
+          share: (percent: number) => `${percent}% of n`,
+          note: (graph: string, bytes: string) =>
+            `What each queue owns during one Dijkstra from five random sources: its arrays indexed by vertex and its entries, as allocated. Bars are scaled per graph; the vector is sized, not run. Heap at its peak: the most entries it held, against n. Lazy ÷ heap: the lazy heap's most entries against the heap's. For scale, ${graph} itself takes ${bytes}.`,
+          pending: 'Filled by `graphman study --only frontier-memory`.',
+          cta: 'Open the case studies',
+        },
         paths: {
-          eyebrow: '05',
+          eyebrow: '07',
           title: 'Shortest paths',
           label: 'From vertex 10',
           caption: '// distance to 20, 30, 40, 50 and 60, and how many edges it takes',
@@ -889,7 +984,7 @@ export const en = {
           pending: 'Filled by `graphman study` once the course files are run.',
         },
         names: {
-          eyebrow: '06',
+          eyebrow: '08',
           title: 'Names',
           input: {
             label: 'input',
@@ -914,7 +1009,7 @@ export const en = {
           ],
         },
         network: {
-          eyebrow: '07',
+          eyebrow: '09',
           title: 'From Edsger W. Dijkstra',
           label: 'Collaboration network',
           facts: (people: string, links: string) =>
@@ -924,7 +1019,7 @@ export const en = {
           hops: (n: number) => (n === 1 ? '1 collaboration' : `${n} collaborations`),
           pending: 'Filled by `graphman study` once the course files are run.',
         },
-        observatory: '08',
+        observatory: '10',
       },
     },
   },

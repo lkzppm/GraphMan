@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { onThemeFade } from '@/lib/theme';
 import styles from './Constellation.module.css';
 
 /**
@@ -24,8 +25,16 @@ export default function Constellation({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const accent =
-      getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#0070f3';
+    // The theme's blue, grey and edge ink, read again while a switch eases them.
+    const colours = { accent: '', grey: '', edge: '' };
+    const readColours = () => {
+      const style = getComputedStyle(document.documentElement);
+      colours.accent = style.getPropertyValue('--accent').trim() || '#0070f3';
+      colours.grey = style.getPropertyValue('--border-2').trim() || '#cfcfcf';
+      colours.edge = style.getPropertyValue('--edge').trim() || 'rgba(23, 23, 23, 0.14)';
+    };
+    readColours();
+    const offTheme = onThemeFade(readColours);
     const LINK = 120;
     const dots = Array.from({ length: count }, () => ({
       x: Math.random(),
@@ -101,7 +110,8 @@ export default function Constellation({
           const d2 = dx * dx + dy * dy;
           if (d2 >= LINK * LINK) continue;
           const t = 1 - Math.sqrt(d2) / LINK;
-          ctx.strokeStyle = `rgba(23, 23, 23, ${(0.14 * t).toFixed(3)})`;
+          ctx.strokeStyle = colours.edge;
+          ctx.globalAlpha = t;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
           ctx.lineTo(b.x, b.y);
@@ -109,7 +119,7 @@ export default function Constellation({
         }
       }
       for (const d of dots) {
-        ctx.fillStyle = d.blue ? accent : '#cfcfcf';
+        ctx.fillStyle = d.blue ? colours.accent : colours.grey;
         ctx.globalAlpha = d.blue ? 0.75 : 1;
         ctx.beginPath();
         ctx.arc(d.x, d.y, d.blue ? 2.6 : 2.1, 0, Math.PI * 2);
@@ -120,6 +130,7 @@ export default function Constellation({
     frame = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(frame);
+      offTheme();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerleave', onLeave);
       document.removeEventListener('pointerleave', onLeave);

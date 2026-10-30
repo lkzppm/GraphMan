@@ -88,6 +88,7 @@ import { createPortal } from 'react-dom';
 import Constellation from '@/components/Constellation';
 import RepresentationPicto from '@/components/RepresentationPicto';
 import { useT } from '@/i18n/LocaleProvider';
+import { onThemeFade } from '@/lib/theme';
 import type { Dictionary } from '@/i18n';
 import styles from './Observatory.module.css';
 import Structures, {
@@ -634,6 +635,11 @@ export default function Observatory() {
       lease.release();
     };
   }, []);
+
+  // The canvas takes its colours from the CSS variables: while a theme
+  // switch eases them, the renderer is handed them every frame (the label
+  // overlay reads them every frame anyway).
+  useEffect(() => onThemeFade(() => rendererRef.current?.setTheme(readTheme())), []);
 
   // ---- camera ----------------------------------------------------------------
 

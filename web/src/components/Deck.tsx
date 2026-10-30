@@ -15,7 +15,17 @@ import {
 import { siNextdotjs, siRust, siVercel, siWebassembly, siWebgpu } from 'simple-icons';
 import { useT } from '@/i18n/LocaleProvider';
 import { at, Bar, Head, type T } from './deck-kit';
-import { Dijkstra, Frontiers, Names, Network, Paths, Timing, Weights } from './DeckPart2';
+import {
+  Dijkstra,
+  Frontiers,
+  Memory,
+  MemoryMeasured,
+  Names,
+  Network,
+  Paths,
+  Timing,
+  Weights,
+} from './DeckPart2';
 import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/lib/format';
 import { logScale } from '@/lib/scale';
 import type { DiameterMethod, GraphStudy, Representation, WeightedStudy } from '@/lib/studies';
@@ -97,7 +107,9 @@ export default function Deck({
           <Weights key="weights" t={t} />,
           <Dijkstra key="dijkstra" t={t} />,
           <Frontiers key="frontiers" t={t} />,
+          <Memory key="memory" t={t} />,
           <Timing key="timing" t={t} studies={weighted} />,
+          <MemoryMeasured key="memory-measured" t={t} studies={weighted} />,
           <Paths key="paths" t={t} studies={weighted} />,
           <Names key="names" t={t} />,
           <Network key="network" t={t} studies={weighted} />,
@@ -624,7 +636,7 @@ function FigBudget() {
 const METHODS: DiameterMethod[] = ['exact', 'i_fub', 'bounds', 'sweep'];
 const METHOD_COLOURS: Record<DiameterMethod, string> = {
   exact: 'var(--level-0)',
-  i_fub: 'color-mix(in srgb, var(--accent) 55%, white)',
+  i_fub: 'color-mix(in srgb, var(--accent) 55%, var(--ramp-fade))',
   bounds: 'var(--accent)',
   sweep: 'var(--accent-2)',
 };

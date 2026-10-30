@@ -1653,6 +1653,77 @@
   border-color: var(--colour);
 }
 
+/* The bars' head: its name, and at its end the switch between the three
+   scales, a thumb sliding under the chosen one. */
+.timeHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.scaleSwitch {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.scaleThumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / 3);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--accent-muted);
+  transform: translateX(calc(100% * var(--i, 0)));
+  transition: transform 0.32s var(--ease);
+}
+
+.scaleButton {
+  position: relative;
+  padding: 3px 10px;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  white-space: nowrap;
+  color: var(--fg-3);
+  cursor: pointer;
+  transition: color 0.25s var(--ease);
+}
+
+.scaleButton:hover {
+  color: var(--fg);
+}
+
+.scaleButton[aria-pressed='true'] {
+  color: var(--accent);
+}
+
+/* Once the scale has changed, the bars slide to their new length instead
+   of growing again; the one left out of the scale shrinks away. */
+.sheet[data-moved] .timingRow .fill {
+  animation: none;
+  width: var(--w);
+  transition:
+    width 0.7s var(--ease),
+    opacity 0.4s var(--ease);
+}
+
+.timingRow .barRow[data-off] .fill {
+  opacity: 0;
+}
+
+.timingRow .barRow[data-off] .barValue {
+  color: var(--fg-3);
+}
+
 .swatch[data-key='vector'] {
   background: var(--queue-vector);
 }
@@ -1682,7 +1753,43 @@
   font-size: 14px;
 }
 
-/* ---- part 2 · 05 paths, 06 names, 07 the network ------------------------- */
+/* ---- part 2 · 05 what each queue keeps, 06 memory, measured --------------- */
+
+/* 05: a queue's arrays, a pixel a byte. A field's name sits right-aligned
+   before its row; a stale entry is struck through, the room a growing
+   array keeps is dashed, and a dashed tick marks n entries. */
+.figLabelEnd {
+  font-family: var(--font-mono);
+  font-size: 6.5px;
+  fill: var(--fg-3);
+  text-anchor: end;
+}
+
+.figStrike {
+  stroke: var(--fg-3);
+  stroke-width: 1;
+}
+
+.figSlack {
+  fill: none;
+  stroke: var(--border-2);
+  stroke-width: 1;
+  stroke-dasharray: 2 1.5;
+}
+
+.figTick {
+  stroke: var(--fg-3);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+/* 06: the timing sheet's rows, with two answers after the bars. */
+.sheetHead.memoryRow,
+.row.memoryRow {
+  grid-template-columns: 170px 130px minmax(0, 1fr) 130px 130px;
+}
+
+/* ---- part 2 · 07 paths, 08 names, 09 the network ------------------------- */
 
 .pathsPanel {
   display: flex;

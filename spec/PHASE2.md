@@ -134,7 +134,10 @@ pub trait Frontier {
     fn reset(&mut self, vertex_count: usize);
     fn decrease(&mut self, v: Vertex, distance: Weight); // insert or lower
     fn pop_min(&mut self) -> Option<(Vertex, Weight)>;   // smallest, then smaller id
+    fn len(&self) -> usize;          // entries held, stale ones included
+    fn heap_bytes(&self) -> usize;   // per-vertex arrays + entry storage, as allocated
     fn kind(&self) -> FrontierKind;
+    fn entries(&self) -> Vec<FrontierEntry>; // for drawing it
 }
 
 pub fn dijkstra_into<G: Weighted, F: Frontier, V: Visitor>(
@@ -158,6 +161,24 @@ pub fn dijkstra_into<G: Weighted, F: Frontier, V: Visitor>(
   buys.
 - `FrontierKind` (`vector`, `heap`, `lazy-heap`) picks one at runtime, like
   `Representation`; `algo::dijkstra(&g, root, kind)` is the one-call form.
+- **`Measured<F>`** wraps any frontier and counts what goes through it:
+  the `decrease` calls (one per improving relaxation, the same for every
+  frontier), the pops, and the most entries held at once (read with `len`
+  just before each pop, since entries only pile up between pops). It is a
+  frontier itself, so the memory question needs no second Dijkstra.
+
+What each one holds (16 B is an estimate and a vertex, padded):
+
+| Frontier | Per vertex | Entries | Bound on entries |
+|---|---|---|---|
+| vector | 8 B estimate | none | the n slots |
+| heap, 4-ary heap | 4 B position | 16 B | n (one per vertex) |
+| lazy heap | 8 B latest | 16 B | m + 1 (one per improving relaxation) |
+| pairing heap | 8 B key + 3 × 4 B links | none (the vertex is the node) | n |
+| radix heap | 8 B latest | 16 B, 64 buckets | m + 1 |
+
+The professor's "easy way out" (push again, skip on a second pop) is the
+lazy heap; its price is the m + 1 bound and the stale pops.
 
 First numbers (the Part 1 graphs' edges with uniform weights in `[0, 1]`
 from `graphman generate --like`, CSR, release, M5, mean per source):
@@ -230,10 +251,28 @@ measured over two whole runs. The results go to
 weight records the refusal. `--only` (also for the Part 1 sections) reruns
 some sections and keeps the rest of the previous JSON.
 
+A third section, `frontier-memory`, answers what each frontier holds:
+`--memory-runs` (5) untimed Dijkstras per frontier from the first of the
+timing's roots, through `Measured`, the frontier reused across the runs as
+in the timing so its storage ends at the largest run's size. Per frontier
+it records `base_bytes` (sized for the graph, before any run),
+`allocated_bytes` (after the runs, with the growth slack a `Vec` keeps),
+`entry_bytes`, and per run the settled vertices, the decreases and the
+peak entries; beside them the graph's and the tree's bytes, for scale. The
+vector is sized, not run: its array never grows and its runs take hours.
+On the course graphs the indexed heap peaks at 95% of n on the dense
+grafo_W_3 down to 14% on the sparse grafo_W_7, the lazy heap at 3.8 to 1.1
+times that (more entries than vertices on grafo_W_5 and grafo_W_6), and the
+radix heap allocates the most, since each of its 64 buckets keeps the
+largest size it reached. On grafo_W_7 the per-vertex arrays dominate: the
+heap (4 B a vertex) ends smaller than the vector (8 B), the pairing heap
+(20 B) near 1 GB.
+
 ### Done, and what is left
 
-- **Studies run** on the course files (2026-10-22): `grafo_W_{3,4,5}` and
-  the collaboration network, in `studies/weighted/`; the files themselves
+- **Studies run** on the course files: `grafo_W_{3,4,5}` and the
+  collaboration network (2026-10-22), `grafo_W_{6,7}` (2026-10-30), in
+  `studies/weighted/`; the files themselves
   are described in `spec/ASSIGNMENT.md`. The report draft is
   `docs/relatorio-P2.md`.
 - **Web.** The observatory has Dijkstra as a third search with a
