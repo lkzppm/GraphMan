@@ -12,6 +12,7 @@ use super::frontier::{
 };
 use super::traversal::{Control, Visitor};
 use crate::graph::{NO_VERTEX, Vertex, Weight, Weighted, WeightedEdge};
+use core::mem::size_of;
 use std::io::{self, Write};
 
 /// Dijkstra was asked to run on a graph with a negative edge.
@@ -130,6 +131,15 @@ impl ShortestPathTree {
         }
         path.reverse();
         Some(path)
+    }
+
+    /// Bytes the tree owns on the heap: the parents, distances, settle
+    /// order, touched list and settled bits, the same for every frontier.
+    pub fn heap_bytes(&self) -> usize {
+        self.parent.capacity() * size_of::<Vertex>()
+            + self.distance.capacity() * size_of::<Weight>()
+            + (self.order.capacity() + self.touched.capacity()) * size_of::<Vertex>()
+            + self.settled.capacity() * size_of::<u64>()
     }
 
     /// Raw parent array indexed by vertex (`NO_VERTEX` = none). Only settled

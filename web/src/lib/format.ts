@@ -45,3 +45,11 @@ export function graphNumber(name: string): string {
   const match = /^grafo_(\d+)$/.exec(name);
   return match ? match[1] : name;
 }
+
+/** A share in percent: two significant digits below 10 (`0.0018%`, `4.2%`),
+    whole above (`53%`, `100%`). */
+export function formatPercent(percent: number): string {
+  if (percent <= 0) return '0%';
+  if (percent >= 10) return `${Math.round(percent)}%`;
+  return `${Number(percent.toPrecision(2))}%`;
+}

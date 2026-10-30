@@ -30,6 +30,7 @@
 use crate::graph::{NO_VERTEX, Vertex, Weight};
 use core::cmp::Ordering;
 use core::fmt;
+use core::mem::size_of;
 use core::str::FromStr;
 use std::collections::BinaryHeap;
 
@@ -50,6 +51,23 @@ pub trait Frontier {
     /// Removes and returns the vertex with the smallest estimate (the
     /// smaller id on a tie), or `None` when the frontier is empty.
     fn pop_min(&mut self) -> Option<(Vertex, Weight)>;
+
+    /// How many entries the frontier holds right now. For the vector, the
+    /// indexed heaps and the pairing heap, the vertices with an estimate;
+    /// for the lazy and the radix heaps, every estimate pushed and not yet
+    /// popped or skipped, stale ones included.
+    fn len(&self) -> usize;
+
+    /// Whether the frontier holds no entry.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Bytes the frontier owns on the heap: its arrays indexed by vertex
+    /// plus the capacity of its entry storage, which keeps the largest size
+    /// any run needed (the memory a strategy costs, as opposed to the
+    /// process RSS).
+    fn heap_bytes(&self) -> usize;
 
     /// Which strategy this is.
     fn kind(&self) -> FrontierKind;
@@ -163,6 +181,14 @@ impl Frontier for VectorFrontier {
         self.estimate[best] = Weight::INFINITY;
         self.len -= 1;
         Some((best as Vertex, best_distance))
+    }
+
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn heap_bytes(&self) -> usize {
+        self.estimate.capacity() * size_of::<Weight>()
     }
 
     fn kind(&self) -> FrontierKind {
@@ -303,6 +329,15 @@ impl<const D: usize> Frontier for DaryHeapFrontier<D> {
         Some((top.1, top.0))
     }
 
+    fn len(&self) -> usize {
+        self.heap.len()
+    }
+
+    fn heap_bytes(&self) -> usize {
+        self.heap.capacity() * size_of::<(Weight, Vertex)>()
+            + self.position.capacity() * size_of::<u32>()
+    }
+
     fn kind(&self) -> FrontierKind {
         match D {
             2 => FrontierKind::Heap,
@@ -404,6 +439,14 @@ impl Frontier for LazyHeapFrontier {
             }
         }
         None
+    }
+
+    fn len(&self) -> usize {
+        self.heap.len()
+    }
+
+    fn heap_bytes(&self) -> usize {
+        self.heap.capacity() * size_of::<Entry>() + self.latest.capacity() * size_of::<Weight>()
     }
 
     fn kind(&self) -> FrontierKind {
@@ -578,6 +621,18 @@ impl Frontier for PairingHeapFrontier {
         Some((top, distance))
     }
 
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn heap_bytes(&self) -> usize {
+        self.key.capacity() * size_of::<Weight>()
+            + [&self.child, &self.next, &self.prev, &self.scratch]
+                .iter()
+                .map(|links| links.capacity() * size_of::<Vertex>())
+                .sum::<usize>()
+    }
+
     fn kind(&self) -> FrontierKind {
         FrontierKind::Pairing
     }
@@ -733,6 +788,21 @@ impl Frontier for RadixHeapFrontier {
         }
     }
 
+    fn len(&self) -> usize {
+        self.equal.len() + self.buckets.iter().map(Vec::len).sum::<usize>()
+    }
+
+    fn heap_bytes(&self) -> usize {
+        self.buckets.capacity() * size_of::<Vec<(u64, Vertex)>>()
+            + self
+                .buckets
+                .iter()
+                .map(|bucket| bucket.capacity() * size_of::<(u64, Vertex)>())
+                .sum::<usize>()
+            + self.equal.capacity() * size_of::<core::cmp::Reverse<Vertex>>()
+            + self.latest.capacity() * size_of::<u64>()
+    }
+
     fn kind(&self) -> FrontierKind {
         FrontierKind::Radix
     }
@@ -757,6 +827,84 @@ impl Frontier for RadixHeapFrontier {
                 bucket: Some(bucket),
             })
             .collect()
+    }
+}
+
+/// What a [`Measured`] frontier saw during one run.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FrontierCounts {
+    /// Calls to `decrease`: one per estimate that dropped, the first
+    /// estimate of a vertex included. The same for every frontier, since
+    /// they all settle in the same order.
+    pub decreases: usize,
+    /// Vertices popped, which are the vertices settled.
+    pub pops: usize,
+    /// The most entries the frontier held at once, stale ones included.
+    pub peak_len: usize,
+}
+
+/// A frontier that counts what goes through another: the estimates it
+/// receives, the vertices it gives back and the most entries it holds at
+/// once. For measuring a strategy's memory, not for timing it, since every
+/// pop reads [`len`](Frontier::len) first. [`reset`](Frontier::reset)
+/// starts the counts again, so they describe the last run.
+#[derive(Debug, Clone, Default)]
+pub struct Measured<F> {
+    inner: F,
+    counts: FrontierCounts,
+}
+
+impl<F: Frontier> Measured<F> {
+    /// Wraps `inner`, with every count at zero.
+    pub fn new(inner: F) -> Self {
+        Self {
+            inner,
+            counts: FrontierCounts::default(),
+        }
+    }
+
+    /// The counts since the last [`reset`](Frontier::reset).
+    pub fn counts(&self) -> FrontierCounts {
+        self.counts
+    }
+}
+
+impl<F: Frontier> Frontier for Measured<F> {
+    fn reset(&mut self, vertex_count: usize) {
+        self.inner.reset(vertex_count);
+        self.counts = FrontierCounts::default();
+    }
+
+    #[inline]
+    fn decrease(&mut self, v: Vertex, distance: Weight) {
+        self.counts.decreases += 1;
+        self.inner.decrease(v, distance);
+    }
+
+    #[inline]
+    fn pop_min(&mut self) -> Option<(Vertex, Weight)> {
+        // Entries only pile up between pops, so the largest size is the
+        // one seen just before some pop.
+        self.counts.peak_len = self.counts.peak_len.max(self.inner.len());
+        let popped = self.inner.pop_min();
+        self.counts.pops += usize::from(popped.is_some());
+        popped
+    }
+
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn heap_bytes(&self) -> usize {
+        self.inner.heap_bytes()
+    }
+
+    fn kind(&self) -> FrontierKind {
+        self.inner.kind()
+    }
+
+    fn entries(&self) -> Vec<FrontierEntry> {
+        self.inner.entries()
     }
 }
 
@@ -976,6 +1124,43 @@ mod tests {
                 .any(|e| e.vertex == 2 && e.estimate == 9.0 && e.stale)
         );
         assert_eq!(filed.iter().filter(|e| !e.stale).count(), 5);
+    }
+
+    #[test]
+    fn measured_counts_what_goes_through() {
+        fn run<F: Frontier>(frontier: F) -> Measured<F> {
+            let mut measured = Measured::new(frontier);
+            measured.reset(4);
+            for (v, d) in [(1, 5.0), (2, 4.0), (1, 3.0), (3, 6.0)] {
+                measured.decrease(v, d);
+            }
+            assert_eq!(measured.pop_min(), Some((1, 3.0)));
+            measured.decrease(2, 3.5);
+            while measured.pop_min().is_some() {}
+            assert!(measured.is_empty(), "{}", measured.kind());
+            measured
+        }
+        // Three vertices at most for a decrease-key frontier; four entries
+        // for the two that push a lowered estimate again.
+        for (measured, peak) in [
+            (run(VectorFrontier::default()).counts(), 3),
+            (run(HeapFrontier::default()).counts(), 3),
+            (run(QuadHeapFrontier::default()).counts(), 3),
+            (run(PairingHeapFrontier::default()).counts(), 3),
+            (run(LazyHeapFrontier::default()).counts(), 4),
+            (run(RadixHeapFrontier::default()).counts(), 4),
+        ] {
+            let expected = FrontierCounts {
+                decreases: 5,
+                pops: 3,
+                peak_len: peak,
+            };
+            assert_eq!(measured, expected);
+        }
+        // One estimate per vertex slot, 0 to 4.
+        assert_eq!(run(VectorFrontier::default()).heap_bytes(), 5 * 8);
+        // At least three 16-byte entries, and the 4-byte index of each slot.
+        assert!(run(HeapFrontier::default()).heap_bytes() >= 3 * 16 + 5 * 4);
     }
 
     #[test]

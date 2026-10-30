@@ -6,7 +6,7 @@
   "edges": 6099868,
   "self_loops_dropped": 0,
   "duplicates_dropped": 73,
-  "parse_ms": 364.49975,
+  "parse_ms": 365.745708,
   "weights": {
     "min": 0.0,
     "max": 10.0,
@@ -294,7 +294,7 @@
       "budget_s": 1500.0,
       "timing": {
         "runs": 100,
-        "mean_ms": 26.946297169999998,
+        "mean_ms": 26.94629717,
         "median_ms": 26.583667,
         "min_ms": 25.84625,
         "max_ms": 34.401666,
@@ -305,6 +305,209 @@
       "partial": null
     }
   ],
+  "memory": {
+    "graph_bytes": 146796840,
+    "tree_bytes": 2012516,
+    "frontiers": [
+      {
+        "frontier": "vector",
+        "base_bytes": 800008,
+        "allocated_bytes": 800008,
+        "entry_bytes": 0,
+        "runs": []
+      },
+      {
+        "frontier": "heap",
+        "base_bytes": 400004,
+        "allocated_bytes": 2497156,
+        "entry_bytes": 16,
+        "runs": [
+          {
+            "root": 75414,
+            "settled": 100000,
+            "decreases": 437461,
+            "peak_entries": 95260
+          },
+          {
+            "root": 92292,
+            "settled": 100000,
+            "decreases": 437082,
+            "peak_entries": 95243
+          },
+          {
+            "root": 63859,
+            "settled": 100000,
+            "decreases": 437242,
+            "peak_entries": 95304
+          },
+          {
+            "root": 55765,
+            "settled": 100000,
+            "decreases": 437475,
+            "peak_entries": 95263
+          },
+          {
+            "root": 63251,
+            "settled": 100000,
+            "decreases": 438008,
+            "peak_entries": 95258
+          }
+        ]
+      },
+      {
+        "frontier": "lazy_heap",
+        "base_bytes": 800008,
+        "allocated_bytes": 9188616,
+        "entry_bytes": 16,
+        "runs": [
+          {
+            "root": 75414,
+            "settled": 100000,
+            "decreases": 437461,
+            "peak_entries": 364807
+          },
+          {
+            "root": 92292,
+            "settled": 100000,
+            "decreases": 437082,
+            "peak_entries": 364374
+          },
+          {
+            "root": 63859,
+            "settled": 100000,
+            "decreases": 437242,
+            "peak_entries": 364478
+          },
+          {
+            "root": 55765,
+            "settled": 100000,
+            "decreases": 437475,
+            "peak_entries": 364909
+          },
+          {
+            "root": 63251,
+            "settled": 100000,
+            "decreases": 438008,
+            "peak_entries": 365348
+          }
+        ]
+      },
+      {
+        "frontier": "quad_heap",
+        "base_bytes": 400004,
+        "allocated_bytes": 2497156,
+        "entry_bytes": 16,
+        "runs": [
+          {
+            "root": 75414,
+            "settled": 100000,
+            "decreases": 437461,
+            "peak_entries": 95260
+          },
+          {
+            "root": 92292,
+            "settled": 100000,
+            "decreases": 437082,
+            "peak_entries": 95243
+          },
+          {
+            "root": 63859,
+            "settled": 100000,
+            "decreases": 437242,
+            "peak_entries": 95304
+          },
+          {
+            "root": 55765,
+            "settled": 100000,
+            "decreases": 437475,
+            "peak_entries": 95263
+          },
+          {
+            "root": 63251,
+            "settled": 100000,
+            "decreases": 438008,
+            "peak_entries": 95258
+          }
+        ]
+      },
+      {
+        "frontier": "pairing",
+        "base_bytes": 2000020,
+        "allocated_bytes": 2004116,
+        "entry_bytes": 0,
+        "runs": [
+          {
+            "root": 75414,
+            "settled": 100000,
+            "decreases": 437461,
+            "peak_entries": 95260
+          },
+          {
+            "root": 92292,
+            "settled": 100000,
+            "decreases": 437082,
+            "peak_entries": 95243
+          },
+          {
+            "root": 63859,
+            "settled": 100000,
+            "decreases": 437242,
+            "peak_entries": 95304
+          },
+          {
+            "root": 55765,
+            "settled": 100000,
+            "decreases": 437475,
+            "peak_entries": 95263
+          },
+          {
+            "root": 63251,
+            "settled": 100000,
+            "decreases": 438008,
+            "peak_entries": 95258
+          }
+        ]
+      },
+      {
+        "frontier": "radix",
+        "base_bytes": 801568,
+        "allocated_bytes": 13268768,
+        "entry_bytes": 16,
+        "runs": [
+          {
+            "root": 75414,
+            "settled": 100000,
+            "decreases": 437461,
+            "peak_entries": 359748
+          },
+          {
+            "root": 92292,
+            "settled": 100000,
+            "decreases": 437082,
+            "peak_entries": 360540
+          },
+          {
+            "root": 63859,
+            "settled": 100000,
+            "decreases": 437242,
+            "peak_entries": 361359
+          },
+          {
+            "root": 55765,
+            "settled": 100000,
+            "decreases": 437475,
+            "peak_entries": 359617
+          },
+          {
+            "root": 63251,
+            "settled": 100000,
+            "decreases": 438008,
+            "peak_entries": 358713
+          }
+        ]
+      }
+    ]
+  },
   "machine": {
     "os": "macos",
     "arch": "aarch64",
@@ -312,5 +515,5 @@
     "total_memory_bytes": 17179869184,
     "threads": 10
   },
-  "generated_at_unix": 1792694998
+  "generated_at_unix": 1793344502
 }

@@ -136,13 +136,15 @@ co-authored papers, so a small weight means close collaborators):
 **Timing rule** (carried over from Part 1): measure the algorithm only, not
 parsing or writing results.
 
-## The files (downloaded 2026-10-22)
+## The files (downloaded 2026-10-22, W6 and W7 on 2026-10-29)
 
 | File | Vertices | Edges | Weights | Notes |
 |---|---|---|---|---|
 | `grafo_W_3.txt` | 100,000 | 6,099,868 | 0 to 10 | 73 duplicate lines, connected |
 | `grafo_W_4.txt` | 1,000,000 | 30,999,944 | 0 to 10 | 34 duplicate lines, connected |
 | `grafo_W_5.txt` | 10,000,000 | 39,999,991 | 0 to 10 | 4 duplicate lines, connected |
+| `grafo_W_6.txt` | 10,000,000 | 73,403,372 | 0 to 10 | published 2026-10-29; 9,999,997 vertices reachable from a random root |
+| `grafo_W_7.txt` | 50,000,000 | 59,999,999 | 0 to 10 | published 2026-10-29; connected |
 | `rede_colaboracao.txt` | 722,385 | 2,272,543 | 0.0037 to 113 | 77,486 components, largest 576,309 |
 
 - The weighted graphs are new random graphs, not the Part 1 graphs with
@@ -157,6 +159,7 @@ parsing or writing results.
   to him: the two are a component of their own, so there is no path from
   Dijkstra and the answer is "unreachable", not a distance.
 - The vector Dijkstra is `O(n²)` per source: about 2 s on `grafo_W_3`,
-  minutes on `grafo_W_4` and hours on `grafo_W_5` (Apple M5). The study runs
+  minutes on `grafo_W_4`, hours on `grafo_W_5` and `grafo_W_6`, and about
+  two weeks on `grafo_W_7` (Apple M5). The study runs
   it under `--dijkstra-budget`, reporting the runs that finished or an
   estimate from the run cut short, like the Part 1 matrix memory refusals.

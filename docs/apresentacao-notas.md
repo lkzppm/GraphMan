@@ -113,10 +113,12 @@ linha por linha: apontar três coisas e mandar para a aba de estudos de caso.
 
 ---
 
-# Parte 2: grafos com pesos (8 minutos)
+# Parte 2: grafos com pesos (10 minutos)
 
-Seis slides em `/presentation#part-2` (ou na capa, o seletor Parte 1 /
-Parte 2; as teclas `1` e `2` também trocam). Tempos somam 7 min 30 s.
+Onze slides em `/presentation#part-2` (ou na capa, o seletor Parte 1 /
+Parte 2; as teclas `1` e `2` também trocam). Tempos somam cerca de
+9 min 30 s; se o tempo for de 8 minutos, encurtar os slides 4 (as seis
+filas, só as três da disciplina) e 9 (nomes).
 
 Antes de começar: abrir `graphman-ufrj.vercel.app/presentation#part-2`,
 `F` para tela cheia, e uma segunda aba com `/observatory` para a demo
@@ -124,10 +126,10 @@ Antes de começar: abrir `graphman-ufrj.vercel.app/presentation#part-2`,
 
 ## Slide 1, capa (20 s)
 
-- "A Parte 2 entrou na mesma biblioteca: pesos, Dijkstra com vetor e com
-  heap, e nomes de vértices." Só isso; o seletor mostra as duas partes.
+- "A Parte 2 entrou na mesma biblioteca: pesos, Dijkstra com seis filas de
+  prioridade, e nomes de vértices." Só isso; o seletor mostra as duas partes.
 
-## Slide 2, pesos (1 min 15 s)
+## Slide 2, pesos (1 min)
 
 Deixar a Figura 1 do enunciado virar os arrays da CSR.
 
@@ -141,7 +143,7 @@ Deixar a Figura 1 do enunciado virar os arrays da CSR.
   tipado, "pesos negativos ainda não implementados", em vez de dar uma
   resposta errada. Nenhum grafo da disciplina tem peso negativo.
 
-## Slide 3, um Dijkstra, três fronteiras (1 min 45 s)
+## Slide 3, um Dijkstra, escrito uma vez (45 s)
 
 O coração da Parte 2: o enunciado pede para não escrever o Dijkstra duas
 vezes.
@@ -149,50 +151,118 @@ vezes.
 - O código na tela é tudo: um trait `Frontier` com `decrease` e `pop_min`,
   e um `dijkstra_into` escrito uma vez. É a ideia da Parte 1 (a
   representação é uma estratégia) um nível abaixo.
+- Empates vão para o menor vértice, então toda fila constrói **a mesma
+  árvore**, e os testes exigem isso.
+
+## Slide 4, seis filas de prioridade (1 min 15 s)
+
 - **Vetor**: o cursor varre tudo para achar o menor. `O(n²)`.
 - **Heap com decrease-key**: o heap é nosso, com `position[v]`, então
-  baixar a chave acha a entrada direto e ela sobe. É a "modificação
-  eficiente de chave" que o enunciado cobra.
-- **Heap lazy**: o `BinaryHeap` da biblioteca padrão, sem decrease-key;
-  insere de novo e descarta a cópia velha. Está aí como régua.
-- Fechar com a linha de baixo: empates vão para o menor vértice, então as
-  três constroem **a mesma árvore**, e os testes exigem isso.
+  baixar a chave acha a entrada em `O(1)` e ela sobe. É a dica do
+  professor por e-mail: procurar o vértice dentro do heap anularia o heap.
+- **Heap preguiçoso**: o `BinaryHeap` da biblioteca padrão, sem
+  decrease-key. É exatamente a "saída fácil" do e-mail: insere de novo
+  toda vez que a estimativa baixa, e na segunda vez que o vértice sai
+  ele é pulado (o vetor de marcação é `latest[v]`). Está aí como régua.
+- As três de baixo são as que vão mais rápido na prática: o heap 4-ário
+  (metade dos níveis para subir), o pairing heap (corta e funde) e o
+  radix heap (baldes pelos bits da distância, sem comparar chaves).
 
-## Slide 4, vetor contra heap (1 min 45 s)
+## Slide 5, o que cada fila guarda (1 min)
 
-A tabela que o enunciado pede, em barras com escala log.
+A resposta à pergunta do professor: "qual o preço da saída fácil?".
 
-- **W3** (100 mil vértices): vetor 1,9 s, heap 39 ms, 48 vezes.
-- **W4** (1 milhão): heap 0,4 s; o vetor leva 3 minutos por origem, então
-  só 4 das 100 couberam no orçamento de 15 minutos, e a célula diz "4/100".
-- **W5** (10 milhões): heap 5,9 s; nenhuma execução do vetor terminou. A
-  barra tracejada é uma estimativa: a execução cortada fixou 390 mil
-  vértices em 15 min, escalado dá 6,4 horas por origem, cerca de 3.900
-  vezes o heap. Cem origens seriam 26 dias.
+- As figuras estão em escala, um pixel por byte. Contorno: um array
+  indexado por vértice. Preenchido: uma entrada da fila. Riscado: uma
+  cópia velha. Tracejado: a folga que um vetor que cresce guarda.
+- **Heap com decrease-key**: 4 bytes de `position` por vértice, e no
+  máximo uma entrada (16 bytes) por vértice. O traço `n` nunca é cruzado.
+- **Heap preguiçoso**: cada estimativa que baixa entra de novo, então ele
+  pode ter uma entrada por relaxamento que melhora: até m, não n. O traço
+  `n` é cruzado. Esse é o preço: memória `O(m)` em vez de `O(n)`, `log m`
+  em cada operação em vez de `log n` (a mesma ordem, já que m ≤ n²), e
+  as entradas velhas que saem só para serem jogadas fora.
+- Vetor e pairing heap têm tamanho fixo (8 e 20 bytes por vértice). O
+  radix heap insere de novo como o preguiçoso, e cada um dos seus baldes
+  guarda o maior tamanho que já teve.
+
+## Slide 6, vetor contra heap (1 min 30 s)
+
+A tabela que o enunciado pede, em barras com escala log, agora com os
+cinco grafos.
+
+- **W3** (100 mil vértices): vetor 1,9 s, heap 35 ms, 53 vezes.
+- **W4** (1 milhão): heap 0,43 s; o vetor leva 3 minutos por origem, então
+  só 4 das 100 couberam no orçamento, e a célula diz "4/100".
+- **W5** (10 milhões, 40 milhões de arestas): heap 4,9 s; nenhuma execução
+  do vetor terminou. A barra tracejada é uma estimativa: a execução
+  cortada fixou 390 mil vértices em 15 min, escalado dá 6,4 horas por
+  origem.
+- **W6** (10 milhões, 73 milhões de arestas): heap 5,8 s; vetor ≈ 7,4 h,
+  cerca de 4.600 vezes o heap.
+- **W7** (50 milhões, 60 milhões de arestas): heap 22,1 s, nas 100
+  origens. O vetor fixou 33 mil vértices em 15 minutos: ≈ 16 dias por
+  origem, umas 62.000 vezes o heap.
 - A frase: "a razão cresce com n, como a análise prevê: n² contra
   (n + m) log n. E a gente mostra a célula honesta em vez de inventar um
   número", como as recusas de memória da matriz na Parte 1.
-- O heap lazy fica 1,4 a 2,1 vezes atrás do heap indexado: é o que a
-  decrease-key compra.
+- O radix heap é o mais rápido em todos (2,7 s no W6, 8,7 s no W7). O heap
+  preguiçoso fica 1,6 a 2,2 vezes atrás do indexado até o W6; no W7, que
+  é esparso, ele empata (22,5 s contra 22,1 s).
 
-## Slide 5, caminhos mínimos (1 min 30 s)
+## Slide 7, memória, medida (1 min)
 
-- **À esquerda**, as distâncias de 10 até 20, 30, 40, 50 e 60 nos três
-  grafos, com o número de arestas embaixo. Não ler: os caminhos inteiros
-  estão no relatório e na aba de estudos de caso (clicar numa distância
-  mostra o caminho).
-- **À direita**, a rede de colaboração, a partir de Edsger W. Dijkstra.
-  Peso pequeno é colaboração próxima. Ler um caminho em voz alta, o de
-  Éva Tardos passa por Tarjan e Goldberg.
+Cinco execuções sem cronômetro por fila, com um invólucro (`Measured`)
+que conta as entradas a cada `pop_min`; é uma fila também, então não há
+um segundo Dijkstra.
+
+- **Heap no pico**: o heap indexado chega a 95% de n no W3 e 92% no W4
+  (grafos densos: quase todo vértice entra na fronteira logo), 61% no W5,
+  75% no W6 e 14% no W7, que é esparso.
+- **Preguiçoso ÷ heap**: o preguiçoso guarda 3,8 vezes as entradas do
+  heap no W3, 3,3 no W4, 1,8 no W5, 2,1 no W6 e só 1,1 no W7. No W6
+  são 16 milhões de entradas para 10 milhões de vértices: mais entradas
+  que vértices.
+- Em bytes, no W6 (como o slide mostra): heap 166 MB, preguiçoso 332 MB,
+  radix 788 MB (os baldes). Para comparar, o próprio grafo ocupa 1,68 GB:
+  a fila é pequena perto do grafo, mas a diferença entre as filas é de 2 a
+  5 vezes.
+- **No W7 a ordem se inverte.** Com 50 milhões de vértices e uma
+  fronteira de só 14% de n, o que pesa é o que é fixo por vértice: o heap
+  (319 MB, 4 bytes de `position` por vértice) fica menor que o vetor
+  (382 MB, 8 bytes por vértice), o pairing heap vai a 954 MB e o radix a
+  1 GB. E o preguiçoso, com só 10% a mais de entradas, quase não paga pela
+  saída fácil: é por isso que no slide 6 ele empata com o heap no W7.
+
+## Slide 8, caminhos mínimos (1 min)
+
+- As distâncias de 10 até 20, 30, 40, 50 e 60 nos cinco grafos, com o
+  número de arestas embaixo, e cada caminho desenhado em escala. Não ler:
+  os caminhos inteiros estão no relatório e na aba de estudos de caso.
+
+## Slide 9, nomes (40 s)
+
+- O arquivo de nomes vira `VertexNames`: uma string só com todos os nomes,
+  uma entrada por vértice com o seu trecho, e um índice ordenado por nome.
+- `name(v)` e `vertex(nome)` são buscas binárias; sem tabela hash, 20
+  bytes por nome além do texto. A busca da interface ignora caixa e
+  acentos: "eva tardos" sugere Éva Tardos.
+
+## Slide 10, a partir de Edsger W. Dijkstra (50 s)
+
+- A rede de colaboração, a partir de Edsger W. Dijkstra. Peso pequeno é
+  colaboração próxima. Ler um caminho em voz alta, o de Éva Tardos passa
+  por Tarjan e Goldberg.
 - **Turing: sem caminho.** A única aresta dele vai até um coautor que não
   tem outra; os dois formam uma componente própria, separada da componente
   gigante onde está Dijkstra. É uma resposta, não um erro.
 
-## Slide 6, teste no seu navegador (1 min 15 s, mais a demo)
+## Slide 11, teste no seu navegador (1 min, mais a demo)
 
 - O QR e a frase da Parte 1, e então a demo: Exemplos → "com nomes".
 - Escolher Dijkstra, clicar num vértice (origem), **dois cliques** em
   outro (destino): o caminho aparece passo a passo, com o peso de cada
   aresta e os nomes, e as setas andam por ele.
-- Se sobrar tempo: o seletor vetor / heap e a faixa de estruturas embaixo,
-  que mostra o vetor sendo varrido e o heap sendo reordenado.
+- Se sobrar tempo: o seletor de filas e a faixa de estruturas embaixo,
+  que mostra o vetor sendo varrido, o heap sendo reordenado e as cópias
+  velhas do heap preguiçoso esperando para serem puladas.

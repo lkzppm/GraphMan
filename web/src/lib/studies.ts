@@ -152,6 +152,38 @@ export interface FrontierStudy {
   partial: PartialRun | null;
 }
 
+/** One untimed Dijkstra of a frontier, counted entry by entry. */
+export interface MemoryRun {
+  root: number;
+  settled: number;
+  /** Estimates handed to the frontier: the root's, then one per relaxation
+      that lowered one. The same for every frontier. */
+  decreases: number;
+  /** The most entries the frontier held at once, stale ones included. */
+  peak_entries: number;
+}
+
+/** What one frontier costs in memory during a Dijkstra. */
+export interface FrontierMemory {
+  frontier: FrontierKind;
+  /** Its arrays indexed by vertex, sized before any run. */
+  base_bytes: number;
+  /** Those arrays plus the entry storage the largest run needed, as allocated. */
+  allocated_bytes: number;
+  /** One stored entry; 0 when the entries are the arrays indexed by vertex. */
+  entry_bytes: number;
+  /** Empty for the vector, which is sized, not run. */
+  runs: MemoryRun[];
+}
+
+export interface MemoryStudy {
+  /** The graph Dijkstra runs on, for scale. */
+  graph_bytes: number;
+  /** The shortest-path tree, which every frontier fills alike. */
+  tree_bytes: number;
+  frontiers: FrontierMemory[];
+}
+
 export interface WeightedStudy {
   name: string;
   file: string;
@@ -169,7 +201,15 @@ export interface WeightedStudy {
   refusal: string | null;
   paths: PathAnswer[];
   frontiers: FrontierStudy[];
+  /** Absent until the `frontier-memory` section has run. */
+  memory?: MemoryStudy | null;
   machine?: Machine;
+}
+
+/** The most entries a frontier held in any of its measured runs, `null`
+    when it was not run (the vector). */
+export function peakEntries(memory: FrontierMemory): number | null {
+  return memory.runs.length > 0 ? Math.max(...memory.runs.map((run) => run.peak_entries)) : null;
 }
 
 /** The weighted course graphs, smallest first, then the named network. */

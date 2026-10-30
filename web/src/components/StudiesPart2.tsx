@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -10,9 +11,16 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
-import { ArrowRight, Maximize2, RotateCcw, Users, ZoomIn, ZoomOut } from 'lucide-react';
-import { formatCompact, formatInt, formatMs, formatWeight } from '@/lib/format';
-import type { FrontierKind, FrontierStudy, PathAnswer, WeightedStudy } from '@/lib/studies';
+import { ArrowRight, Info, Maximize2, RotateCcw, Users, ZoomIn, ZoomOut } from 'lucide-react';
+import { formatBytes, formatCompact, formatInt, formatMs, formatWeight } from '@/lib/format';
+import { logScale, TIME_SCALES, type TimeScale } from '@/lib/scale';
+import {
+  peakEntries,
+  type FrontierKind,
+  type FrontierStudy,
+  type PathAnswer,
+  type WeightedStudy,
+} from '@/lib/studies';
 import { useT } from '@/i18n/LocaleProvider';
 import Reveal from './Reveal';
 import { Chapter, Swap } from './studies-kit';
@@ -24,9 +32,10 @@ import styles from './Studies.module.css';
    The overview, like Part 1's, has the mean of the graphs in its head and
    only what compares them: the mean Dijkstra of each frontier against the
    graph's size, and the vector's ratio to the heap. A graph's sheet has its
-   five paths from vertex 10 drawn to scale and its frontiers raced on one
+   five paths from vertex 10 drawn to scale, its frontiers raced on one
    linear time axis (a dashed lane is an estimate where the budget cut the
-   runs short); a network's sheet has its named paths. */
+   runs short) and the bytes each frontier holds on one linear byte axis;
+   a network's sheet has its named paths. */
 
 type T = ReturnType<typeof useT>;
 
@@ -53,6 +62,21 @@ function frontierTime(study: WeightedStudy, kind: FrontierKind) {
   if (run.timing) return { ms: run.timing.mean_ms, estimated: false, run };
   if (run.partial) return { ms: run.partial.estimated_ms, estimated: true, run };
   return null;
+}
+
+/** What the overview's chart shows: the mean Dijkstra or the memory held. */
+type Metric = 'time' | 'memory';
+
+/** A frontier's value on a graph for the chart: its mean time (the
+    estimate when the budget cut every run, with the timing for the
+    panel's notes), or the bytes it held. */
+function frontierValue(study: WeightedStudy, kind: FrontierKind, metric: Metric) {
+  if (metric === 'time') {
+    const time = frontierTime(study, kind);
+    return time ? { v: time.ms, estimated: time.estimated, run: time.run } : null;
+  }
+  const lane = study.memory?.frontiers.find((f) => f.frontier === kind);
+  return lane ? { v: lane.allocated_bytes, estimated: false, run: null } : null;
 }
 
 /** Part 2's views: the overview, then one per graph, the named networks last. */
@@ -294,14 +318,30 @@ function OverviewSheet({
 }) {
   const t = useT();
   const p = t.studies.part2;
+  const [metric, setMetric] = useState<Metric>('time');
   const timed = studies.filter((study) => !study.names_file && study.frontiers.length > 0);
+  const measured = studies.filter((study) => !study.names_file && study.memory);
+  const shown = metric === 'time' ? timed : measured;
+  const metrics: Metric[] = measured.length > 0 ? ['time', 'memory'] : ['time'];
 
   return (
     <>
       {timed.length > 0 && (
-        <Chapter index={1} title={p.timing.title} delay={0.05} className={styles.chapterFill}>
+        <Chapter
+          index={1}
+          title={p.timing.title}
+          delay={0.05}
+          className={styles.chapterFill}
+          tools={
+            metrics.length > 1 && (
+              <div className={styles.chapterTools}>
+                <MetricSwitch metric={metric} onChange={setMetric} />
+              </div>
+            )
+          }
+        >
           <div className={styles.timingHero}>
-            <GrowthChart studies={timed} onOpen={onOpen} />
+            <GrowthChart studies={shown} metric={metric} onOpen={onOpen} />
           </div>
         </Chapter>
       )}
@@ -309,15 +349,121 @@ function OverviewSheet({
   );
 }
 
+/** The switch at the right of a chapter's heading between the time and
+    the memory of the frontiers: the nav's switch, a thumb sliding under
+    the chosen one. */
+function MetricSwitch({
+  metric,
+  onChange,
+}: {
+  metric: Metric;
+  onChange: (metric: Metric) => void;
+}) {
+  const p = useT().studies.part2;
+  return (
+    <ChoiceSwitch
+      label={p.chart.label}
+      choices={(['time', 'memory'] as const).map((key) => ({ key, label: p.chart[key] }))}
+      value={metric}
+      onChange={onChange}
+    />
+  );
+}
+
+/** The scale of a graph's lanes in time: log, a share of the vector's
+    time, or without the vector. */
+function ScaleSwitch({
+  scale,
+  onChange,
+  hidden,
+}: {
+  scale: TimeScale;
+  onChange: (scale: TimeScale) => void;
+  hidden?: boolean;
+}) {
+  const scales = useT().studies.part2.timing.scales;
+  return (
+    <ChoiceSwitch
+      label={scales.label}
+      choices={TIME_SCALES.map((key) => ({ key, label: scales[key], title: scales.hint[key] }))}
+      value={scale}
+      onChange={onChange}
+      hidden={hidden}
+    />
+  );
+}
+
+/** A switch between a few choices: the nav's switch, a thumb sliding under
+    the chosen one. A hidden switch stays laid out, faded and inert, so the
+    heading keeps its layout. */
+function ChoiceSwitch<K extends string>({
+  label,
+  choices,
+  value,
+  onChange,
+  hidden,
+}: {
+  label: string;
+  choices: { key: K; label: string; title?: string }[];
+  value: K;
+  onChange: (key: K) => void;
+  hidden?: boolean;
+}) {
+  return (
+    <div
+      className={styles.chartSwitch}
+      role="group"
+      aria-label={label}
+      aria-hidden={hidden || undefined}
+      data-hidden={hidden || undefined}
+      style={
+        {
+          '--n': choices.length,
+          '--i': Math.max(
+            0,
+            choices.findIndex((choice) => choice.key === value),
+          ),
+        } as CSSProperties
+      }
+    >
+      <span className={styles.chartSwitchThumb} aria-hidden="true" />
+      {choices.map((choice) => (
+        <button
+          key={choice.key}
+          type="button"
+          className={styles.chartSwitchButton}
+          aria-pressed={value === choice.key}
+          title={choice.title}
+          disabled={hidden}
+          tabIndex={hidden ? -1 : undefined}
+          onClick={() => onChange(choice.key)}
+        >
+          {choice.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** One weighted graph: its facts, the five paths from vertex 10 in full,
-    and the race of its three frontiers. Switching graphs keeps the
-    elements in place: the numbers crossfade, the paths slide and the race
-    runs again. */
+    then its frontiers in one chapter, switched between the race of their
+    times and what each holds in memory, so the sheet fits one screen.
+    Switching graphs keeps the elements in place: the numbers crossfade,
+    the paths and the memory bars slide and the race runs again. */
 function GraphSheet({ study, view }: { study: WeightedStudy; view: string }) {
   const t = useT();
   const p = t.studies.part2;
   // The race's replays, asked for by the button in its heading.
   const [round, setRound] = useState(0);
+  // The frontiers' chapter shows their times or their memory; the choice
+  // stays from one graph to the next.
+  const [metric, setMetric] = useState<Metric>('time');
+  // The lanes' scale in time, kept from one graph to the next too.
+  const [scale, setScale] = useState<TimeScale>('vector');
+  const memory = study.memory && study.memory.frontiers.length > 0 ? study.memory : null;
+  const timed = study.frontiers.length > 0;
+  const showing: Metric = !timed ? 'memory' : memory ? metric : 'time';
+  const racing = showing === 'time' && scale !== 'log';
   return (
     <>
       <Chapter index={1} title={p.paths.title} delay={0.05} className={styles.chapterFill}>
@@ -331,24 +477,35 @@ function GraphSheet({ study, view }: { study: WeightedStudy; view: string }) {
         />
       </Chapter>
 
-      {study.frontiers.length > 0 && (
+      {(timed || memory) && (
         <Chapter
           index={2}
           title={p.timing.title}
           delay={0.1}
           tools={
-            <button
-              type="button"
-              className={styles.raceReplay}
-              onClick={() => setRound((n) => n + 1)}
-              aria-label={p.timing.race.replay}
-              title={p.timing.race.replay}
-            >
-              <RotateCcw size={13} strokeWidth={1.8} aria-hidden />
-            </button>
+            <div className={styles.chapterTools}>
+              <button
+                type="button"
+                className={styles.raceReplay}
+                // Kept in memory and on the log scale too, faded and inert,
+                // so the heading keeps its layout when there is no race.
+                data-hidden={!racing || undefined}
+                disabled={!racing}
+                tabIndex={racing ? undefined : -1}
+                onClick={() => setRound((n) => n + 1)}
+                aria-label={p.timing.race.replay}
+                title={p.timing.race.replay}
+              >
+                <RotateCcw size={13} strokeWidth={1.8} aria-hidden />
+              </button>
+              {timed && (
+                <ScaleSwitch scale={scale} onChange={setScale} hidden={showing !== 'time'} />
+              )}
+              {timed && memory && <MetricSwitch metric={metric} onChange={setMetric} />}
+            </div>
           }
         >
-          <Race study={study} view={view} round={round} />
+          <FrontierLanes study={study} view={view} round={round} metric={showing} scale={scale} />
         </Chapter>
       )}
     </>
@@ -524,7 +681,7 @@ const TIME_TICKS: [number, string][] = [
   [36_000_000, '10 h'],
 ];
 
-/** A stretch of the chart in log₁₀ units: graph size across, time up. */
+/** A stretch of the chart in the scale's units: graph size across, time up. */
 interface Range {
   x0: number;
   x1: number;
@@ -539,12 +696,74 @@ const FINE_TICKS = Array.from({ length: 12 }, (_, k) => 10 ** (k - 2)).flatMap((
   5 * d,
 ]);
 
+/** Steps for a linear time axis, each a round amount of its unit. */
+const LINEAR_STEPS = [
+  1, 2, 5, 10, 20, 50, 100, 200, 500, 1_000, 2_000, 5_000, 10_000, 30_000, 60_000, 120_000, 300_000,
+  600_000, 1_800_000, 3_600_000, 7_200_000, 18_000_000, 36_000_000, 86_400_000, 172_800_000,
+  432_000_000, 864_000_000, 1_728_000_000,
+];
+
+/** The chart's scale, from linear (`β = 1`) to logarithmic (`β = 0`): the
+    Box-Cox transform (vᵝ − 1) / β, which tends to ln v as β shrinks, so
+    the slider sweeps one into the other with every curve moving smoothly. */
+function scaled(v: number, beta: number): number {
+  return beta < 1e-4 ? Math.log(v) : (Math.pow(v, beta) - 1) / beta;
+}
+
+/** The value at a position of the scale; 0 below a linear-ish axis's origin. */
+function unscaled(u: number, beta: number): number {
+  if (beta < 1e-4) return Math.exp(u);
+  const base = beta * u + 1;
+  return base > 0 ? Math.pow(base, 1 / beta) : 0;
+}
+
+/** The slider's position (0 linear, 1 log) as the transform's β; cubed, so
+    the middle of the slider is already half way to log in looks. */
+const betaOf = (logness: number) => (1 - logness) ** 3;
+
+const KB = 1024;
+/** 1, 2 and 5 of every power of ten, in every binary unit: the byte axis's
+    fine ticks and its linear steps alike. */
+const BYTE_STEPS = [1, KB, KB ** 2, KB ** 3].flatMap((unit) =>
+  [1, 2, 5, 10, 20, 50, 100, 200, 500].map((k) => k * unit),
+);
+
+/** Each metric's axis: the named ticks, the fine ones, the linear steps
+    and how a value reads. */
+const AXES: Record<
+  Metric,
+  { named: [number, string][]; fine: number[]; steps: number[]; format: (v: number) => string }
+> = {
+  time: { named: TIME_TICKS, fine: FINE_TICKS, steps: LINEAR_STEPS, format: formatMs },
+  memory: {
+    named: [
+      [KB, '1 KB'],
+      [10 * KB, '10 KB'],
+      [100 * KB, '100 KB'],
+      [KB ** 2, '1 MB'],
+      [10 * KB ** 2, '10 MB'],
+      [100 * KB ** 2, '100 MB'],
+      [KB ** 3, '1 GB'],
+      [10 * KB ** 3, '10 GB'],
+    ],
+    fine: BYTE_STEPS,
+    steps: BYTE_STEPS,
+    format: formatBytes,
+  },
+};
+
 /**
- * The mean Dijkstra against the graph's size, both axes logarithmic: one
- * line per frontier through the graphs, smallest first. On a log-log plot
- * a power law is a straight line, so the vector's n² climbs visibly
- * steeper than the heaps' (n + m) log n, and the gap is the ratio. A point
- * that is an estimate is hollow, its segment dashed.
+ * The mean Dijkstra against the graph's size, or the bytes each frontier
+ * held (`metric`, switched in the chapter's heading), both axes on one
+ * scale that a slider sweeps from linear to logarithmic. On the log-log end a power
+ * law is a straight line, so the vector's n² climbs visibly steeper than
+ * the heaps' (n + m) log n, and the gap is the ratio; toward the linear
+ * end the curves bend into their real shapes. A legend entry hides its
+ * frontier and the fit follows the ones left, so on the linear end the
+ * heaps need not lie flat under the vector's hours. A point that is an
+ * estimate is hollow, its segment dashed. Graphs with the same vertex
+ * count (W5 and W6, 10M each) share one mark on the axis, named after
+ * both; a mark too close to a larger graph's keeps its line, not its name.
  *
  * It is a chart to handle: dragging pans it, a pinch or ctrl/⌘ + scroll
  * (or the buttons, or + and −) zooms around the pointer, a double click or
@@ -553,9 +772,11 @@ const FINE_TICKS = Array.from({ length: 12 }, (_, k) => 10 ** (k - 2)).flatMap((
  */
 function GrowthChart({
   studies,
+  metric,
   onOpen,
 }: {
   studies: WeightedStudy[];
+  metric: Metric;
   /** Opens a graph's own tab. */
   onOpen: (study: WeightedStudy) => void;
 }) {
@@ -578,28 +799,43 @@ function GrowthChart({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  // The points, and the view that fits them.
+  // The scale (0 linear, 1 log, as the slider reads) and the frontiers
+  // taken off the chart in the panel.
+  const [logness, setLogness] = useState(1);
+  const beta = betaOf(logness);
+  const [hidden, setHidden] = useState<ReadonlySet<FrontierKind>>(() => new Set());
+  const visible = useCallback((kind: FrontierKind) => !hidden.has(kind), [hidden]);
+  // The points, and the view that fits the ones shown.
   const data = useMemo(() => {
     const points = studies.flatMap((study, i) =>
       FRONTIERS.flatMap((kind) => {
-        const time = frontierTime(study, kind);
-        return time ? [{ i, kind, n: study.vertices, ...time }] : [];
+        const value = frontierValue(study, kind, metric);
+        return value ? [{ i, kind, n: study.vertices, ...value }] : [];
       }),
     );
     if (points.length === 0) return null;
-    const xs = studies.map((study) => Math.log10(study.vertices));
-    const ys = points.map((point) => Math.log10(point.ms));
+    const shown = points.filter((point) => visible(point.kind));
+    const xs = studies.map((study) => scaled(study.vertices, beta));
+    const ys = (shown.length > 0 ? shown : points).map((point) => scaled(point.v, beta));
+    const span = (values: number[]) => Math.max(Math.max(...values) - Math.min(...values), 1e-9);
+    const padX = span(xs) * 0.12;
+    const padY = span(ys) * 0.06;
     const fit: Range = {
-      x0: Math.min(...xs) - 0.35,
-      x1: Math.max(...xs) + 0.35,
-      y0: Math.floor(Math.min(...ys)),
-      y1: Math.max(Math.ceil(Math.max(...ys)), Math.floor(Math.min(...ys)) + 1),
+      x0: Math.min(...xs) - padX,
+      x1: Math.max(...xs) + padX,
+      y0: Math.min(...ys) - padY,
+      y1: Math.max(...ys) + padY,
     };
     return { points, fit };
-  }, [studies]);
+  }, [studies, metric, beta, visible]);
 
-  // The view the reader moved to (null: the fit).
+  // The view the reader moved to (null: the fit); another metric fits again.
   const [view, setView] = useState<Range | null>(null);
+  const [viewOf, setViewOf] = useState(metric);
+  if (viewOf !== metric) {
+    setViewOf(metric);
+    setView(null);
+  }
   const drawn = box.width > 0;
   const W = Math.max(box.width, 1);
   const H = Math.max(box.height, 1);
@@ -608,13 +844,13 @@ function GrowthChart({
   const plotH = Math.max(H - top - bottom, 1);
   const scalesFor = useCallback(
     (r: Range) => ({
-      x: (n: number) => left + ((Math.log10(n) - r.x0) / (r.x1 - r.x0)) * plotW,
-      y: (ms: number) => top + (1 - (Math.log10(ms) - r.y0) / (r.y1 - r.y0)) * plotH,
+      x: (n: number) => left + ((scaled(n, beta) - r.x0) / (r.x1 - r.x0)) * plotW,
+      y: (v: number) => top + (1 - (scaled(v, beta) - r.y0) / (r.y1 - r.y0)) * plotH,
     }),
-    [left, top, plotW, plotH],
+    [left, top, plotW, plotH, beta],
   );
 
-  // Panning and zooming, in log units.
+  // Panning and zooming, in the scale's units.
   const current = view ?? data?.fit ?? { x0: 0, x1: 1, y0: 0, y1: 1 };
   const clamp = useCallback(
     (r: Range): Range => {
@@ -625,8 +861,8 @@ function GrowthChart({
         const span = Math.min(Math.max(b - a, min), max);
         return [mid - span / 2, mid + span / 2];
       };
-      const [x0, x1] = fit(r.x0, r.x1, 0.12, (f.x1 - f.x0) * 4);
-      const [y0, y1] = fit(r.y0, r.y1, 0.25, (f.y1 - f.y0) * 4);
+      const [x0, x1] = fit(r.x0, r.x1, (f.x1 - f.x0) * 0.04, (f.x1 - f.x0) * 4);
+      const [y0, y1] = fit(r.y0, r.y1, (f.y1 - f.y0) * 0.04, (f.y1 - f.y0) * 4);
       return { x0, x1, y0, y1 };
     },
     [data],
@@ -663,6 +899,85 @@ function GrowthChart({
   const reset = () => {
     setView(null);
   };
+
+  // A new scale or a new set of lines changes the units: the view fits again.
+  const sweepTo = useCallback((next: number) => {
+    setLogness(Math.min(1, Math.max(0, next)));
+    setView(null);
+  }, []);
+  // The words at the slider's ends sweep it there over a moment.
+  const sweep = useRef(0);
+  const animateTo = (target: number) => {
+    cancelAnimationFrame(sweep.current);
+    const from = logness;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      sweepTo(target);
+      return;
+    }
+    let start: number | null = null;
+    const step = (now: number) => {
+      start ??= now;
+      const k = Math.min(1, (now - start) / 700);
+      const eased = k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2;
+      sweepTo(from + (target - from) * eased);
+      if (k < 1) sweep.current = requestAnimationFrame(step);
+    };
+    sweep.current = requestAnimationFrame(step);
+  };
+  useEffect(() => () => cancelAnimationFrame(sweep.current), []);
+  const hide = (kind: FrontierKind) => {
+    const next = new Set(hidden);
+    if (!next.delete(kind)) next.add(kind);
+    // The last frontier on the chart stays.
+    if (data && data.points.every((point) => next.has(point.kind))) return;
+    setHidden(next);
+    if (pinned && next.has(pinned.kind)) setPinned(null);
+    setView(null);
+  };
+
+  // Where every point is drawn. A switch of metric or of the frontiers
+  // shown glides each point from where it was to where it now belongs
+  // (the lines follow their ends); panning, zooming and the scale's slider
+  // move them at once.
+  const { x: xAt, y: yAt } = scalesFor(current);
+  const targets = new Map<string, { x: number; y: number }>();
+  for (const p of data?.points ?? []) {
+    targets.set(`${p.kind}-${p.i}`, { x: xAt(p.n), y: yAt(p.v) });
+  }
+  const [morph, setMorph] = useState<{
+    from: Map<string, { x: number; y: number }>;
+    k: number;
+  } | null>(null);
+  const eased = morph ? (morph.k < 0.5 ? 4 * morph.k ** 3 : 1 - (-2 * morph.k + 2) ** 3 / 2) : 1;
+  const placed = new Map<string, { x: number; y: number }>();
+  for (const [key, to] of targets) {
+    const from = morph?.from.get(key) ?? to;
+    placed.set(key, { x: from.x + (to.x - from.x) * eased, y: from.y + (to.y - from.y) * eased });
+  }
+  const drawnAt = useRef(placed);
+  useEffect(() => {
+    drawnAt.current = placed;
+  });
+  const morphKey = `${metric}|${[...hidden].sort().join(',')}`;
+  const morphFrame = useRef(0);
+  const morphedFor = useRef(morphKey);
+  useLayoutEffect(() => {
+    if (morphedFor.current === morphKey) return;
+    morphedFor.current = morphKey;
+    cancelAnimationFrame(morphFrame.current);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const from = new Map(drawnAt.current);
+    let start: number | null = null;
+    const step = (now: number) => {
+      start ??= now;
+      const k = Math.min(1, (now - start) / 650);
+      setMorph(k < 1 ? { from, k } : null);
+      if (k < 1) morphFrame.current = requestAnimationFrame(step);
+    };
+    setMorph({ from, k: 0 });
+    morphFrame.current = requestAnimationFrame(step);
+  }, [morphKey]);
+  useEffect(() => () => cancelAnimationFrame(morphFrame.current), []);
 
   // A pinch on a trackpad arrives as a wheel with ctrl held; so does
   // ctrl + scroll. A plain scroll is the page's.
@@ -718,27 +1033,54 @@ function GrowthChart({
   const { points } = data;
   const { x, y } = scalesFor(current);
   const yIn = (ms: number) => {
-    const l = Math.log10(ms);
-    return l >= current.y0 - 1e-9 && l <= current.y1 + 1e-9;
+    const l = scaled(ms, beta);
+    return ms > 0 && l >= current.y0 - 1e-9 && l <= current.y1 + 1e-9;
   };
-  const named = TIME_TICKS.filter(([ms]) => yIn(ms));
-  const ticks: [number, string][] =
-    named.length >= 3 ? named : FINE_TICKS.filter(yIn).map((ms) => [ms, formatMs(ms)]);
+  // Ticks from three sources: the named powers, 1-2-5 in every decade, and
+  // round linear steps. Near the log end the first two lead, near the
+  // linear end the steps do; each is kept only clear of those before it.
+  const low = unscaled(current.y0, beta);
+  const high = unscaled(current.y1, beta);
+  const axis = AXES[metric];
+  const stepMs = axis.steps.find((d) => (high - low) / d <= 6) ?? axis.steps.at(-1)!;
+  const linear: number[] = [];
+  for (let v = Math.max(stepMs, Math.ceil(low / stepMs) * stepMs); v <= high; v += stepMs) {
+    linear.push(v);
+  }
+  const named = axis.named.map(([v]) => v);
+  const sources = beta > 0.3 ? [linear, named, axis.fine] : [named, axis.fine, linear];
+  const ticks: [number, string][] = [];
+  for (const source of sources) {
+    if (ticks.length >= 4) break;
+    for (const ms of source) {
+      if (!yIn(ms) || ticks.some(([kept]) => Math.abs(y(kept) - y(ms)) < 22)) continue;
+      ticks.push([ms, axis.named.find(([named]) => named === ms)?.[1] ?? axis.format(ms)]);
+    }
+  }
   const inX = (px: number) => px >= left - 1 && px <= W - right + 1;
   const focus = pinned ?? hot;
+  // One mark on the axis per vertex count, named after every graph there;
+  // from the largest down, a mark too close to a named one keeps only its line.
+  const marks = studies.reduce<{ vertices: number; studies: number[] }[]>((all, study, i) => {
+    const mark = all.find((m) => m.vertices === study.vertices);
+    if (mark) mark.studies.push(i);
+    else all.push({ vertices: study.vertices, studies: [i] });
+    return all;
+  }, []);
+  const namedAt: number[] = [];
+  const labelled = new Set<number>();
+  for (const mark of [...marks].reverse()) {
+    const cx = x(mark.vertices);
+    if (namedAt.every((other) => Math.abs(other - cx) >= 84)) {
+      namedAt.push(cx);
+      labelled.add(mark.vertices);
+    }
+  }
   const clipId = `growth-${clipIdOf(studies)}`;
 
   return (
     <div className={styles.growth}>
       <div className={styles.growthMain} onPointerLeave={() => setHot(null)}>
-        <ul className={styles.growthLegend}>
-          {FRONTIERS.map((kind) => (
-            <li key={kind} data-dim={(pinned && pinned.kind !== kind) || undefined}>
-              <span style={{ background: FRONTIER_COLOUR[kind] }} />
-              {s.frontiers[kind]}
-            </li>
-          ))}
-        </ul>
         <div
           ref={boxRef}
           className={styles.growthBox}
@@ -780,61 +1122,68 @@ function GrowthChart({
               viewBox={`0 0 ${W} ${H}`}
               className={styles.growthChart}
               role="img"
-              aria-label={s.title}
+              aria-label={metric === 'time' ? s.title : t.studies.part2.memory.title}
             >
               <defs>
                 <clipPath id={clipId}>
                   <rect x={left} y={top - 8} width={plotW} height={plotH + 16} />
                 </clipPath>
               </defs>
-              {ticks.map(([ms, label]) => (
-                <g key={ms}>
-                  <line
-                    className={styles.growthGrid}
-                    x1={left}
-                    x2={W - right}
-                    y1={y(ms)}
-                    y2={y(ms)}
-                  />
-                  <text
-                    className={styles.growthTick}
-                    x={left - 8}
-                    y={y(ms)}
-                    dy="0.32em"
-                    textAnchor="end"
-                  >
-                    {label}
-                  </text>
-                </g>
-              ))}
-              {studies.map((study, i) => {
-                const cx = x(study.vertices);
-                if (!inX(cx)) return null;
-                return (
-                  <g key={study.name}>
-                    <line className={styles.growthGrid} x1={cx} x2={cx} y1={top} y2={H - bottom} />
-                    <text
-                      className={styles.growthLabel}
-                      x={cx}
-                      y={H - bottom + 16}
-                      textAnchor="middle"
-                      data-hot={focus?.study === i || undefined}
-                    >
-                      {weightedName(study.name)}
-                    </text>
+              <g key={metric} className={styles.growthFade}>
+                {ticks.map(([ms, label]) => (
+                  <g key={ms}>
+                    <line
+                      className={styles.growthGrid}
+                      x1={left}
+                      x2={W - right}
+                      y1={y(ms)}
+                      y2={y(ms)}
+                    />
                     <text
                       className={styles.growthTick}
-                      x={cx}
-                      y={H - bottom + 30}
-                      textAnchor="middle"
+                      x={left - 8}
+                      y={y(ms)}
+                      dy="0.32em"
+                      textAnchor="end"
                     >
-                      {t.studies.part2.vertexCount(formatCompact(study.vertices))}
+                      {label}
                     </text>
+                  </g>
+                ))}
+              </g>
+              {marks.map((mark) => {
+                const cx = x(mark.vertices);
+                if (!inX(cx)) return null;
+                return (
+                  <g key={mark.vertices}>
+                    <line className={styles.growthGrid} x1={cx} x2={cx} y1={top} y2={H - bottom} />
+                    {labelled.has(mark.vertices) && (
+                      <>
+                        <text
+                          className={styles.growthLabel}
+                          x={cx}
+                          y={H - bottom + 16}
+                          textAnchor="middle"
+                          data-hot={(focus && mark.studies.includes(focus.study)) || undefined}
+                        >
+                          {mark.studies.map((i) => weightedName(studies[i].name)).join(' · ')}
+                        </text>
+                        <text
+                          className={styles.growthTick}
+                          x={cx}
+                          y={H - bottom + 30}
+                          textAnchor="middle"
+                        >
+                          {t.studies.part2.vertexCount(formatCompact(mark.vertices))}
+                        </text>
+                      </>
+                    )}
                   </g>
                 );
               })}
               <g clipPath={`url(#${clipId})`}>
                 {FRONTIERS.map((kind, k) => {
+                  if (!visible(kind)) return null;
                   const series = points.filter((p) => p.kind === kind);
                   return (
                     <g
@@ -845,15 +1194,17 @@ function GrowthChart({
                     >
                       {series.slice(1).map((p, j) => {
                         const a = series[j];
+                        const from = placed.get(`${kind}-${a.i}`)!;
+                        const to = placed.get(`${kind}-${p.i}`)!;
                         return (
                           <line
                             key={p.i}
                             className={styles.growthLine}
                             data-estimated={p.estimated || a.estimated || undefined}
-                            x1={x(a.n)}
-                            y1={y(a.ms)}
-                            x2={x(p.n)}
-                            y2={y(p.ms)}
+                            x1={from.x}
+                            y1={from.y}
+                            x2={to.x}
+                            y2={to.y}
                             pathLength={1}
                             style={{ '--j': j } as CSSProperties}
                           />
@@ -864,12 +1215,13 @@ function GrowthChart({
                 })}
                 {FRONTIERS.map((kind, k) =>
                   points
-                    .filter((p) => p.kind === kind)
+                    .filter((p) => p.kind === kind && visible(kind))
                     .map((p) => {
+                      const at = placed.get(`${kind}-${p.i}`)!;
                       const isPinned = pinned?.study === p.i && pinned.kind === kind;
                       const isHot = hot?.study === p.i && hot.kind === kind;
                       const label = `${weightedName(studies[p.i].name)}, ${s.frontiers[kind]}: ${
-                        p.estimated ? s.estimated(formatMs(p.ms)) : formatMs(p.ms)
+                        p.estimated ? s.estimated(axis.format(p.v)) : axis.format(p.v)
                       }`;
                       const toggle = () => setPinned(isPinned ? null : { study: p.i, kind });
                       return (
@@ -899,14 +1251,14 @@ function GrowthChart({
                             }
                           }}
                         >
-                          <circle cx={x(p.n)} cy={y(p.ms)} r={12} className={styles.growthTarget} />
+                          <circle cx={at.x} cy={at.y} r={12} className={styles.growthTarget} />
                           <circle
                             className={styles.growthPoint}
                             data-estimated={p.estimated || undefined}
                             data-hot={isHot || isPinned || undefined}
                             data-pinned={isPinned || undefined}
-                            cx={x(p.n)}
-                            cy={y(p.ms)}
+                            cx={at.x}
+                            cy={at.y}
                             r={isHot || isPinned ? 6 : 4.5}
                           />
                         </g>
@@ -946,48 +1298,68 @@ function GrowthChart({
             </div>
           )}
         </div>
+        <div className={styles.growthScale}>
+          <button type="button" onClick={() => animateTo(0)} data-on={logness === 0 || undefined}>
+            {s.scale.linear}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1000}
+            value={Math.round(logness * 1000)}
+            aria-label={s.scale.label}
+            onChange={(event) => {
+              cancelAnimationFrame(sweep.current);
+              sweepTo(Number(event.target.value) / 1000);
+            }}
+          />
+          <button type="button" onClick={() => animateTo(1)} data-on={logness === 1 || undefined}>
+            {s.scale.log}
+          </button>
+        </div>
       </div>
       <DataShow
+        metric={metric}
         study={studies[focus?.study ?? shown] ?? studies[studies.length - 1]}
-        index={focus?.study ?? shown}
         focus={focus?.kind ?? null}
-        pinned={pinned}
-        onPick={(study, kind) => {
-          setShown(study);
-          setPinned(pinned?.study === study && pinned.kind === kind ? null : { study, kind });
-        }}
+        hidden={hidden}
+        onHide={hide}
         onOpen={onOpen}
       />
     </div>
   );
 }
 
-/** Beside the chart, the graph a point belongs to: its size, then its six
-    frontiers fastest first, each with its mean time and its multiple of the
-    heap's, the one pointed at or pinned lit. A row pins its point; the
-    link at the foot opens the graph's tab. */
+/** Beside the chart, and its legend: the graph a point belongs to, its
+    size, then its six frontiers, the fastest or the smallest first, each
+    with its swatch, its mean time or its bytes and its multiple of the
+    heap's, the one pointed at or pinned lit. A row toggles its frontier
+    on the chart: one taken off is struck through, until it is clicked
+    back. The rows crossfade when the metric changes; the link at the foot
+    opens the graph's tab. */
 function DataShow({
+  metric,
   study,
-  index,
   focus,
-  pinned,
-  onPick,
+  hidden,
+  onHide,
   onOpen,
 }: {
+  metric: Metric;
   study: WeightedStudy;
-  index: number;
   focus: FrontierKind | null;
-  pinned: { study: number; kind: FrontierKind } | null;
-  onPick: (study: number, kind: FrontierKind) => void;
+  hidden: ReadonlySet<FrontierKind>;
+  onHide: (kind: FrontierKind) => void;
   onOpen: (study: WeightedStudy) => void;
 }) {
   const t = useT();
   const s = t.studies.part2.timing;
-  const heap = frontierTime(study, 'heap');
+  const format = AXES[metric].format;
+  const heap = frontierValue(study, 'heap', metric);
   const rows = FRONTIERS.flatMap((kind) => {
-    const time = frontierTime(study, kind);
-    return time ? [{ kind, ...time }] : [];
-  }).sort((a, b) => a.ms - b.ms);
+    const value = frontierValue(study, kind, metric);
+    return value ? [{ kind, ...value }] : [];
+  }).sort((a, b) => a.v - b.v);
   const name = t.studies.graph(weightedName(study.name));
   return (
     <aside className={styles.dataShow} aria-live="polite">
@@ -1002,36 +1374,55 @@ function DataShow({
           </Swap>
         </span>
       </div>
-      <span className={`label ${styles.dataShowOrder}`}>{s.order}</span>
-      <ol className={styles.dataShowRows}>
+      <ol key={metric} className={styles.dataShowRows}>
         {rows.map((row, place) => {
-          const runs = row.run.timing?.runs ?? 0;
-          const short = !row.estimated && runs < row.run.requested_runs;
-          const isPinned = pinned?.study === index && pinned.kind === row.kind;
+          const runs = row.run?.timing?.runs ?? 0;
+          const requested = row.run?.requested_runs ?? 0;
+          const short = row.run !== null && !row.estimated && runs < requested;
+          const off = hidden.has(row.kind);
+          // An estimate says how it was made in a note beside the name.
+          const partial = row.estimated ? row.run?.partial : null;
+          const noteId = `estimate-${study.name}-${row.kind}`;
           return (
             <li key={row.kind}>
               <button
                 type="button"
                 className={styles.dataShowRow}
                 data-focus={focus === row.kind || undefined}
-                aria-pressed={isPinned}
+                data-off={off || undefined}
+                aria-pressed={!off}
+                title={partial ? undefined : s.toggle(s.frontiers[row.kind])}
+                aria-describedby={partial ? noteId : undefined}
                 style={{ '--colour': FRONTIER_COLOUR[row.kind] } as CSSProperties}
-                onClick={() => onPick(index, row.kind)}
+                onClick={() => onHide(row.kind)}
               >
                 <span className={`mono ${styles.dataShowPlace}`}>{place + 1}</span>
                 <span className={styles.dataShowSwatch} aria-hidden="true" />
-                <span className={styles.dataShowName}>{s.frontiers[row.kind]}</span>
+                <span className={styles.dataShowName}>
+                  {s.frontiers[row.kind]}
+                  {partial && (
+                    <span className={styles.dataShowInfo}>
+                      <Info size={12} aria-hidden="true" />
+                      <span id={noteId} className={styles.dataShowTip} role="tooltip">
+                        {s.estimateNote(
+                          formatInt(partial.settled),
+                          formatInt(partial.reachable),
+                          formatMs(partial.elapsed_ms),
+                          formatMs(partial.estimated_ms),
+                        )}
+                      </span>
+                    </span>
+                  )}
+                </span>
                 <span className={`mono ${styles.dataShowTime}`}>
-                  {row.estimated ? s.estimated(formatMs(row.ms)) : formatMs(row.ms)}
+                  {row.estimated ? s.estimated(format(row.v)) : format(row.v)}
                 </span>
                 <span className={`mono ${styles.dataShowRatio}`}>
-                  {row.kind === 'heap' || !heap ? '' : `×${formatHeapRatio(row.ms / heap.ms)}`}
+                  {row.kind === 'heap' || !heap ? '' : `×${formatHeapRatio(row.v / heap.v)}`}
                 </span>
-                {(row.estimated || short) && (
+                {short && (
                   <span className={`mono ${styles.dataShowNote}`}>
-                    {row.estimated
-                      ? s.estimate
-                      : s.runs(formatInt(runs), formatInt(row.run.requested_runs))}
+                    {s.runs(formatInt(runs), formatInt(requested))}
                   </span>
                 )}
               </button>
@@ -1039,7 +1430,9 @@ function DataShow({
           );
         })}
       </ol>
-      <span className={`mono ${styles.dataShowFoot}`}>{s.versusHeap}</span>
+      <span className={`mono ${styles.dataShowFoot}`}>
+        {metric === 'time' ? s.versusHeap : s.versusHeapBytes}
+      </span>
       <button type="button" className={styles.growthOpen} onClick={() => onOpen(study)}>
         {s.open(name)}
         <ArrowRight size={12} aria-hidden="true" />
@@ -1071,16 +1464,43 @@ function raceBlock(runPx: number): number {
   return unit;
 }
 
-/** The frontiers on one linear time axis, the slowest run (the vector's)
-    across the whole width. A playhead sweeps it once: the vector finishes
-    its one run at the end, while each other lane counts the whole runs it
-    fits in the same time, the first run solid. A lane is cut into blocks of
-    one run, or of 10, 100… runs when one run is too thin to see (W4 and W5
-    fit hundreds), and says so under its counter. Replays when the graph
-    changes, or on the button in the chapter's heading (`round`). */
-function Race({ study, view, round }: { study: WeightedStudy; view: string; round: number }) {
+/** A graph's frontiers, a lane each, in one of two drawings that morph
+    into each other in place. Time: the frontiers on one linear time axis,
+    the slowest run (the vector's) across the whole width; a playhead
+    sweeps it once, the vector finishes its one run at the end while each
+    other lane counts the whole runs it fits in the same time, the first
+    run solid. A lane is cut into blocks of one run, or of 10, 100… runs
+    when one run is too thin to see (W4 and W5 fit hundreds), and says so
+    under its counter. Memory: what each frontier holds during one
+    Dijkstra on one linear byte axis, its arrays indexed by vertex solid,
+    its entries at their peak tinted, the room its storage kept hatched,
+    and beside it the most entries it held (a share of n with decrease-key,
+    a multiple of the heap's for the two that push a lowered estimate
+    again). Switching fades the race out while the memory bars grow, and
+    back; the lanes, their names and their counters stay where they are,
+    so the chapter keeps its height. The race replays when the graph
+    changes, on the button in the heading (`round`), and on coming back to
+    time. In time, `scale` picks the axis: the vector's run across the
+    width (the race above); without the vector, the slowest of the others
+    across it, the vector's lane emptied; or log, the race fading out for
+    one still bar a lane on a log scale from a tenth of the fastest run to
+    the slowest, its counter at the runs that fit in one of the vector's. */
+function FrontierLanes({
+  study,
+  view,
+  round,
+  metric,
+  scale,
+}: {
+  study: WeightedStudy;
+  view: string;
+  round: number;
+  metric: Metric;
+  scale: TimeScale;
+}) {
   const t = useT();
   const s = t.studies.part2.timing;
+  const m = t.studies.part2.memory;
   const ref = useRef<HTMLDivElement>(null);
   const [seen, setSeen] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -1097,7 +1517,10 @@ function Race({ study, view, round }: { study: WeightedStudy; view: string; roun
 
   useEffect(() => {
     const el = ref.current;
-    if (!el || !('IntersectionObserver' in window)) return;
+    if (!el || !('IntersectionObserver' in window)) {
+      setSeen(true);
+      return;
+    }
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) {
@@ -1112,7 +1535,7 @@ function Race({ study, view, round }: { study: WeightedStudy; view: string; roun
   }, []);
 
   useEffect(() => {
-    if (!seen) return;
+    if (!seen || metric !== 'time' || scale === 'log') return;
     const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let start: number | null = null;
     let frame = 0;
@@ -1124,63 +1547,177 @@ function Race({ study, view, round }: { study: WeightedStudy; view: string; roun
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [seen, view, round]);
+  }, [seen, view, round, metric, scale]);
 
-  const lanes = FRONTIERS.flatMap((kind) => {
+  const memory = study.memory && study.memory.frontiers.length > 0 ? study.memory : null;
+  const kinds = FRONTIERS.filter(
+    (kind) =>
+      frontierTime(study, kind) !== null || memory?.frontiers.some((f) => f.frontier === kind),
+  );
+  const timed = kinds.flatMap((kind) => {
     const time = frontierTime(study, kind);
     return time ? [{ kind, ...time }] : [];
   });
+  // Without the vector, its lane is left empty and the slowest of the
+  // others spans the track.
+  const off = (kind: FrontierKind) => scale === 'heaps' && kind === 'vector';
+  const raced = timed.filter((lane) => !off(lane.kind));
   const slowest =
-    frontierTime(study, 'vector') ??
-    lanes.reduce<(typeof lanes)[number] | null>(
+    (scale !== 'heaps' && frontierTime(study, 'vector')) ||
+    raced.reduce<(typeof timed)[number] | null>(
       (worst, lane) => (worst && worst.ms >= lane.ms ? worst : lane),
       null,
     );
-  if (!slowest || lanes.length === 0) return null;
-  const clock = progress * slowest.ms;
+  const clock = progress * (slowest?.ms ?? 0);
+  // One block size for every lane of the graph, the one the thinnest run
+  // needs, so a single note under the lanes says what a block holds.
+  const block =
+    trackWidth > 0 && slowest
+      ? Math.max(1, ...raced.map((time) => raceBlock((time.ms / slowest.ms) * trackWidth)))
+      : 1;
+  // The log scale: a tenth of the fastest run to the slowest.
+  const showLog = seen && metric === 'time' && scale === 'log';
+  const logShare = logScale(
+    Math.min(...timed.map((lane) => lane.ms)) / 10,
+    Math.max(...timed.map((lane) => lane.ms)),
+  );
 
+  const maxBytes = Math.max(1, ...(memory?.frontiers.map((f) => f.allocated_bytes) ?? []));
+  const heap = memory?.frontiers.find((f) => f.frontier === 'heap');
+  const heapPeak = heap ? peakEntries(heap) : null;
+  const decreases = Math.max(
+    0,
+    ...(memory?.frontiers.flatMap((f) => f.runs.map((r) => r.decreases)) ?? []),
+  );
+  const showMemory = seen && metric === 'memory';
+  const share = (bytes: number) => `${showMemory ? (bytes / maxBytes) * 100 : 0}%`;
+  const percent = (part: number) => {
+    const p = (100 * part) / Math.max(study.vertices, 1);
+    return `${p < 10 ? p.toFixed(1) : Math.round(p)}%`;
+  };
+  // The counters and values swap with the graph, the metric and the scale.
+  const swap = `${metric}-${scale}-${view}`;
+
+  if (kinds.length === 0) return null;
   return (
-    <div ref={ref} className={styles.race} style={{ '--p': progress } as CSSProperties}>
+    <div
+      ref={ref}
+      className={styles.race}
+      data-metric={metric}
+      data-scale={metric === 'time' ? scale : undefined}
+      style={{ '--p': progress } as CSSProperties}
+    >
       <div className={styles.raceLanes}>
-        {lanes.map((lane, l) => {
-          const runs = slowest.ms / lane.ms;
-          const done = progress >= 1 ? Math.round(runs) : Math.floor(progress * runs + 1e-9);
-          const segment = lane.ms / slowest.ms;
-          const block = raceBlock(segment * trackWidth);
+        {kinds.map((kind, l) => {
+          const time = frontierTime(study, kind);
+          const lane = memory?.frontiers.find((f) => f.frontier === kind) ?? null;
+          // Time.
+          const runs = time && slowest && !off(kind) ? slowest.ms / time.ms : 0;
+          const done =
+            progress >= 1 || scale === 'log'
+              ? Math.round(runs)
+              : Math.floor(progress * runs + 1e-9);
+          const segment = time && slowest && !off(kind) ? time.ms / slowest.ms : 0;
+          // Memory.
+          const peak = lane ? peakEntries(lane) : null;
+          const extra = lane ? lane.allocated_bytes - lane.base_bytes : 0;
+          const used = lane && peak !== null ? Math.min(extra, peak * lane.entry_bytes) : 0;
+          const pushesAgain = kind === 'lazy_heap' || kind === 'radix';
           return (
             <div
-              key={lane.kind}
+              key={kind}
               className={styles.raceLane}
-              data-estimated={lane.estimated || undefined}
+              data-estimated={
+                (metric === 'time' && scale !== 'log' && time?.estimated) || undefined
+              }
+              data-off={(metric === 'time' && off(kind)) || undefined}
               style={
                 {
-                  '--colour': FRONTIER_COLOUR[lane.kind],
+                  '--colour': FRONTIER_COLOUR[kind],
                   '--segment': `${Math.min(1, segment * block) * 100}%`,
+                  '--k': l,
                 } as CSSProperties
               }
             >
               <span className={styles.raceName}>
-                <span className={`mono ${styles.raceLabel}`}>{s.frontiers[lane.kind]}</span>
+                <span className={`mono ${styles.raceLabel}`}>{s.frontiers[kind]}</span>
                 <span className={`mono ${styles.detail}`}>
-                  <Swap view={view}>
-                    {lane.estimated ? s.estimated(formatMs(lane.ms)) : formatMs(lane.ms)}
+                  <Swap view={swap}>
+                    {metric === 'time'
+                      ? time
+                        ? time.estimated
+                          ? s.estimated(formatMs(time.ms))
+                          : formatMs(time.ms)
+                        : '·'
+                      : lane
+                        ? formatBytes(lane.allocated_bytes)
+                        : '·'}
                   </Swap>
                 </span>
               </span>
-              <span ref={l === 0 ? trackRef : undefined} className={styles.raceTrack}>
+              <span
+                ref={l === 0 ? trackRef : undefined}
+                className={styles.raceTrack}
+                role={metric === 'memory' && lane ? 'img' : undefined}
+                aria-label={
+                  metric === 'memory' && lane
+                    ? m.label(
+                        s.frontiers[kind],
+                        formatBytes(lane.base_bytes),
+                        formatBytes(used),
+                        formatBytes(extra - used),
+                      )
+                    : undefined
+                }
+              >
                 <span className={styles.raceRuns} data-ticks={runs > 1.5 || undefined} />
                 <span
                   className={styles.raceFirst}
                   style={{ width: `${Math.min(progress, segment) * 100}%` }}
                   data-on={progress > 0 || undefined}
                 />
+                <span
+                  className={styles.logBar}
+                  data-estimated={time?.estimated || undefined}
+                  style={{ width: `${showLog && time ? logShare(time.ms) * 100 : 0}%` }}
+                />
+                <span className={styles.memoryBars}>
+                  <span
+                    className={styles.memoryBase}
+                    style={{ width: share(lane?.base_bytes ?? 0) }}
+                  />
+                  <span className={styles.memoryUsed} style={{ width: share(used) }} />
+                  <span className={styles.memorySlack} style={{ width: share(extra - used) }} />
+                </span>
               </span>
               <span className={styles.raceCount}>
-                <span className={`mono ${styles.raceNumber}`}>{formatInt(done)}</span>
-                <span className={styles.detail}>{s.race.runs(done)}</span>
-                {block > 1 && (
-                  <span className={`mono ${styles.raceBlock}`}>
-                    {s.race.block(formatInt(block))}
+                <span className={`mono ${styles.raceNumber}`}>
+                  <Swap view={swap}>
+                    {metric === 'time'
+                      ? off(kind)
+                        ? '·'
+                        : formatInt(done)
+                      : formatCompact(peak ?? study.vertices)}
+                  </Swap>
+                </span>
+                {metric === 'time' ? (
+                  <span key={swap} className={`${styles.detail} ${styles.laneCountDetail}`}>
+                    {off(kind) ? '' : s.race.runs(done)}
+                  </span>
+                ) : (
+                  <span
+                    key={swap}
+                    className={`${styles.dataShowInfo} ${styles.laneCountDetail}`}
+                    tabIndex={0}
+                  >
+                    <Info size={12} aria-hidden="true" />
+                    <span className={`${styles.dataShowTip} ${styles.tipLeft}`} role="tooltip">
+                      {peak === null
+                        ? m.slots
+                        : pushesAgain && heapPeak
+                          ? m.versusHeap(formatHeapRatio(peak / heapPeak))
+                          : m.ofN(percent(peak))}
+                    </span>
                   </span>
                 )}
               </span>
@@ -1189,11 +1726,47 @@ function Race({ study, view, round }: { study: WeightedStudy; view: string; roun
         })}
         <span className={styles.racePlayhead} aria-hidden>
           <span className={`mono ${styles.raceClock}`}>
-            {slowest.estimated ? '≈ ' : ''}
+            {slowest?.estimated ? '≈ ' : ''}
             {formatMs(clock)}
           </span>
         </span>
       </div>
+      {/* The notes under the lanes, one for each drawing, laid on the same
+          spot and crossfading, so the chapter keeps its height. */}
+      {(block > 1 || memory) && (
+        <div className={styles.raceFoot}>
+          <div className={styles.raceKey} aria-hidden={metric !== 'time'}>
+            {block > 1 && <span className="mono">{s.race.block(formatInt(block))}</span>}
+          </div>
+          {memory && (
+            <div className={styles.memoryKey} aria-hidden={metric !== 'memory'}>
+              <span>
+                <span className={styles.memoryKeyBase} aria-hidden="true" />
+                {m.key.base}
+              </span>
+              <span>
+                <span className={styles.memoryKeyUsed} aria-hidden="true" />
+                {m.key.entries}
+              </span>
+              <span>
+                <span className={styles.memoryKeySlack} aria-hidden="true" />
+                {m.key.slack}
+              </span>
+              <span className={styles.dataShowInfo} tabIndex={0}>
+                <Info size={12} aria-hidden="true" />
+                <span className={`${styles.dataShowTip} ${styles.tipAbove}`} role="tooltip">
+                  {m.scale(
+                    formatBytes(memory.graph_bytes),
+                    formatBytes(memory.tree_bytes),
+                    formatInt(decreases),
+                    formatInt(study.vertices),
+                  )}
+                </span>
+              </span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

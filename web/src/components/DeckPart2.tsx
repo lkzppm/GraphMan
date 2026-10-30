@@ -1,19 +1,33 @@
 'use client';
 
 // Part 2's slides: weights as a column beside the graph, one Dijkstra over
-// three frontiers, vector against heap on the course's weighted graphs, and
-// the shortest paths the case study asks for. The words are the
-// dictionary's; the numbers come from studies/weighted/results.json (synced
-// as src/data/weighted.json), and until the study has run the two results
-// slides say so instead of showing anything made up.
+// six frontiers, their times and their memory on the course's weighted
+// graphs, and the shortest paths the case study asks for. The words are
+// the dictionary's; the numbers come from studies/weighted/results.json
+// (synced as src/data/weighted.json), and until the study has run the
+// results slides say so instead of showing anything made up.
 
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
-import { Fragment, type CSSProperties } from 'react';
+import { Fragment, useState, type CSSProperties } from 'react';
 import { siRust } from 'simple-icons';
-import { formatBytes, formatCompact, formatInt, formatMs, formatWeight } from '@/lib/format';
-import { logScale } from '@/lib/scale';
-import type { FrontierKind, FrontierStudy, PathAnswer, WeightedStudy } from '@/lib/studies';
+import {
+  formatBytes,
+  formatCompact,
+  formatInt,
+  formatMs,
+  formatPercent,
+  formatWeight,
+} from '@/lib/format';
+import { logScale, TIME_SCALES, type TimeScale } from '@/lib/scale';
+import {
+  peakEntries,
+  type FrontierKind,
+  type FrontierStudy,
+  type MemoryStudy,
+  type PathAnswer,
+  type WeightedStudy,
+} from '@/lib/studies';
 import { PORTRAIT_HEIGHT, PORTRAIT_PATH, PORTRAIT_WIDTH } from './dijkstra-portrait';
 import BrandIcon from './BrandIcon';
 import { at, Bar, Head, type T } from './deck-kit';
@@ -681,12 +695,15 @@ export function Frontiers({ t }: { t: T }) {
   );
 }
 
-/* ---- 04 vector against heap: one sheet ------------------------------------
-   One row per weighted graph, a bar per frontier (all six) on one log scale
-   shared by every row, and how many times slower the vector is than the
-   heap. The link opens the case studies on Part 2. A
-   frontier whose budget ran out before any run finished shows its estimate
-   as a dashed bar. */
+/* ---- 05 vector against heap: one sheet ------------------------------------
+   One row per weighted graph, a bar per frontier (all six) and how many
+   times slower the vector is than the heap. A switch in the bars' head
+   picks their scale: one log scale shared by every row; linear, the
+   vector's time as each row's 100% and the others as shares of it; or
+   linear without the vector, each row's slowest other frontier as 100%.
+   The bars slide from one scale to the next. The link opens the case
+   studies on Part 2. A frontier whose budget ran out before any run
+   finished shows its estimate as a dashed bar. */
 
 const FRONTIERS: FrontierKind[] = ['vector', 'heap', 'lazy_heap', 'quad_heap', 'pairing', 'radix'];
 const FRONTIER_COLOURS: Record<FrontierKind, string> = {
@@ -730,6 +747,10 @@ export function Timing({ t, studies: all }: { t: T; studies: WeightedStudy[] }) 
   );
   const scale = logScale(0.1, Math.max(1, ...times));
   const machine = studies.find((study) => study.machine)?.machine;
+  const scales = t.studies.part2.timing.scales;
+  const [mode, setMode] = useState<TimeScale>('log');
+  // Once the scale has changed the bars slide instead of growing again.
+  const [moved, setMoved] = useState(false);
 
   return (
     <div className={styles.body}>
@@ -745,14 +766,39 @@ export function Timing({ t, studies: all }: { t: T; studies: WeightedStudy[] }) 
         </ul>
       </div>
 
-      <div className={styles.sheet}>
+      <div className={styles.sheet} data-moved={moved || undefined}>
         <div
           className={`label ${styles.sheetHead} ${styles.timingRow} ${styles.rise}`}
           style={at(0.2)}
         >
           <span>{c.graph}</span>
           <span>{c.size}</span>
-          <span>{c.time}</span>
+          <span className={styles.timeHead}>
+            {c.time}
+            <span
+              className={styles.scaleSwitch}
+              role="group"
+              aria-label={scales.label}
+              style={{ '--i': TIME_SCALES.indexOf(mode) } as CSSProperties}
+            >
+              <span className={styles.scaleThumb} aria-hidden="true" />
+              {TIME_SCALES.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={styles.scaleButton}
+                  aria-pressed={mode === key}
+                  title={scales.hint[key]}
+                  onClick={() => {
+                    setMode(key);
+                    setMoved(true);
+                  }}
+                >
+                  {scales[key]}
+                </button>
+              ))}
+            </span>
+          </span>
           <span className={styles.centre}>{c.ratio}</span>
         </div>
         {studies.length === 0 ? (
@@ -764,6 +810,16 @@ export function Timing({ t, studies: all }: { t: T; studies: WeightedStudy[] }) 
             const d = 0.3 + i * 0.1;
             const vector = frontierTime(study, 'vector');
             const heap = frontierTime(study, 'heap');
+            // The row's 100% on the two linear scales.
+            const whole =
+              mode === 'vector'
+                ? (vector?.ms ?? 0)
+                : Math.max(
+                    0,
+                    ...FRONTIERS.filter((kind) => kind !== 'vector').map(
+                      (kind) => frontierTime(study, kind)?.ms ?? 0,
+                    ),
+                  );
             return (
               <div
                 key={study.name}
@@ -788,19 +844,22 @@ export function Timing({ t, studies: all }: { t: T; studies: WeightedStudy[] }) 
                       return <Bar key={kind} width={0} colour={colour} value="·" delay={delay} />;
                     const runs = time.run.timing?.runs ?? 0;
                     const short = !time.estimated && runs < time.run.requested_runs;
+                    // As a share of the vector, every bar but the vector's
+                    // own says its percentage instead of its time.
+                    const shown =
+                      mode === 'vector' && kind !== 'vector' && vector
+                        ? formatPercent((100 * time.ms) / vector.ms)
+                        : time.estimated
+                          ? s.estimated(formatMs(time.ms))
+                          : formatMs(time.ms);
                     return (
                       <Bar
                         key={kind}
-                        width={scale(time.ms)}
+                        width={mode === 'log' ? scale(time.ms) : whole > 0 ? time.ms / whole : 0}
                         colour={colour}
                         ghost={time.estimated}
-                        value={
-                          time.estimated
-                            ? s.estimated(formatMs(time.ms))
-                            : short
-                              ? `${formatMs(time.ms)} · ${runs}/${time.run.requested_runs}`
-                              : formatMs(time.ms)
-                        }
+                        off={mode === 'heaps' && kind === 'vector'}
+                        value={short ? `${shown} · ${runs}/${time.run.requested_runs}` : shown}
                         delay={delay}
                       />
                     );
@@ -822,6 +881,7 @@ export function Timing({ t, studies: all }: { t: T; studies: WeightedStudy[] }) 
 
       <div className={`${styles.benchFoot} ${styles.rise}`} style={at(1.3)}>
         <p className={styles.note}>
+          {scales.hint[mode]}{' '}
           {machine && s.machine(machine.cpu, formatBytes(machine.total_memory_bytes))}
         </p>
         <Link href="/studies#parte-2" className={`label ${styles.more}`}>
@@ -833,13 +893,347 @@ export function Timing({ t, studies: all }: { t: T; studies: WeightedStudy[] }) 
   );
 }
 
-/* ---- 05 shortest paths, 06 names, 07 the network ---------------------------
-   05: from vertex 10 to 20, 30, 40, 50 and 60 on every weighted graph, a
+/* ---- 04 what each queue keeps, 06 memory, measured -----------------------
+   04: the six queues again, as the arrays they own at one moment of a run
+   on four vertices: a cell indexed by vertex outlined, an entry filled, a
+   stale copy struck through, the room a growing array keeps dashed. A
+   dashed tick marks n entries, which a heap with decrease-key never
+   passes and the lazy heap does. 06: what they hold on the course's
+   graphs, a bar per frontier scaled to the row's largest, the heap's peak
+   against n, and the lazy heap's entries against the heap's. */
+
+type MemoryCell = 'slot' | 'entry' | 'stale' | 'slack' | 'gap';
+
+interface MemoryRowLayout {
+  /** The field, as the library names it. */
+  label: string;
+  /** Bytes a cell: 4 for an index or a link, 8 for an estimate, 16 for an
+      entry (an estimate and a vertex, padded). */
+  bytes: number;
+  /** `gap` separates two buckets. */
+  cells: MemoryCell[];
+}
+
+const SLOTS: MemoryCell[] = ['slot', 'slot', 'slot', 'slot'];
+
+/** Each queue at one moment of a run on four vertices, three of them in
+    the frontier, one estimate lowered twice. */
+const MEMORY_LAYOUTS: { rows: MemoryRowLayout[]; tick: boolean }[] = [
+  {
+    rows: [{ label: 'estimate', bytes: 8, cells: ['entry', 'slot', 'entry', 'entry'] }],
+    tick: false,
+  },
+  {
+    rows: [
+      { label: 'position', bytes: 4, cells: SLOTS },
+      { label: 'heap', bytes: 16, cells: ['entry', 'entry', 'entry', 'slack'] },
+    ],
+    tick: true,
+  },
+  {
+    rows: [
+      { label: 'latest', bytes: 8, cells: SLOTS },
+      { label: 'heap', bytes: 16, cells: ['entry', 'stale', 'entry', 'stale', 'entry', 'slack'] },
+    ],
+    tick: true,
+  },
+  {
+    rows: [
+      { label: 'position', bytes: 4, cells: SLOTS },
+      { label: 'heap', bytes: 16, cells: ['entry', 'entry', 'entry', 'slack'] },
+    ],
+    tick: true,
+  },
+  {
+    rows: [
+      { label: 'key', bytes: 8, cells: ['entry', 'slot', 'entry', 'entry'] },
+      { label: 'child', bytes: 4, cells: SLOTS },
+      { label: 'next', bytes: 4, cells: SLOTS },
+      { label: 'prev', bytes: 4, cells: SLOTS },
+    ],
+    tick: false,
+  },
+  {
+    rows: [
+      { label: 'latest', bytes: 8, cells: SLOTS },
+      {
+        label: 'buckets',
+        bytes: 16,
+        cells: ['entry', 'stale', 'slack', 'gap', 'entry', 'entry', 'slack', 'slack'],
+      },
+    ],
+    tick: true,
+  },
+];
+
+const MEMORY_X0 = 34;
+const MEMORY_GAP = 1.5;
+const MEMORY_ROW = 11;
+const MEMORY_STEP = 17;
+
+/** Where every cell of a layout goes: one pixel a byte, rows centred. */
+function memoryCells(rows: MemoryRowLayout[]) {
+  const top = (96 - (rows.length * MEMORY_STEP - (MEMORY_STEP - MEMORY_ROW))) / 2;
+  return rows.map((row, r) => {
+    const y = top + r * MEMORY_STEP;
+    const cells: { x: number; width: number; cell: Exclude<MemoryCell, 'gap'> }[] = [];
+    let x = MEMORY_X0;
+    for (const cell of row.cells) {
+      if (cell === 'gap') {
+        x += 5;
+        continue;
+      }
+      cells.push({ x, width: row.bytes, cell });
+      x += row.bytes + MEMORY_GAP;
+    }
+    return { label: row.label, entries: row.bytes === 16, y, cells };
+  });
+}
+
+const CELL_CLASS: Record<Exclude<MemoryCell, 'gap'>, string> = {
+  slot: styles.figCell,
+  entry: styles.figEntry,
+  stale: styles.figCell,
+  slack: styles.figSlack,
+};
+
+/** A queue's arrays, a pixel a byte, the cells fading in in order. */
+function FigMemory({
+  rows,
+  tick,
+  delay,
+}: {
+  rows: MemoryRowLayout[];
+  tick: boolean;
+  delay: number;
+}) {
+  const laid = memoryCells(rows);
+  const entryRows = laid.filter((row) => row.entries);
+  // n entries of 16 bytes, from the start of the row.
+  const tickX = MEMORY_X0 + 4 * (16 + MEMORY_GAP) - MEMORY_GAP / 2;
+  const offsets = laid.map((_, r) =>
+    laid.slice(0, r).reduce((sum, row) => sum + row.cells.length, 0),
+  );
+  return (
+    <svg viewBox="0 0 168 96" className={styles.fig} aria-hidden="true">
+      {laid.map((row, r) => (
+        <g key={r}>
+          <text className={styles.figLabelEnd} x={MEMORY_X0 - 4} y={row.y + MEMORY_ROW / 2 + 2.3}>
+            {row.label}
+          </text>
+          {row.cells.map(({ x, width, cell }, c) => (
+            <g key={c} className={styles.figFade} style={at(delay + (offsets[r] + c) * 0.07)}>
+              <rect
+                x={x}
+                y={row.y}
+                width={width}
+                height={MEMORY_ROW}
+                rx="1.5"
+                className={CELL_CLASS[cell]}
+              />
+              {cell === 'stale' && (
+                <line
+                  className={styles.figStrike}
+                  x1={x + 3}
+                  y1={row.y + MEMORY_ROW - 2.5}
+                  x2={x + width - 3}
+                  y2={row.y + 2.5}
+                />
+              )}
+            </g>
+          ))}
+        </g>
+      ))}
+      {tick && entryRows.length > 0 && (
+        <g className={styles.figFade} style={at(delay + 0.9)}>
+          <line
+            className={styles.figTick}
+            x1={tickX}
+            x2={tickX}
+            y1={entryRows[0].y - 5}
+            y2={entryRows[entryRows.length - 1].y + MEMORY_ROW + 4}
+          />
+          <text className={styles.figLabelCentre} x={tickX} y={entryRows[0].y - 7}>
+            n
+          </text>
+        </g>
+      )}
+    </svg>
+  );
+}
+
+/** The six queues as the memory they own: what grows with n, what grows
+    with the relaxations, and the bound each keeps. */
+export function Memory({ t }: { t: T }) {
+  const s = t.presentation.slides.part2.memory;
+  const groups = [s.items.slice(0, 3), s.items.slice(3)];
+  return (
+    <div className={styles.body}>
+      <Head eyebrow={s.eyebrow} title={s.title} />
+      <div className={styles.queueGroups}>
+        {groups.map((items, g) => (
+          <section key={g} className={styles.queueGroup}>
+            <p
+              className={`label ${styles.queueGroupLabel} ${styles.rise}`}
+              style={at(0.2 + g * 0.3)}
+            >
+              {s.groups[g]}
+            </p>
+            <ol className={styles.steps} data-count="3">
+              {items.map((item, j) => {
+                const i = g * 3 + j;
+                const layout = MEMORY_LAYOUTS[i];
+                return (
+                  <li
+                    key={item.name}
+                    className={`${styles.stepItem} ${styles.rise}`}
+                    style={at(0.3 + i * 0.1)}
+                  >
+                    <span className={styles.figWrap}>
+                      <FigMemory rows={layout.rows} tick={layout.tick} delay={0.7 + i * 0.3} />
+                    </span>
+                    <span className={`mono ${styles.stepIndex}`}>{item.name}</span>
+                    <h3 className={styles.stepTitle}>{item.title}</h3>
+                    <span className={`mono ${styles.cost}`}>{item.cost}</span>
+                    <span className={`comment ${styles.caption}`}>{item.caption}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+        ))}
+      </div>
+      <p className={`comment ${styles.ties} ${styles.rise}`} style={at(2.6)}>
+        {s.key}
+      </p>
+    </div>
+  );
+}
+
+/** What the queues held on the course's graphs: per graph, the bytes of
+    each (bars scaled to the row's largest), the indexed heap's peak as a
+    share of n, and how many entries the lazy heap held against it. */
+export function MemoryMeasured({ t, studies: all }: { t: T; studies: WeightedStudy[] }) {
+  const s = t.presentation.slides.part2.memoryMeasured;
+  const legend = t.presentation.slides.part2.timing.legend;
+  const c = s.columns;
+  const studies = all.filter(
+    (study): study is WeightedStudy & { memory: MemoryStudy } =>
+      !study.names_file && !!study.memory && study.memory.frontiers.length > 0,
+  );
+  const largest = studies[studies.length - 1];
+
+  return (
+    <div className={styles.body}>
+      <div className={styles.benchHead}>
+        <Head eyebrow={s.eyebrow} title={s.title} />
+        <ul className={`${styles.legend} ${styles.rise}`} style={at(0.2)}>
+          {legend.map((l) => (
+            <li key={l.key} className={styles.legendItem}>
+              <span className={styles.swatch} data-key={l.key} aria-hidden="true" />
+              {l.label}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className={styles.sheet}>
+        <div
+          className={`label ${styles.sheetHead} ${styles.timingRow} ${styles.memoryRow} ${styles.rise}`}
+          style={at(0.2)}
+        >
+          <span>{c.graph}</span>
+          <span>{c.size}</span>
+          <span>{c.bytes}</span>
+          <span className={styles.centre}>{c.peak}</span>
+          <span className={styles.centre}>{c.lazy}</span>
+        </div>
+        {studies.length === 0 ? (
+          <p className={`comment ${styles.pending} ${styles.rise}`} style={at(0.4)}>
+            {s.pending}
+          </p>
+        ) : (
+          studies.map((study, i) => {
+            const d = 0.3 + i * 0.1;
+            const { frontiers } = study.memory;
+            const max = Math.max(1, ...frontiers.map((f) => f.allocated_bytes));
+            const peak = (kind: FrontierKind) => {
+              const lane = frontiers.find((f) => f.frontier === kind);
+              return lane ? peakEntries(lane) : null;
+            };
+            const heap = peak('heap');
+            const lazy = peak('lazy_heap');
+            return (
+              <div
+                key={study.name}
+                className={`${styles.row} ${styles.timingRow} ${styles.memoryRow} ${styles.rise}`}
+                style={at(d)}
+              >
+                <span className={styles.rowName}>{graphLabel(t, study)}</span>
+                <span className={styles.size}>
+                  <span className={`mono ${styles.sizeValue}`}>
+                    {formatCompact(study.vertices)} <i>{t.studies.facts.vertices}</i>
+                  </span>
+                  <span className={`mono ${styles.sizeValue}`}>
+                    {formatCompact(study.edges)} <i>{t.studies.facts.edges}</i>
+                  </span>
+                </span>
+                <span className={styles.group} data-wide="true">
+                  {FRONTIERS.map((kind, k) => {
+                    const lane = frontiers.find((f) => f.frontier === kind);
+                    const colour = FRONTIER_COLOURS[kind];
+                    const delay = d + 0.2 + k * 0.08;
+                    if (!lane)
+                      return <Bar key={kind} width={0} colour={colour} value="·" delay={delay} />;
+                    return (
+                      <Bar
+                        key={kind}
+                        width={lane.allocated_bytes / max}
+                        colour={colour}
+                        value={formatBytes(lane.allocated_bytes)}
+                        delay={delay}
+                      />
+                    );
+                  })}
+                </span>
+                <span
+                  className={`mono ${styles.answer} ${styles.centre} ${styles.figFade}`}
+                  style={at(d + 0.8)}
+                >
+                  {heap !== null ? s.share(Math.round((100 * heap) / study.vertices)) : '·'}
+                </span>
+                <span
+                  className={`mono ${styles.answer} ${styles.centre} ${styles.figFade}`}
+                  style={at(d + 0.9)}
+                >
+                  {heap && lazy !== null ? `×${(lazy / heap).toFixed(1)}` : '·'}
+                </span>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className={`${styles.benchFoot} ${styles.rise}`} style={at(1.3)}>
+        <p className={styles.note}>
+          {largest && s.note(graphLabel(t, largest), formatBytes(largest.memory.graph_bytes))}
+        </p>
+        <Link href="/studies#parte-2" className={`label ${styles.more}`}>
+          {s.cta}
+          <ArrowRight size={13} aria-hidden="true" />
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/* ---- 07 shortest paths, 08 names, 09 the network ---------------------------
+   07: from vertex 10 to 20, 30, 40, 50 and 60 on every weighted graph, a
    grid of distances with the edge count and the path drawn as its
-   vertices at their distance from the source. 06: how a names file
+   vertices at their distance from the source. 08: how a names file
    becomes `VertexNames`, built from the six lines the study asks for: one
    string, the entries sorted by vertex, and the index sorted by name.
-   07: from Edsger W. Dijkstra to the five researchers, each path spelled
+   09: from Edsger W. Dijkstra to the five researchers, each path spelled
    by name. */
 
 /** A path as a line, a dot per vertex at its distance from the source:
