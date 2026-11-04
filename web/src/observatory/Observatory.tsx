@@ -359,6 +359,39 @@ const LAYOUTS: { id: LayoutId; icon: ReactNode }[] = [
 /** Which way the layered tree grows: root on top, or root on the left. */
 type TreeDirection = 'vertical' | 'horizontal';
 
+/** The distances a layout lets you set; their words live in the dictionary. */
+type SpacingId = 'link' | 'ring' | 'level' | 'across' | 'circle';
+
+type Spacing = Record<SpacingId, number>;
+
+/** The sliders of each layout: only what its geometry leaves free. */
+const SPACING_SLIDERS: Record<LayoutId, SpacingId[]> = {
+  force: ['link'],
+  radial: ['ring'],
+  layered: ['level', 'across'],
+  degree: ['circle'],
+};
+
+const DEFAULT_SPACING: Spacing = { link: 1, ring: 1, level: 1, across: 1, circle: 1 };
+
+/** A slider reaches this many doublings either way (a factor of 1/4 to 4). */
+const SPACING_DOUBLINGS = 2;
+
+/** What `spacing` makes of a layout: how much it stretches along x and along y. */
+function spacingStretch(
+  id: LayoutId,
+  spacing: Spacing,
+  direction: TreeDirection,
+): [number, number] {
+  if (id === 'layered') {
+    return direction === 'vertical'
+      ? [spacing.across, spacing.level]
+      : [spacing.level, spacing.across];
+  }
+  const all = id === 'force' ? spacing.link : id === 'radial' ? spacing.ring : spacing.circle;
+  return [all, all];
+}
+
 /** How long a layout change takes to slide into place. */
 const MORPH_MS = 700;
 /** Share of the view a framed path fills (the path label floats over the top). */
@@ -534,6 +567,11 @@ export default function Observatory() {
   const [treeDirection, setTreeDirection] = useState<TreeDirection>('vertical');
   const treeDirectionRef = useRef(treeDirection);
   treeDirectionRef.current = treeDirection;
+  const [spacing, setSpacing] = useState(DEFAULT_SPACING);
+  const spacingRef = useRef(spacing);
+  /** How much the positions on the canvas are stretched already. */
+  const stretchedRef = useRef<[number, number]>([1, 1]);
+  const stretchFrame = useRef(0);
   const layoutMenuRef = useRef<HTMLDivElement>(null);
   /** What the arrow keys drive: the search timeline or the components. */
   const keysTarget = useRef<'search' | 'components'>('search');
@@ -807,11 +845,14 @@ export default function Observatory() {
     [glideTo],
   );
 
+  const layoutRef = useRef(layout);
+
   /**
    * Rearranges the graph: the level layouts start at `root`, the force
    * layout returns to the initial placement and warms the simulation up
    * again, and the layered one draws the tree of the search on screen when
-   * that search is a Dijkstra (a BFS tree from `root` otherwise). Vertices slide to their new places and the view follows: the
+   * that search is a Dijkstra (a BFS tree from `root` otherwise). The layout's
+   * spacing stretches whatever comes back. Vertices slide to their new places and the view follows: the
    * whole graph, or with `frame: 'component'` only the root's component
    * (a new search origin re-arranges that one, the rest just makes room).
    */
@@ -846,6 +887,13 @@ export default function Observatory() {
         setNotice(error instanceof Error ? error.message : String(error));
         return;
       }
+      const [sx, sy] = spacingStretch(id, spacingRef.current, treeDirectionRef.current);
+      for (let i = 2; i < positions.length; i += 2) {
+        positions[i] *= sx;
+        positions[i + 1] *= sy;
+      }
+      stretchedRef.current = [sx, sy];
+      layoutRef.current = id;
       // The force layout is the simulation's business; the others are
       // exact, so it stays off until asked for (a "relax" step).
       const simulateNext = id === 'force' && graph.vertexCount <= SIMULATION_LIMIT;
@@ -860,9 +908,40 @@ export default function Observatory() {
     [glideToFit],
   );
 
+  /**
+   * Sets one spacing: the picture stretches on the next frame, however many
+   * times the slider moved before it. The view holds its zoom, or the change
+   * would cancel out on screen, and stays on the same part of the picture.
+   */
+  const chooseSpacing = useCallback(
+    (id: SpacingId, value: number) => {
+      spacingRef.current = { ...spacingRef.current, [id]: value };
+      setSpacing(spacingRef.current);
+      if (id === 'link') rendererRef.current?.setForceSpacing(value);
+      autoFit.current = false;
+      if (stretchFrame.current) return;
+      stretchFrame.current = requestAnimationFrame(() => {
+        stretchFrame.current = 0;
+        const [sx, sy] = spacingStretch(
+          layoutRef.current,
+          spacingRef.current,
+          treeDirectionRef.current,
+        );
+        const kx = sx / stretchedRef.current[0];
+        const ky = sy / stretchedRef.current[1];
+        stretchedRef.current = [sx, sy];
+        rendererRef.current?.stretch(kx, ky);
+        const stretched = (c: Camera) => ({ x: c.x * kx, y: c.y * ky, zoom: c.zoom });
+        const heading = glideTarget.current;
+        applyCamera(stretched(cameraRef.current));
+        if (heading) glideTo(stretched(heading));
+      });
+    },
+    [applyCamera, glideTo],
+  );
+
   /** The level layouts follow the search: a new origin re-arranges its component,
       and the layered tree also changes between a Dijkstra and any other search. */
-  const layoutRef = useRef(layout);
   layoutRef.current = layout;
   const searchRoot = search?.root ?? 0;
   const searchIsDijkstra = search?.kind === 'dijkstra';
@@ -942,6 +1021,9 @@ export default function Observatory() {
     setMemoryOpen(false);
     setLayout('force');
     setLayoutOpen(false);
+    spacingRef.current = DEFAULT_SPACING;
+    setSpacing(DEFAULT_SPACING);
+    stretchedRef.current = [1, 1];
     setSelected(0);
     setHovered(0);
     setReveal(0);
@@ -3099,8 +3181,7 @@ export default function Observatory() {
                         aria-checked={layout === item.id}
                         className={styles.menuItem}
                         onClick={() => {
-                          // Layered stays open: its direction toggle is right there.
-                          if (item.id !== 'layered') setLayoutOpen(false);
+                          // The menu stays open: the layout's controls are right here.
                           applyLayout(item.id, search?.root ?? (selected || 1));
                         }}
                       >
@@ -3169,6 +3250,34 @@ export default function Observatory() {
                         </span>
                       </div>
                     )}
+                    <div className={styles.spacing}>
+                      {SPACING_SLIDERS[layout].map((id) => (
+                        <div key={id} className={styles.spacingRow}>
+                          <span className={styles.spacingHead}>
+                            <span className={`label ${styles.helpTitle}`}>{t.spacing[id]}</span>
+                            <button
+                              type="button"
+                              className={`mono ${styles.spacingValue}`}
+                              aria-label={t.spacing.reset}
+                              title={t.spacing.reset}
+                              disabled={spacing[id] === 1}
+                              onClick={() => chooseSpacing(id, 1)}
+                            >
+                              ×{spacing[id].toFixed(2)}
+                            </button>
+                          </span>
+                          <input
+                            type="range"
+                            min={-SPACING_DOUBLINGS}
+                            max={SPACING_DOUBLINGS}
+                            step={0.05}
+                            value={Math.log2(spacing[id])}
+                            aria-label={t.spacing[id]}
+                            onChange={(event) => chooseSpacing(id, 2 ** Number(event.target.value))}
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
