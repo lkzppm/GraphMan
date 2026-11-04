@@ -89,7 +89,9 @@ function initialTier(manifest: DblpManifest): number {
  * as the two course-format files.
  */
 export default function DblpConsole() {
-  const t = useLocale().t.dblp;
+  const { t: dictionary } = useLocale();
+  const t = dictionary.dblp;
+  const lang = dictionary.lang;
   const router = useRouter();
   const [wasm, setWasm] = useState<GraphmanModule | null>(null);
   const [manifest, setManifest] = useState<DblpManifest | null>(null);
@@ -314,7 +316,10 @@ export default function DblpConsole() {
     <div className={styles.stage}>
       <Constellation />
       <div className={styles.console}>
-        <h1 className={styles.title}>{t.title}</h1>
+        <header className={styles.heading}>
+          <h1 className={styles.title}>{t.title}</h1>
+          {manifest && <p className={styles.dated}>{dumpDate(manifest, lang)}</p>}
+        </header>
         {manifestError && (
           <p className={styles.notice} role="alert">
             {t.failed(manifestError)}{' '}
@@ -753,4 +758,14 @@ function ResearcherField({
       {invalid && <span className={styles.invalid}>{invalid}</span>}
     </div>
   );
+}
+
+/** The day the dump was taken, in the visitor's language: the snapshot's
+    own date when the manifest has one, else the day of the build. The date
+    is read at noon UTC so no time zone moves it to the day before. */
+function dumpDate(manifest: DblpManifest, lang: string): string {
+  const day = manifest.date
+    ? new Date(`${manifest.date}T12:00:00Z`)
+    : new Date(manifest.builtAt * 1000);
+  return new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'long', year: 'numeric' }).format(day);
 }
