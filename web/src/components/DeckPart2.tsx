@@ -9,7 +9,7 @@
 
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
-import { Fragment, type CSSProperties } from 'react';
+import { Fragment, useState, type CSSProperties } from 'react';
 import { siRust } from 'simple-icons';
 import { formatBytes, formatCompact, formatInt, formatMs, formatWeight } from '@/lib/format';
 import { logScale } from '@/lib/scale';
@@ -21,10 +21,12 @@ import styles from './Deck.module.css';
 
 /* ---- 01 weights: a column beside the graph ---------------------------------
    The handout's Figure 1 read left to right: the file with its third
-   column, the normalising step, then the CSR arrays it becomes with the
-   weights as one more array parallel to the targets. Under it, three notes:
-   the graph trait never reads the column, the weighted trait does, and the
-   negative edge of the figure is refused rather than answered. */
+   column, the normalising step, then what it becomes, with a switch above
+   the box between the three representations: the CSR's arrays, the list's
+   two tables, the matrix's bits and weight table. Each keeps the weights
+   beside the adjacency. Under it, three notes: the graph trait never reads
+   the weights, the weighted trait does, and the negative edge of the figure
+   is refused rather than answered. */
 
 /** Figure 1 of the Part 2 handout: `u v weight`, five vertices. */
 const FIGURE_1: readonly [number, number, string][] = [
@@ -37,19 +39,28 @@ const FIGURE_1: readonly [number, number, string][] = [
 ];
 const FIGURE_1_N = 5;
 
-/** The CSR the library builds from Figure 1: per vertex its neighbours
-    ascending, each with the weight of the edge to it. */
-function figureCsr() {
+/** Figure 1's rows, as every representation keeps them: per vertex its
+    neighbours ascending, each with the weight of the edge to it. Row 0 is
+    unused, as in the library, so a vertex indexes its own row. */
+function figureRows() {
   const rows = Array.from({ length: FIGURE_1_N + 1 }, () => [] as [number, string][]);
   for (const [u, v, w] of FIGURE_1) {
     rows[u].push([v, w]);
     rows[v].push([u, w]);
   }
+  for (const row of rows) row.sort((a, b) => a[0] - b[0]);
+  return rows;
+}
+
+const ROWS = figureRows();
+const VERTICES = Array.from({ length: FIGURE_1_N }, (_, i) => i + 1);
+
+/** The CSR the library builds from Figure 1. */
+function figureCsr() {
   const offsets = [0];
   const cells: { target: number; weight: string; vertex: number }[] = [];
-  for (let v = 1; v <= FIGURE_1_N; v++) {
-    rows[v].sort((a, b) => a[0] - b[0]);
-    for (const [target, weight] of rows[v]) cells.push({ target, weight, vertex: v });
+  for (const v of VERTICES) {
+    for (const [target, weight] of ROWS[v]) cells.push({ target, weight, vertex: v });
     offsets.push(cells.length);
   }
   return { offsets, cells };
@@ -57,8 +68,56 @@ function figureCsr() {
 
 const CSR = figureCsr();
 
+/** One matrix of Figure 1, its rows and columns numbered: the library's bits
+    or its weight table, which answers 0 where there is no edge. */
+function FigureMatrix({ name, weighted }: { name: string; weighted?: boolean }) {
+  return (
+    <div className={styles.matrix}>
+      <span className={`mono ${styles.arrayName}`}>{name}</span>
+      <span className={styles.matrixGrid}>
+        <span />
+        {VERTICES.map((v) => (
+          <span key={v} className={`mono ${styles.matrixIndex}`}>
+            {v}
+          </span>
+        ))}
+        {VERTICES.map((u) => (
+          <Fragment key={u}>
+            <span className={`mono ${styles.matrixIndex}`}>{u}</span>
+            {VERTICES.map((v) => {
+              const weight = ROWS[u].find(([target]) => target === v)?.[1];
+              if (weight === undefined) {
+                return (
+                  <span key={v} className={`mono ${styles.cell} ${styles.cellAbsent}`}>
+                    0
+                  </span>
+                );
+              }
+              return weighted ? (
+                <span
+                  key={v}
+                  className={`mono ${styles.cell} ${styles.weightCell}`}
+                  data-negative={weight.startsWith('-') || undefined}
+                >
+                  {weight}
+                </span>
+              ) : (
+                <span key={v} className={`mono ${styles.cell}`}>
+                  1
+                </span>
+              );
+            })}
+          </Fragment>
+        ))}
+      </span>
+    </div>
+  );
+}
+
 export function Weights({ t }: { t: T }) {
   const s = t.presentation.slides.part2.weights;
+  // Which representation the box shows: 0 CSR, 1 list, 2 matrix.
+  const [view, setView] = useState(0);
   return (
     <div className={styles.body}>
       <Head eyebrow={s.eyebrow} title={s.title} />
@@ -92,56 +151,139 @@ export function Weights({ t }: { t: T }) {
           </span>
         </div>
 
-        {/* the arrays: offsets, targets, and the weights beside the targets */}
-        <div className={`${styles.arrays} ${styles.pop}`} style={at(0.9)}>
-          <p className={`label ${styles.arraysLabel}`}>
-            <BrandIcon icon={siRust} size={16} className={styles.coreIcon} />
-            {s.arrays.label}
-          </p>
-          <div className={styles.arrayRow}>
-            <span className={`mono ${styles.arrayName}`}>{s.arrays.offsets}</span>
-            <span className={styles.cells}>
-              {CSR.offsets.map((offset, i) => (
-                <span
-                  key={i}
-                  className={`mono ${styles.cell} ${styles.pop}`}
-                  style={at(1.05 + i * 0.04)}
-                >
-                  {offset}
-                </span>
-              ))}
-            </span>
+        <div className={styles.repColumn}>
+          {/* The switch between the representations: the cover's pill, with
+              three places. The box keeps the tallest view's height, so the
+              slide never moves when it is pressed. */}
+          <div
+            className={`${styles.parts} ${styles.views} ${styles.pop}`}
+            role="radiogroup"
+            aria-label={s.viewsLabel}
+            style={{ ...at(0.8), '--view': view } as CSSProperties}
+          >
+            <span className={styles.partsThumb} aria-hidden="true" />
+            {s.views.map((label, i) => (
+              <button
+                key={label}
+                type="button"
+                role="radio"
+                aria-checked={view === i}
+                className={styles.partButton}
+                onClick={() => setView(i)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-          <div className={styles.arrayRow}>
-            <span className={`mono ${styles.arrayName}`}>{s.arrays.targets}</span>
-            <span className={styles.cells}>
-              {CSR.cells.map((cell, i) => (
-                <span
-                  key={i}
-                  className={`mono ${styles.cell} ${styles.pop}`}
-                  data-row-start={CSR.offsets.includes(i) || undefined}
-                  style={at(1.3 + i * 0.04)}
-                >
-                  {cell.target}
-                </span>
-              ))}
-            </span>
-          </div>
-          <div className={styles.arrayRow} data-weights="true">
-            <span className={`mono ${styles.arrayName}`}>{s.arrays.weights}</span>
-            <span className={styles.cells}>
-              {CSR.cells.map((cell, i) => (
-                <span
-                  key={i}
-                  className={`mono ${styles.cell} ${styles.weightCell} ${styles.pop}`}
-                  data-row-start={CSR.offsets.includes(i) || undefined}
-                  data-negative={cell.weight.startsWith('-') || undefined}
-                  style={at(1.9 + i * 0.05)}
-                >
-                  {cell.weight}
-                </span>
-              ))}
-            </span>
+
+          <div className={`${styles.arrays} ${styles.pop}`} style={at(0.9)}>
+            <div className={styles.repViews}>
+              {/* the CSR: offsets, targets, and the weights beside the targets */}
+              <div className={styles.repView} data-current={view === 0 || undefined}>
+                <p className={`label ${styles.arraysLabel}`}>
+                  <BrandIcon icon={siRust} size={16} className={styles.coreIcon} />
+                  {s.arrays.label}
+                </p>
+                <div className={styles.repBody}>
+                  <div className={styles.arrayRow}>
+                    <span className={`mono ${styles.arrayName}`}>{s.arrays.offsets}</span>
+                    <span className={styles.cells}>
+                      {CSR.offsets.map((offset, i) => (
+                        <span
+                          key={i}
+                          className={`mono ${styles.cell} ${styles.pop}`}
+                          style={at(1.05 + i * 0.04)}
+                        >
+                          {offset}
+                        </span>
+                      ))}
+                    </span>
+                  </div>
+                  <div className={styles.arrayRow}>
+                    <span className={`mono ${styles.arrayName}`}>{s.arrays.targets}</span>
+                    <span className={styles.cells}>
+                      {CSR.cells.map((cell, i) => (
+                        <span
+                          key={i}
+                          className={`mono ${styles.cell} ${styles.pop}`}
+                          data-row-start={CSR.offsets.includes(i) || undefined}
+                          style={at(1.3 + i * 0.04)}
+                        >
+                          {cell.target}
+                        </span>
+                      ))}
+                    </span>
+                  </div>
+                  <div className={styles.arrayRow} data-weights="true">
+                    <span className={`mono ${styles.arrayName}`}>{s.arrays.weights}</span>
+                    <span className={styles.cells}>
+                      {CSR.cells.map((cell, i) => (
+                        <span
+                          key={i}
+                          className={`mono ${styles.cell} ${styles.weightCell} ${styles.pop}`}
+                          data-row-start={CSR.offsets.includes(i) || undefined}
+                          data-negative={cell.weight.startsWith('-') || undefined}
+                          style={at(1.9 + i * 0.05)}
+                        >
+                          {cell.weight}
+                        </span>
+                      ))}
+                    </span>
+                  </div>
+                </div>
+                <span className="comment">{s.arrays.hint}</span>
+              </div>
+
+              {/* the list: per vertex its neighbours, and a table of the same shape */}
+              <div className={styles.repView} data-current={view === 1 || undefined}>
+                <p className={`label ${styles.arraysLabel}`}>
+                  <BrandIcon icon={siRust} size={16} className={styles.coreIcon} />
+                  {s.list.label}
+                </p>
+                <div className={`${styles.repBody} ${styles.listGrid}`}>
+                  <span />
+                  <span className={`mono ${styles.arrayName}`}>{s.list.adj}</span>
+                  <span className={`mono ${styles.arrayName}`}>{s.list.weights}</span>
+                  {VERTICES.map((v) => (
+                    <Fragment key={v}>
+                      <span className={`mono ${styles.matrixIndex}`}>{v}</span>
+                      <span className={styles.cells}>
+                        {ROWS[v].map(([target]) => (
+                          <span key={target} className={`mono ${styles.cell}`}>
+                            {target}
+                          </span>
+                        ))}
+                      </span>
+                      <span className={styles.cells}>
+                        {ROWS[v].map(([target, weight]) => (
+                          <span
+                            key={target}
+                            className={`mono ${styles.cell} ${styles.weightCell}`}
+                            data-negative={weight.startsWith('-') || undefined}
+                          >
+                            {weight}
+                          </span>
+                        ))}
+                      </span>
+                    </Fragment>
+                  ))}
+                </div>
+                <span className="comment">{s.list.hint}</span>
+              </div>
+
+              {/* the matrix: the bits still answer adjacency, the table the weights */}
+              <div className={styles.repView} data-current={view === 2 || undefined}>
+                <p className={`label ${styles.arraysLabel}`}>
+                  <BrandIcon icon={siRust} size={16} className={styles.coreIcon} />
+                  {s.matrix.label}
+                </p>
+                <div className={`${styles.repBody} ${styles.matrices}`}>
+                  <FigureMatrix name={s.matrix.bits} />
+                  <FigureMatrix name={s.matrix.weights} weighted />
+                </div>
+                <span className="comment">{s.matrix.hint}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

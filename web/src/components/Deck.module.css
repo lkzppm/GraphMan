@@ -1277,7 +1277,109 @@
   grid-template-columns: minmax(200px, 0.8fr) 150px minmax(0, 2.6fr);
   align-items: center;
   gap: 0 8px;
-  margin-bottom: 40px;
+  margin-bottom: 28px;
+}
+
+/* The right column: the switch, then the box it controls. */
+.repColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* The cover's pill with three places; --view is the chosen one's index. */
+.views {
+  grid-template-columns: repeat(3, 1fr);
+  align-self: flex-start;
+}
+
+.views .partsThumb {
+  width: calc((100% - 6px) / 3);
+  transform: translateX(calc(var(--view) * 100%));
+}
+
+.views .partButton {
+  padding: 6px 18px;
+  font-size: 12px;
+}
+
+/* All three views in one cell, so the box keeps the tallest one's height:
+   the chosen one fades in as the other fades out. */
+.repViews {
+  display: grid;
+}
+
+.repView {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.3s var(--ease),
+    visibility 0s linear 0.3s;
+}
+
+.repView[data-current] {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 0.3s var(--ease) 0.08s,
+    visibility 0s;
+}
+
+/* The arrays in the free height, the hint at the box's foot. */
+.repBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-block: auto;
+}
+
+.listGrid {
+  display: grid;
+  grid-template-columns: 18px max-content max-content;
+  align-items: center;
+  gap: 4px 28px;
+}
+
+.matrices {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 12px 32px;
+}
+
+.matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.matrixGrid {
+  display: grid;
+  grid-template-columns: 18px repeat(5, max-content);
+  align-items: center;
+  gap: 4px;
+}
+
+.matrixIndex {
+  font-size: 11px;
+  text-align: center;
+  color: var(--fg-3);
+}
+
+/* Five rows and a header in the height the CSR's three take. */
+.listGrid .cell,
+.matrixGrid .cell {
+  height: 32px;
+}
+
+.cellAbsent {
+  border-color: var(--border);
+  color: var(--fg-3);
 }
 
 /* The handout's file as text, the weight column in blue. */

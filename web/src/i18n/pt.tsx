@@ -789,11 +789,26 @@ export const pt: Dictionary = {
             hint: 'uma terceira coluna, qualquer número real',
           },
           normalise: { name: 'EdgeList', hint: 'uma duplicata fica com o menor peso' },
+          viewsLabel: 'Representação',
+          views: ['Csr', 'Lista', 'Matriz'],
           arrays: {
             label: 'Csr, e uma coluna ao lado',
             offsets: 'offsets',
             targets: 'targets',
             weights: 'weights',
+            hint: '// weights[i] é o peso da aresta para targets[i]',
+          },
+          list: {
+            label: 'Lista de adjacência, e uma tabela ao lado',
+            adj: 'adj[v]',
+            weights: 'weights[v]',
+            hint: '// weights[v][i] é o peso da aresta para adj[v][i]',
+          },
+          matrix: {
+            label: 'Matriz de adjacência, e uma tabela de pesos ao lado',
+            bits: 'bits',
+            weights: 'weights',
+            hint: '// a tabela ocupa 64 vezes os bits: 800 MB para 10 000 vértices',
           },
           notes: [
             {
