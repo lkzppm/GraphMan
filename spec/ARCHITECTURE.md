@@ -150,12 +150,16 @@ library's refusal is thrown for negative weights), `weights()` parallel to
 `searchNames`, and
 `initialLayout()`: a BFS-radial layout per component (rings whose area is
 proportional to the number of vertices on them), components packed largest
-first on concentric rings; and `layout(kind, root)` for the canvas menu —
+first on concentric rings; `layout(kind, root)` for the canvas menu —
 `Radial` (BFS levels from `root` as evenly spaced rings, subtrees in
-wedges), `Layered` (levels as rows, level 0 on top, a vertex's x from its
-wedge angle so subtrees stay contiguous) and `Degree` (one circle, sorted
-by degree), the root's component at the origin and the others packed
-around it with the same disc packing. All O(n + m). Every per-vertex array is indexed by vertex id
+wedges) and `Degree` (one circle, sorted by degree), the root's component
+at the origin and the others packed around it with the same disc packing;
+and `layered(root, direction)` / `layeredTree(run, direction)`, a tree drawn
+level by level through the library's `tree_layout` (a slot per leaf, each
+parent over its children, so subtrees stay contiguous): the BFS tree, or for
+`layeredTree` the Dijkstra run's own tree with levels counting tree edges,
+as rows with the root on top or as columns with the root on the left, the
+other components' BFS trees beside it. All O(n + m). Every per-vertex array is indexed by vertex id
 with slot 0 unused, like the library's raw arrays, so GPU buffers are
 indexed by vertex id directly. Timings use `performance.now()` around the
 traversal only.

@@ -431,7 +431,11 @@ export const en = {
     layouts: {
       force: { label: 'Force', hint: 'springs and repulsion' },
       radial: { label: 'Radial levels', hint: 'BFS rings around the origin' },
-      layered: { label: 'Layered', hint: 'levels as rows, subtrees together' },
+      layered: {
+        label: 'Layered',
+        hint: 'the BFS tree, level by level',
+        hintDijkstra: "Dijkstra's shortest-path tree",
+      },
       degree: { label: 'Degree circle', hint: 'sorted by degree, edges as chords' },
     },
     format: {
@@ -641,6 +645,9 @@ export const en = {
     layoutsMenu: 'Layouts',
     layout: 'Layout',
     simulation: 'Simulation',
+    treeDirection: 'Tree direction',
+    treeVertical: 'Vertical tree, root on top',
+    treeHorizontal: 'Horizontal tree, root on the left',
     pauseSimulation: 'Pause the force simulation',
     resumeSimulation: 'Resume the force simulation',
     reheat: 'Reheat the simulation',

@@ -432,7 +432,11 @@ export const pt: Dictionary = {
     layouts: {
       force: { label: 'Forças', hint: 'molas e repulsão' },
       radial: { label: 'Níveis radiais', hint: 'anéis de BFS em torno da origem' },
-      layered: { label: 'Camadas', hint: 'níveis em linhas, subárvores juntas' },
+      layered: {
+        label: 'Camadas',
+        hint: 'a árvore da BFS, nível a nível',
+        hintDijkstra: 'a árvore de caminhos mínimos',
+      },
       degree: { label: 'Círculo por grau', hint: 'ordenado por grau, arestas como cordas' },
     },
     format: {
@@ -643,6 +647,9 @@ export const pt: Dictionary = {
     layoutsMenu: 'Layouts',
     layout: 'Layout',
     simulation: 'Simulação',
+    treeDirection: 'Direção da árvore',
+    treeVertical: 'Árvore vertical, raiz no topo',
+    treeHorizontal: 'Árvore horizontal, raiz à esquerda',
     pauseSimulation: 'Pausar a simulação de forças',
     resumeSimulation: 'Retomar a simulação de forças',
     reheat: 'Reaquecer a simulação',
