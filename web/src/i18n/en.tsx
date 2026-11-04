@@ -813,11 +813,26 @@ export const en = {
           title: 'Weights',
           input: { label: 'input', name: 'figure 1', hint: 'a third column, any real number' },
           normalise: { name: 'EdgeList', hint: 'a duplicate keeps its smallest weight' },
+          viewsLabel: 'Representation',
+          views: ['Csr', 'List', 'Matrix'],
           arrays: {
             label: 'Csr, and a column beside it',
             offsets: 'offsets',
             targets: 'targets',
             weights: 'weights',
+            hint: '// weights[i] is the weight of the edge to targets[i]',
+          },
+          list: {
+            label: 'Adjacency list, and a table beside it',
+            adj: 'adj[v]',
+            weights: 'weights[v]',
+            hint: '// weights[v][i] is the weight of the edge to adj[v][i]',
+          },
+          matrix: {
+            label: 'Adjacency matrix, and a weight table beside it',
+            bits: 'bits',
+            weights: 'weights',
+            hint: '// the table takes 64 times the bits: 800 MB for 10 000 vertices',
           },
           notes: [
             {
