@@ -52,6 +52,8 @@ enum Command {
     Generate(commands::generate::Args),
     /// Resident memory of the process after loading the graph.
     Memory(commands::memory::Args),
+    /// The DBLP XML dump as the course's collaboration network (weighted edge list + names).
+    Dblp(commands::dblp::Args),
     /// Run the whole case study and write JSON + Markdown results.
     Study(commands::study::Args),
 }
@@ -75,6 +77,7 @@ fn main() -> Result<()> {
         Command::Bench(args) => commands::bench::run(args, &ui),
         Command::Generate(args) => commands::generate::run(args, &ui),
         Command::Memory(args) => commands::memory::run(args, &ui),
+        Command::Dblp(args) => commands::dblp::run(args, &ui),
         Command::Study(args) => commands::study::run(args, &ui),
     }
 }

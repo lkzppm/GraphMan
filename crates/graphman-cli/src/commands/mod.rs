@@ -2,6 +2,7 @@
 
 pub mod bench;
 pub mod components;
+pub mod dblp;
 pub mod diameter;
 pub mod dijkstra;
 pub mod distance;

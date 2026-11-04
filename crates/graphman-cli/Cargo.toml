@@ -16,8 +16,10 @@ path = "src/main.rs"
 graphman = { workspace = true, features = ["serde"] }
 anyhow.workspace = true
 clap.workspace = true
+flate2.workspace = true
 indicatif.workspace = true
 owo-colors.workspace = true
+quick-xml.workspace = true
 rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true

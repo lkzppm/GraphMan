@@ -1,0 +1,968 @@
+/* The DBLP tab: one console in the middle of the screen over the drifting
+   constellation, a title and three boxes in a row. Left, the year, fetched
+   as soon as it is chosen. Centre, the cut, the main box. Right, the two
+   ways out. The boxes borrow the site's surfaces (a 2 px accent edge on
+   the main one, hairlines, tracked labels, mono numbers) and everything
+   that appears rises into place. */
+
+.stage {
+  position: relative;
+  min-height: calc(100dvh - var(--nav-height));
+  display: grid;
+  place-items: center;
+  /* The same room above and below, so the console sits dead centre, and a
+     clear margin from the screen's edges. */
+  padding: 32px max(var(--gutter), 5vw);
+  overflow: hidden;
+}
+
+.console {
+  position: relative;
+  z-index: 1;
+  width: min(1160px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.title {
+  margin: 0;
+  text-align: center;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  animation: rise 0.6s var(--ease) both;
+}
+
+.line {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.hint,
+.notice {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+
+.notice {
+  padding-left: 12px;
+  border-left: 2px solid var(--accent);
+  color: var(--fg);
+}
+
+.notice a {
+  color: var(--accent);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- the three boxes ---------------------------------------------------- */
+
+/* The main box sets the row's height; the side boxes are narrow, as tall
+   as what they hold, and centred on it. */
+.boxes {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr) 216px;
+  gap: 18px;
+  align-items: center;
+}
+
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 18px 20px;
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--border-2);
+  border-radius: var(--radius-lg, 6px);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: rise 0.6s var(--ease) both;
+  transition:
+    opacity 0.6s var(--ease),
+    transform 0.6s var(--ease),
+    border-color 0.6s var(--ease),
+    box-shadow 0.6s var(--ease);
+}
+
+.box:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+.box:nth-child(3) {
+  animation-delay: 0.16s;
+}
+
+.boxMain {
+  gap: 18px;
+  padding: 24px 24px 26px;
+  border-top-color: var(--accent);
+  box-shadow: var(--glow);
+}
+
+/* A box waiting on the one before it sits back, dimmed. */
+.box[data-off] {
+  opacity: 0.45;
+  transform: translateY(4px);
+  box-shadow: none;
+}
+
+/* ---- fields ------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.fieldLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.fieldLabel svg {
+  color: var(--accent);
+}
+
+.fieldWrap {
+  position: relative;
+}
+
+.input {
+  height: 38px;
+  width: 100%;
+  min-width: 0;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2, 4px);
+  background: var(--bg-2);
+  font-size: 14px;
+  color: var(--fg);
+  transition:
+    border-color 0.2s var(--ease),
+    background 0.2s var(--ease),
+    box-shadow 0.25s var(--ease),
+    opacity 0.3s var(--ease);
+}
+
+.input:hover:not(:disabled) {
+  border-color: var(--border-2);
+  background: var(--bg);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg);
+  box-shadow: 0 0 0 3px var(--accent-muted);
+}
+
+.input:disabled {
+  opacity: 0.6;
+}
+
+.inputInvalid {
+  border-color: var(--fg-3);
+}
+
+.invalid {
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.select {
+  position: relative;
+  display: block;
+}
+
+.select select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  cursor: pointer;
+}
+
+.chevron {
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  translate: 0 -50%;
+  pointer-events: none;
+  color: var(--fg-3);
+  transition: color 0.2s var(--ease);
+}
+
+.select:hover .chevron {
+  color: var(--accent);
+}
+
+/* ---- the year box -------------------------------------------------------- */
+
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.facts div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.facts dt {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--fg-3);
+}
+
+.facts dd {
+  margin: 0;
+  font-size: 14px;
+  color: var(--level-0);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The status unfolds (a grid row from 0 to its height) rather than popping. */
+.status {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.45s var(--ease);
+}
+
+.status[data-open] {
+  grid-template-rows: 1fr;
+}
+
+.statusInner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.progressRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progressText {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cancel {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: var(--fg-3);
+  transition:
+    color 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+.cancel:hover {
+  color: var(--fg);
+  background: var(--bg-3);
+}
+
+.track {
+  display: block;
+  height: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.bar {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s var(--ease);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+
+/* ---- the cut box -------------------------------------------------------- */
+
+.rules {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rule {
+  position: relative;
+  display: flex;
+}
+
+.ruleButton {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 12px 36px 12px 12px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border-2);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  transition:
+    background 0.3s var(--ease),
+    border-color 0.3s var(--ease),
+    color 0.3s var(--ease),
+    transform 0.3s var(--ease),
+    box-shadow 0.3s var(--ease);
+}
+
+.ruleButton:hover:not(:disabled) {
+  background: var(--bg-3);
+  transform: translateY(-2px);
+}
+
+.ruleButton:disabled {
+  cursor: default;
+}
+
+.ruleButton[aria-checked='true'] {
+  border-color: var(--accent-muted);
+  border-left-color: var(--accent);
+  background: var(--accent-muted);
+  color: var(--accent);
+  box-shadow: var(--glow);
+}
+
+.ruleIcon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-2);
+  transition:
+    border-color 0.3s var(--ease),
+    color 0.3s var(--ease),
+    transform 0.35s var(--ease-spring);
+}
+
+.ruleButton:hover:not(:disabled) .ruleIcon {
+  transform: scale(1.08);
+}
+
+.ruleButton[aria-checked='true'] .ruleIcon {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: scale(1.1);
+}
+
+.ruleName {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* The caption, behind a small (i) in the card's corner: hovering or
+   focusing it floats the text over the card. */
+.info {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.infoButton {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: var(--fg-3);
+  transition:
+    color 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+.infoButton:hover,
+.infoButton:focus-visible {
+  color: var(--accent);
+  background: var(--accent-muted);
+  outline: none;
+}
+
+.tip {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 230px;
+  padding: 9px 11px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.25);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition:
+    opacity 0.2s var(--ease),
+    transform 0.25s var(--ease);
+}
+
+.info:hover .tip,
+.infoButton:focus-visible + .tip {
+  opacity: 1;
+  transform: none;
+}
+
+/* An (i) in a line of text rather than a card's corner. */
+.infoInline {
+  position: relative;
+  top: auto;
+  right: auto;
+}
+
+/* The two files, one per line in mono, and what they are under them. */
+.tipFiles {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 290px;
+  text-align: left;
+}
+
+.tipFile {
+  font-size: 11px;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tipCaption {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.tipRight {
+  text-align: left;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 0fr minmax(0, 1fr);
+  column-gap: 0;
+  transition:
+    grid-template-columns 0.45s var(--ease),
+    column-gap 0.45s var(--ease);
+}
+
+.controls[data-seed] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 18px;
+}
+
+.seedSlot {
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition:
+    opacity 0.35s var(--ease),
+    transform 0.45s var(--ease);
+}
+
+.controls[data-seed] .seedSlot {
+  opacity: 1;
+  transform: none;
+  overflow: visible;
+}
+
+.seedSlot > * {
+  min-width: 180px;
+}
+
+.suggestions {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.25);
+  animation: rise 0.25s var(--ease) both;
+}
+
+.suggestions button {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--fg);
+  border-radius: var(--radius);
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+
+.suggestions button:hover {
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+.suggestionId {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.sizeRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 38px;
+}
+
+/* The slider drawn by hand: a hairline track, a blue disc for a thumb. */
+.sizeRow input[type='range'] {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  background: none;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.sizeRow input[type='range']:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.sizeRow input[type='range']::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 1px;
+  background:
+    linear-gradient(var(--accent), var(--accent)) left / var(--fill, 0%) 100% no-repeat,
+    var(--border-2);
+  transition: background-size 0.3s var(--ease);
+}
+
+.sizeRow input[type='range']::-moz-range-track {
+  height: 2px;
+  border-radius: 1px;
+  background:
+    linear-gradient(var(--accent), var(--accent)) left / var(--fill, 0%) 100% no-repeat,
+    var(--border-2);
+  transition: background-size 0.3s var(--ease);
+}
+
+.sizeRow input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--bg);
+  box-shadow: 0 0 0 1.5px var(--accent);
+  transition: transform 0.2s var(--ease-spring);
+}
+
+.sizeRow input[type='range']::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--bg);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+
+.sizeRow input[type='range']:hover:not(:disabled)::-webkit-slider-thumb,
+.sizeRow input[type='range']:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.2);
+}
+
+.sizeRow input[type='range']:focus-visible {
+  outline: none;
+}
+
+.number {
+  flex: 0 0 auto;
+  width: 112px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+
+.number::-webkit-outer-spin-button,
+.number::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 12px 16px;
+  align-items: stretch;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+/* The file's size stands on its own, no box: the label (and its file icon)
+   on the tiles' line, the blue number under it, both to the right. */
+.fileSize {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 8px 0;
+  text-align: center;
+}
+
+.fileSizeHead {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+}
+
+.fileSizeValue {
+  font-size: 30px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: color 0.3s var(--ease);
+}
+
+.fileSize[data-empty] .fileSizeValue {
+  color: var(--fg-3);
+}
+
+.tile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto;
+  gap: 6px 10px;
+  align-items: end;
+  min-width: 0;
+  padding: 12px 14px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
+  transition:
+    border-color 0.3s var(--ease),
+    background 0.3s var(--ease);
+}
+
+.tile:hover {
+  border-color: var(--accent-muted);
+}
+
+.tileHead {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+}
+
+.tileLabel {
+  font-size: 10px;
+}
+
+.tileValue {
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--level-0);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.3s var(--ease);
+}
+
+.tile[data-empty] .tileValue {
+  color: var(--fg-3);
+}
+
+.tileShare {
+  font-size: 11px;
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.tileBar {
+  grid-column: 1 / -1;
+  display: block;
+  height: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.tileFill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.5s var(--ease);
+}
+
+/* ---- the result box ------------------------------------------------------ */
+
+.action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 104px;
+  padding: 14px 12px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-2, 4px);
+  background: var(--bg);
+  color: var(--fg);
+  transition:
+    background 0.25s var(--ease),
+    border-color 0.25s var(--ease),
+    color 0.25s var(--ease),
+    transform 0.3s var(--ease),
+    box-shadow 0.3s var(--ease);
+}
+
+.action svg {
+  transition: transform 0.35s var(--ease-spring);
+}
+
+.action:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--glow);
+}
+
+.action:hover:not(:disabled) svg {
+  transform: scale(1.12);
+}
+
+.action:active:not(:disabled) {
+  transform: none;
+}
+
+.action:disabled {
+  cursor: default;
+  color: var(--fg-3);
+}
+
+.actionPrimary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.actionPrimary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
+
+.actionPrimary:disabled {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: rgb(255 255 255 / 0.75);
+}
+
+.actionPrimary .spinner {
+  color: inherit;
+}
+
+/* ---- phones -------------------------------------------------------------- */
+
+@media (max-width: 960px) {
+  .boxes {
+    grid-template-columns: 1fr;
+  }
+
+  .box:nth-child(3) {
+    flex-direction: row;
+  }
+}
+
+@media (max-width: 560px) {
+  .box {
+    padding: 18px 16px 20px;
+  }
+
+  .rules,
+  .controls[data-seed] {
+    grid-template-columns: 1fr;
+  }
+
+  .tiles {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .fileSize {
+    grid-column: 1 / -1;
+    align-items: flex-start;
+    text-align: left;
+    padding: 0;
+  }
+
+  .box:nth-child(3) {
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title,
+  .box,
+  .suggestions,
+  .spinner {
+    animation: none;
+  }
+
+  .box,
+  .status,
+  .ruleButton,
+  .ruleIcon,
+  .action,
+  .action svg,
+  .tip,
+  .warning,
+  .warningButton,
+  .controls,
+  .seedSlot,
+  .tileFill,
+  .bar {
+    transition: none;
+  }
+}
+
+/* ---- the warning over the result box ------------------------------------ */
+
+.side {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The one amber on the site: a cut the observatory will struggle with. It
+   floats in above the box and says why on hover. */
+.warning {
+  position: absolute;
+  top: -44px;
+  right: 0;
+  opacity: 0;
+  transform: translateY(6px) scale(0.9);
+  pointer-events: none;
+  transition:
+    opacity 0.35s var(--ease),
+    transform 0.45s var(--ease-spring);
+}
+
+.warning[data-on] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.warningButton {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, #d97706 45%, transparent);
+  background: color-mix(in srgb, #f5b301 16%, var(--bg));
+  color: #b45309;
+  transition:
+    background 0.2s var(--ease),
+    transform 0.3s var(--ease-spring);
+}
+
+.warningButton:hover,
+.warningButton:focus-visible {
+  background: color-mix(in srgb, #f5b301 28%, var(--bg));
+  transform: scale(1.06);
+  outline: none;
+}
+
+.tipWarning {
+  width: 260px;
+  text-align: left;
+  border-left-color: #d97706;
+}
+
+:global([data-theme='dark']) .warningButton {
+  color: #fbbf24;
+}
