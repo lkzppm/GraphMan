@@ -263,6 +263,10 @@ export class Renderer {
   private dragIndex = 0;
   private dragPos: [number, number] = [0, 0];
   private linkLength = 24;
+  /** How far the force layout's rest state is stretched (see `setForceSpacing`). */
+  private forceSpacing = 1;
+  /** Counts the stretches: a position read begun before one is out of date. */
+  private stretches = 0;
   private camera: Camera = { x: 0, y: 0, zoom: 1 };
   private nodeRadius = 3.5;
   /** The densest big component: edges and vertices per world unit of area,
@@ -383,6 +387,7 @@ export class Renderer {
     this.n = n;
     this.edgeCount = graph.edges.length / 2;
     this.linkLength = linkLength;
+    this.forceSpacing = 1;
     const slots = n + 1;
     const gpu = this.gpu;
 
@@ -616,6 +621,47 @@ export class Renderer {
     this.morphStart = performance.now();
     this.morphMs = ms;
     this.dirty = true;
+  }
+
+  /**
+   * Stretches the picture about the origin, `sx` along x and `sy` along y, with
+   * no animation of its own: it follows a slider. A running layout change
+   * carries on towards its stretched destination and a hot simulation keeps its
+   * heat. Costs one upload, the fades being updated rather than measured again.
+   */
+  stretch(sx: number, sy: number) {
+    if (this.n === 0 || !this.positions) return;
+    const scale = (positions: Float32Array) => {
+      for (let i = 2; i < positions.length; i += 2) {
+        positions[i] *= sx;
+        positions[i + 1] *= sy;
+      }
+    };
+    this.stretches += 1;
+    scale(this.mirror);
+    if (this.morphTarget && this.morphDest) {
+      scale(this.morphTarget);
+      this.morphDest.write(bytes(this.morphTarget));
+    } else {
+      // Drawing and every next step read from here; the other side gets overwritten.
+      this.positions.read.write(bytes(this.mirror));
+    }
+    const area = sx * sy;
+    this.edgeDensity /= area;
+    this.vertexDensity /= area;
+    this.meanEdgeLength *= Math.sqrt(area);
+    [this.viewValues.edgeFade, this.viewValues.treeFade] = this.fades(this.viewValues.scale);
+    this.touch(true);
+  }
+
+  /**
+   * The force layout's spacing: its equilibrium stretched `spacing` times, the
+   * springs' rest length, the charge and the component homes scaled so that
+   * every force grows by exactly that much. A settled picture stretched by as
+   * much is therefore still settled.
+   */
+  setForceSpacing(spacing: number) {
+    this.forceSpacing = spacing;
   }
 
   get morphing(): boolean {
@@ -902,10 +948,10 @@ export class Renderer {
             n: this.n,
             dragIndex: this.dragIndex,
             simulate: this.simulating ? 1 : 0,
-            pad: 0,
+            spread: this.forceSpacing,
             alpha: this.alpha,
-            charge: this.linkLength * 1.1,
-            linkLength: this.linkLength,
+            charge: this.linkLength * 1.1 * this.forceSpacing * this.forceSpacing,
+            linkLength: this.linkLength * this.forceSpacing,
             gravity: 0.03,
             dragPos: this.dragPos,
           },
@@ -1001,10 +1047,15 @@ export class Renderer {
     if (!buffer) return;
     this.readInFlight = true;
     const n = this.n;
+    const stretches = this.stretches;
     void buffer
       .read()
       .then((bytes) => {
         if (this.n !== n || bytes.byteLength !== this.mirror.byteLength) return;
+        if (this.stretches !== stretches) {
+          this.readAgain = true;
+          return;
+        }
         this.mirror = new Float32Array(bytes);
         if (this.dragIndex) {
           this.mirror[2 * this.dragIndex] = this.dragPos[0];

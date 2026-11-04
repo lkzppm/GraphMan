@@ -1833,6 +1833,55 @@
   gap: 4px;
 }
 
+/* The spacing sliders, last in the menu: the distances the layout leaves free. */
+.spacing {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 8px 8px 4px;
+  border-top: 1px solid var(--border);
+}
+
+.spacing .helpTitle {
+  padding: 0;
+}
+
+.spacingRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.spacingHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.spacingValue {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 10.5px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.spacingValue:disabled {
+  color: var(--fg-3);
+  cursor: default;
+}
+
+.spacingRow input[type='range'] {
+  display: block;
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .helpTitle {
   font-size: 10px;
   color: var(--fg-3);

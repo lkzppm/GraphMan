@@ -381,7 +381,7 @@ struct Params {
   n: u32,
   dragIndex: u32,
   simulate: u32,
-  pad: u32,
+  spread: f32,        // the spacing: the component homes move out with it
   alpha: f32,
   charge: f32,
   linkLength: f32,
@@ -454,7 +454,7 @@ fn step(@builtin(global_invocation_id) gid: vec3u, @builtin(local_invocation_id)
         f += d * ((l - params.linkLength) / l * params.alpha * strength * bias);
       }
       // Gravity towards the component's home so components stay apart.
-      f += (anchors[i] - p) * (params.gravity * params.alpha);
+      f += (anchors[i] * params.spread - p) * (params.gravity * params.alpha);
     }
   }
 

@@ -273,6 +273,12 @@ renderer does three things:
 
 - **Frames are drawn only when something changed** (a `dirty` flag set by
   every setter; an untouched canvas keeps its last image).
+- **Spacing is a stretch, not a new layout.** Every exact layout scales about
+  the origin without crossing anything new, so a spacing slider multiplies the
+  positions on the CPU and uploads them once a frame (`renderer.stretch`), with
+  nothing asked of the wasm. The force layout scales the same way: rest length
+  by `s`, charge by `s²` and component homes by `s` make every force grow by `s`,
+  so a settled picture stretched by `s` is still settled.
 - **The edges live in their own layer**, an `rgba16float` offscreen target
   redrawn only when the camera, the positions or the search change, and
   composited under the vertices with a fullscreen `effect()`. Hovering or
