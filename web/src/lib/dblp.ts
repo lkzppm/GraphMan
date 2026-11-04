@@ -1,10 +1,11 @@
 // The DBLP collaboration network, rebuilt every month by the `dblp`
 // workflow (`.github/workflows/dblp.yml`): `graphman dblp` turns the DBLP
-// XML dump into the course format and the files are published twice, as a
-// GitHub release (the archive) and on the repository's GitHub Pages, the
-// one GitHub host that answers a browser's fetch with CORS headers (release
-// assets and dblp.org itself do not). The page reads the manifest there,
-// then streams a chosen file through the browser's gunzip.
+// XML dump into the course format for a GitHub release (the archive) and
+// into one file per year for the repository's GitHub Pages, the one GitHub
+// host that answers a browser's fetch with CORS headers (release assets
+// and dblp.org itself do not). The page reads the manifest there, streams
+// the years up to the one chosen through the browser's gunzip and sums them
+// in wasm (`NetworkBuilder`) into that year's network.
 
 /** Where the latest build lives. `NEXT_PUBLIC_DBLP_SITE` points elsewhere, e.g.
     `/dblp-data` for a build copied into `web/public/dblp-data` (see
@@ -24,17 +25,24 @@ export interface DblpFile {
   parts?: string[];
 }
 
-/** The network up to a year (`null`: everything), as two files. */
-export interface DblpTier {
-  year: number | null;
+/** One year of the build: what every pair gained that year (`strengths`,
+    `u v strength` lines) and the researchers first seen that year
+    (`names`, `vertex,name` lines), with the size of the network up to and
+    including it. The last year holds the undated papers too, so it is the
+    whole network. */
+export interface DblpYear {
+  year: number;
   vertices: number;
   edges: number;
-  graph: DblpFile;
+  /** Lines in the strengths file. */
+  pairs: number;
+  strengths: DblpFile;
   names: DblpFile;
 }
 
-/** `manifest.json`, as `graphman dblp` writes it (`crates/graphman-cli/src/commands/dblp.rs`)
-    plus the `release` link the workflow adds. */
+/** `manifest.json`, as `graphman dblp --site` writes it
+    (`crates/graphman-cli/src/commands/dblp.rs`) plus the `release` link the
+    workflow adds. */
 export interface DblpManifest {
   schema: number;
   generator: string;
@@ -53,7 +61,8 @@ export interface DblpManifest {
   edges: number;
   firstYear: number | null;
   lastYear: number | null;
-  tiers: DblpTier[];
+  /** Ascending, one entry per year from the first to the last. */
+  years: DblpYear[];
   release?: string;
 }
 
@@ -61,10 +70,23 @@ export async function fetchManifest(signal?: AbortSignal): Promise<DblpManifest>
   const response = await fetch(`${DBLP_SITE}/manifest.json`, { signal, cache: 'no-cache' });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const manifest = (await response.json()) as DblpManifest;
-  if (manifest.schema !== 1 || !Array.isArray(manifest.tiers) || manifest.tiers.length === 0) {
+  if (manifest.schema !== 2 || !Array.isArray(manifest.years) || manifest.years.length === 0) {
     throw new Error('unexpected manifest');
   }
   return manifest;
+}
+
+/** The years up to `year`, in order: what builds that year's network. */
+export function yearsUpTo(manifest: DblpManifest, year: number): DblpYear[] {
+  return manifest.years.filter((entry) => entry.year <= year);
+}
+
+/** The bytes to transfer for the network up to `year`. */
+export function transferBytes(manifest: DblpManifest, year: number): number {
+  return yearsUpTo(manifest, year).reduce(
+    (sum, entry) => sum + entry.strengths.bytes + entry.names.bytes,
+    0,
+  );
 }
 
 /** The browser's cache for the build's files, when there is one (a secure
@@ -129,11 +151,6 @@ export async function fetchFile(
     throw error;
   }
   return new Uint8Array(await unpacked);
-}
-
-/** The file's name once unpacked (`rede_colaboracao_2009.txt.gz` → `.txt`). */
-export function unpackedName(file: DblpFile): string {
-  return file.file.replace(/\.gz$/, '');
 }
 
 /** Hands the visitor a file to save. */

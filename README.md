@@ -59,6 +59,7 @@ cargo build --release
     --from "Edsger W. Dijkstra" --to "Alan M. Turing" "Éva Tardos" "Daniel R. Figueiredo"
 ./target/release/graphman generate --like graphs/grafo_1.txt --weights 0:1 -o grafo_W_1.txt
 ./target/release/graphman dblp dblp.xml.gz --out graphs --years 2009   # DBLP today as rede_colaboracao.txt (+ names), and up to 2009
+./target/release/graphman dblp dblp.xml.gz --out out --gzip --site by-year   # plus one file per year, what the site sums into any year
 
 # Observatory (needs the wasm32-unknown-unknown target; a WebGPU browser to view)
 cd web && pnpm install && pnpm run dev
