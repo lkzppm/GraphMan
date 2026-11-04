@@ -984,3 +984,9 @@
 :global([data-theme='dark']) .warningButton {
   color: #fbbf24;
 }
+
+/* The counters spin in place while a network downloads, keeping their row. */
+.tileValue > svg,
+.fileSizeValue > svg {
+  vertical-align: middle;
+}
