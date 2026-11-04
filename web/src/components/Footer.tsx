@@ -31,6 +31,7 @@ export default function Footer() {
             <Link href="/observatory">{t.nav.observatory}</Link>
             <Link href="/library">{t.nav.library}</Link>
             <Link href="/studies">{t.nav.studies}</Link>
+            <Link href="/dblp">{t.nav.dblp}</Link>
             <Link href="/presentation">{t.nav.presentation}</Link>
           </div>
           <div className={styles.vertex}>

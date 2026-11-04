@@ -1,0 +1,452 @@
+//! Collaboration networks: a weighted graph built from who wrote with whom.
+//!
+//! The course's `rede_colaboracao.txt` is DBLP's co-authorship graph: a
+//! vertex per researcher who ever wrote with someone, an edge between two
+//! researchers who share a paper, and on the edge a distance that shrinks
+//! as they write more together. This module builds such a graph from a
+//! stream of papers (a year and the authors' names, from any source: the
+//! CLI's `dblp` command reads the DBLP XML dump) and writes it in the
+//! course format, whole or as it stood at the end of any year.
+//!
+//! # Weights
+//!
+//! A paper with `k + 1` authors adds `1 / k` of collaboration strength to
+//! every pair of its authors (Newman's rule: a paper shared with one other
+//! person counts more than one shared with a crowd). The edge weight is
+//! the inverse of the sum, so two people with one two-author paper are at
+//! distance 1, one four-author paper puts each of its pairs at distance 3,
+//! and prolific co-authors end up close. This is what the course's 2009
+//! file holds (weights from 0.0037 to 113, most of them small integers).
+//!
+//! # Numbering
+//!
+//! Vertices are numbered by the year of their first co-authored paper,
+//! then by name, so the network as it stood at the end of year `y` is the
+//! prefix `1..=n_y` of the full numbering: a year's names file is the first
+//! `n_y` lines of the full one, and only its edge file differs (its weights
+//! count the papers up to that year). Papers without a year belong to the
+//! full network only.
+//!
+//! ```
+//! use graphman::io::Papers;
+//!
+//! let mut papers = Papers::new();
+//! papers.paper(Some(1984), ["Éva Tardos", "András Frank"]);
+//! papers.paper(Some(1990), ["Éva Tardos", "Andrew V. Goldberg", "Robert E. Tarjan"]);
+//! papers.paper(Some(1991), ["Éva Tardos", "Andrew V. Goldberg"]);
+//! papers.paper(None, ["Alone"]); // a single author collaborates with no one
+//! let network = papers.finish();
+//!
+//! assert_eq!(network.vertex_count(None), 4);
+//! assert_eq!(network.vertex_count(Some(1984)), 2); // Frank and Tardos, by name
+//! assert_eq!(network.name(1), Some("András Frank"));
+//! // Tardos and Goldberg: a three-author paper (1/2) and a two-author one (1).
+//! let edges: Vec<_> = network.edges(None).collect();
+//! assert!(edges.contains(&(2, 3, 1.0 / 1.5)));
+//! // Up to 1990 only the three-author paper counts, so they are at distance 2.
+//! assert!(network.edges(Some(1990)).any(|e| e == (2, 3, 2.0)));
+//! ```
+
+use crate::{EdgeList, ParseError, Vertex, Weight};
+use std::collections::HashMap;
+use std::fmt;
+use std::io::{self, BufWriter, Write};
+
+/// The year of a paper that has none. Such papers count in the whole
+/// network and in no year's; an author known only through them is numbered
+/// after everyone else.
+pub const YEAR_UNKNOWN: u16 = u16::MAX;
+
+/// One paper's contribution to one pair: the year it counts from and the
+/// number of co-authors each of the two had on it (the strength is `1 /
+/// coauthors`).
+#[derive(Clone, Copy, Debug)]
+struct Term {
+    u: u32,
+    v: u32,
+    year: u16,
+    coauthors: u16,
+}
+
+/// Papers being collected; `finish` turns them into a [`Network`].
+///
+/// Authors are identified by their exact name, as DBLP does (it already
+/// tells namesakes apart with a numeric suffix). An author who never wrote
+/// with anyone is not a vertex.
+#[derive(Default)]
+pub struct Papers {
+    /// Each name's provisional id, in order of first appearance.
+    by_name: HashMap<String, u32>,
+    /// Per provisional id, the earliest year of a co-authored paper.
+    first_year: Vec<u16>,
+    terms: Vec<Term>,
+    papers: usize,
+    largest: usize,
+}
+
+impl Papers {
+    /// No papers yet.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds a paper. Blank names are ignored and a name listed twice counts
+    /// once; a paper with fewer than two distinct authors adds nothing.
+    /// Returns whether the paper counted.
+    pub fn paper<'a>(
+        &mut self,
+        year: Option<u16>,
+        authors: impl IntoIterator<Item = &'a str>,
+    ) -> bool {
+        let mut names: Vec<&str> = authors
+            .into_iter()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .collect();
+        names.sort_unstable();
+        names.dedup();
+        if names.len() < 2 {
+            return false;
+        }
+        let year = year.unwrap_or(YEAR_UNKNOWN);
+        let coauthors = (names.len() - 1).min(usize::from(u16::MAX)) as u16;
+        let ids: Vec<u32> = names.iter().map(|name| self.intern(name, year)).collect();
+        for (i, &a) in ids.iter().enumerate() {
+            for &b in &ids[i + 1..] {
+                let (u, v) = if a < b { (a, b) } else { (b, a) };
+                self.terms.push(Term {
+                    u,
+                    v,
+                    year,
+                    coauthors,
+                });
+            }
+        }
+        self.papers += 1;
+        self.largest = self.largest.max(names.len());
+        true
+    }
+
+    fn intern(&mut self, name: &str, year: u16) -> u32 {
+        if let Some(&id) = self.by_name.get(name) {
+            let first = &mut self.first_year[id as usize];
+            *first = (*first).min(year);
+            return id;
+        }
+        let id = self.first_year.len() as u32;
+        self.by_name.insert(name.to_owned(), id);
+        self.first_year.push(year);
+        id
+    }
+
+    /// Papers that counted (two or more distinct authors).
+    pub fn paper_count(&self) -> usize {
+        self.papers
+    }
+
+    /// Distinct authors seen on those papers: the network's vertices.
+    pub fn author_count(&self) -> usize {
+        self.first_year.len()
+    }
+
+    /// The most authors one paper had.
+    pub fn largest_paper(&self) -> usize {
+        self.largest
+    }
+
+    /// Numbers the authors and sorts the contributions by pair, so that any
+    /// year's network can be read off in one pass.
+    pub fn finish(self) -> Network {
+        let Papers {
+            by_name,
+            first_year,
+            mut terms,
+            ..
+        } = self;
+        let n = first_year.len();
+        let mut names = vec![String::new(); n];
+        for (name, id) in by_name {
+            names[id as usize] = name;
+        }
+        let mut order: Vec<u32> = (0..n as u32).collect();
+        order.sort_unstable_by(|&a, &b| {
+            let (a, b) = (a as usize, b as usize);
+            first_year[a]
+                .cmp(&first_year[b])
+                .then_with(|| names[a].cmp(&names[b]))
+        });
+        // Provisional id -> final 1-based vertex.
+        let mut rank = vec![0u32; n];
+        for (position, &old) in order.iter().enumerate() {
+            rank[old as usize] = position as u32 + 1;
+        }
+        let mut ordered_names = Vec::with_capacity(n);
+        let mut ordered_years = Vec::with_capacity(n);
+        for &old in &order {
+            ordered_names.push(std::mem::take(&mut names[old as usize]));
+            ordered_years.push(first_year[old as usize]);
+        }
+        for term in &mut terms {
+            let (u, v) = (rank[term.u as usize], rank[term.v as usize]);
+            (term.u, term.v) = if u < v { (u, v) } else { (v, u) };
+        }
+        terms.sort_unstable_by_key(|t| (t.u, t.v, t.year));
+        Network {
+            names: ordered_names,
+            first_year: ordered_years,
+            terms,
+        }
+    }
+}
+
+/// A finished collaboration network, readable whole (`None`) or as it stood
+/// at the end of a year (`Some(year)`).
+pub struct Network {
+    /// Vertex `v` is `names[v - 1]`.
+    names: Vec<String>,
+    /// Non-decreasing, by construction.
+    first_year: Vec<u16>,
+    /// Sorted by `(u, v, year)`, `u < v`.
+    terms: Vec<Term>,
+}
+
+impl Network {
+    /// Vertices of the network up to `until`: a prefix of the numbering.
+    pub fn vertex_count(&self, until: Option<u16>) -> usize {
+        match until {
+            None => self.names.len(),
+            Some(year) => self.first_year.partition_point(|&first| first <= year),
+        }
+    }
+
+    /// The name of vertex `v` (`1..=n`).
+    pub fn name(&self, v: Vertex) -> Option<&str> {
+        v.checked_sub(1)
+            .and_then(|i| self.names.get(i as usize))
+            .map(String::as_str)
+    }
+
+    /// `(vertex, name)` for every vertex up to `until`, by vertex.
+    pub fn names(&self, until: Option<u16>) -> impl Iterator<Item = (Vertex, &str)> + '_ {
+        self.names[..self.vertex_count(until)]
+            .iter()
+            .enumerate()
+            .map(|(i, name)| (i as Vertex + 1, name.as_str()))
+    }
+
+    /// The edges up to `until` as `(u, v, weight)`, `u < v`, sorted.
+    pub fn edges(&self, until: Option<u16>) -> Edges<'_> {
+        Edges {
+            terms: &self.terms,
+            at: 0,
+            until: until.unwrap_or(YEAR_UNKNOWN),
+        }
+    }
+
+    /// How many edges the network up to `until` has.
+    pub fn edge_count(&self, until: Option<u16>) -> usize {
+        self.edges(until).count()
+    }
+
+    /// The earliest and latest known publication years, if any paper had one.
+    pub fn years(&self) -> Option<(u16, u16)> {
+        self.terms
+            .iter()
+            .filter(|t| t.year != YEAR_UNKNOWN)
+            .fold(None, |span, t| match span {
+                None => Some((t.year, t.year)),
+                Some((lo, hi)) => Some((lo.min(t.year), hi.max(t.year))),
+            })
+    }
+
+    /// The network up to `until` as an edge list, ready to build.
+    pub fn edge_list(&self, until: Option<u16>) -> Result<EdgeList, ParseError> {
+        EdgeList::from_weighted_edges(self.vertex_count(until), self.edges(until))
+    }
+
+    /// Writes the edge file in the course format (the vertex count, then
+    /// `u v weight` per line) and returns how many edges it wrote. Weights
+    /// are printed with fifteen significant digits, as the course's file.
+    pub fn write_edges<W: Write>(&self, until: Option<u16>, out: W) -> io::Result<usize> {
+        let mut out = BufWriter::new(out);
+        writeln!(out, "{}", self.vertex_count(until))?;
+        let mut count = 0;
+        for (u, v, weight) in self.edges(until) {
+            writeln!(out, "{u} {v} {}", Fifteen(weight))?;
+            count += 1;
+        }
+        out.flush()?;
+        Ok(count)
+    }
+
+    /// Writes the names file (`vertex,name` per line, no header) and returns
+    /// how many names it wrote.
+    pub fn write_names<W: Write>(&self, until: Option<u16>, out: W) -> io::Result<usize> {
+        let mut out = BufWriter::new(out);
+        let mut count = 0;
+        for (v, name) in self.names(until) {
+            writeln!(out, "{v},{name}")?;
+            count += 1;
+        }
+        out.flush()?;
+        Ok(count)
+    }
+}
+
+/// The edges of a [`Network`] up to a year: one per pair with at least one
+/// paper by then, weighted by the inverse of their summed strength.
+pub struct Edges<'a> {
+    terms: &'a [Term],
+    at: usize,
+    until: u16,
+}
+
+impl Iterator for Edges<'_> {
+    type Item = (Vertex, Vertex, Weight);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.at < self.terms.len() {
+            let first = self.terms[self.at];
+            let mut strength = 0.0;
+            let mut end = self.at;
+            while end < self.terms.len() {
+                let term = self.terms[end];
+                if (term.u, term.v) != (first.u, first.v) {
+                    break;
+                }
+                if term.year <= self.until {
+                    strength += 1.0 / f64::from(term.coauthors);
+                }
+                end += 1;
+            }
+            self.at = end;
+            if strength > 0.0 {
+                return Some((first.u, first.v, 1.0 / strength));
+            }
+        }
+        None
+    }
+}
+
+/// A weight with fifteen significant digits and no trailing zeros, which is
+/// how the course's collaboration file prints them (`3`, `0.5`,
+/// `0.666666666666667`).
+pub(crate) struct Fifteen(pub(crate) Weight);
+
+impl fmt::Display for Fifteen {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let weight = self.0;
+        if weight.fract() == 0.0 && weight.abs() < 1e15 {
+            return write!(f, "{}", weight as i64);
+        }
+        let magnitude = weight.abs().log10().floor() as i32;
+        let decimals = (14 - magnitude).max(0) as usize;
+        let text = format!("{weight:.decimals$}");
+        f.write_str(text.trim_end_matches('0').trim_end_matches('.'))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn network() -> Network {
+        let mut papers = Papers::new();
+        // Two authors: strength 1 each.
+        papers.paper(Some(2000), ["Bia", "Ana"]);
+        // Four authors: strength 1/3 per pair.
+        papers.paper(Some(2005), ["Ana", "Bia", "Caio", "Dora"]);
+        // A name twice and a blank one: still two authors.
+        papers.paper(Some(2010), ["Caio", "  ", "Eli", "Caio"]);
+        // No year: in the full network only.
+        papers.paper(None, ["Eli", "Fe"]);
+        // Alone: not a vertex.
+        papers.paper(Some(1990), ["Gil"]);
+        assert_eq!(papers.paper_count(), 4);
+        assert_eq!(papers.author_count(), 6);
+        assert_eq!(papers.largest_paper(), 4);
+        papers.finish()
+    }
+
+    #[test]
+    fn numbers_by_first_year_then_name() {
+        let network = network();
+        let names: Vec<_> = network.names(None).collect();
+        assert_eq!(
+            names,
+            [
+                (1, "Ana"),
+                (2, "Bia"),
+                (3, "Caio"),
+                (4, "Dora"),
+                (5, "Eli"),
+                (6, "Fe")
+            ]
+        );
+        assert_eq!(network.vertex_count(Some(1999)), 0);
+        assert_eq!(network.vertex_count(Some(2000)), 2);
+        assert_eq!(network.vertex_count(Some(2005)), 4);
+        assert_eq!(network.vertex_count(Some(2010)), 5);
+        assert_eq!(network.vertex_count(None), 6);
+        assert_eq!(network.name(6), Some("Fe"));
+        assert_eq!(network.name(7), None);
+        assert_eq!(network.name(0), None);
+        assert_eq!(network.years(), Some((2000, 2010)));
+    }
+
+    #[test]
+    fn weights_sum_the_papers_up_to_the_year() {
+        let network = network();
+        let full: Vec<_> = network.edges(None).collect();
+        assert_eq!(
+            full,
+            [
+                (1, 2, 1.0 / (1.0 + 1.0 / 3.0)),
+                (1, 3, 3.0),
+                (1, 4, 3.0),
+                (2, 3, 3.0),
+                (2, 4, 3.0),
+                (3, 4, 3.0),
+                (3, 5, 1.0),
+                (5, 6, 1.0),
+            ]
+        );
+        let early: Vec<_> = network.edges(Some(2000)).collect();
+        assert_eq!(early, [(1, 2, 1.0)]);
+        assert_eq!(network.edge_count(Some(2005)), 6);
+        assert_eq!(network.edge_count(Some(2010)), 7);
+        assert_eq!(network.edge_count(None), 8);
+    }
+
+    #[test]
+    fn writes_the_course_format() {
+        let network = network();
+        let mut edges = Vec::new();
+        assert_eq!(network.write_edges(Some(2005), &mut edges).unwrap(), 6);
+        assert_eq!(
+            String::from_utf8(edges).unwrap(),
+            "4\n1 2 0.75\n1 3 3\n1 4 3\n2 3 3\n2 4 3\n3 4 3\n"
+        );
+        let mut names = Vec::new();
+        assert_eq!(network.write_names(Some(2000), &mut names).unwrap(), 2);
+        assert_eq!(String::from_utf8(names).unwrap(), "1,Ana\n2,Bia\n");
+        let list = network.edge_list(None).unwrap();
+        assert_eq!(list.vertex_count(), 6);
+        assert_eq!(list.edge_count(), 8);
+        assert!(list.is_weighted());
+    }
+
+    #[test]
+    fn fifteen_significant_digits() {
+        assert_eq!(Fifteen(3.0).to_string(), "3");
+        assert_eq!(Fifteen(113.0).to_string(), "113");
+        assert_eq!(Fifteen(0.5).to_string(), "0.5");
+        assert_eq!(Fifteen(1.5).to_string(), "1.5");
+        assert_eq!(Fifteen(2.0 / 3.0).to_string(), "0.666666666666667");
+        assert_eq!(Fifteen(1.0 / 7.0 * 6.0).to_string(), "0.857142857142857");
+        assert_eq!(
+            Fifteen(0.00373459479646458).to_string(),
+            "0.00373459479646458"
+        );
+    }
+}

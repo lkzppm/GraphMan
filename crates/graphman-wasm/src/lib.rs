@@ -1669,3 +1669,109 @@ mod tests {
         assert_eq!(g.search_names("eva", 5), vec![3]);
     }
 }
+
+/// Which vertices [`WasmGraph::subgraph`] keeps (the library's `SubgraphRule`).
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubgraphKind {
+    /// A BFS ball around a seed, stopped at the size wanted.
+    Ball = 0,
+    /// The vertices of highest degree.
+    MostConnected = 1,
+    /// Vertices `1..=max`.
+    Earliest = 2,
+}
+
+impl From<SubgraphKind> for graphman::algo::SubgraphRule {
+    fn from(kind: SubgraphKind) -> Self {
+        match kind {
+            SubgraphKind::Ball => Self::Ball,
+            SubgraphKind::MostConnected => Self::MostConnected,
+            SubgraphKind::Earliest => Self::Earliest,
+        }
+    }
+}
+
+/// A cut of the loaded graph: how big it is, and when asked for, its two
+/// files in the course format.
+#[wasm_bindgen]
+pub struct Subgraph {
+    vertices: u32,
+    edges: u32,
+    bytes: f64,
+    edge_file: Vec<u8>,
+    names_file: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl Subgraph {
+    /// How many vertices the cut keeps.
+    #[wasm_bindgen(getter)]
+    pub fn vertices(&self) -> u32 {
+        self.vertices
+    }
+
+    /// How many edges run among them.
+    #[wasm_bindgen(getter)]
+    pub fn edges(&self) -> u32 {
+        self.edges
+    }
+
+    /// The edge file's size: exact when the file was written or the cut is
+    /// small, otherwise an estimate from a sample of its lines.
+    #[wasm_bindgen(getter)]
+    pub fn bytes(&self) -> f64 {
+        self.bytes
+    }
+
+    /// The edge file (`n`, then `u v weight` per line); empty unless asked for.
+    #[wasm_bindgen(js_name = edgeFile)]
+    pub fn edge_file(&self) -> Vec<u8> {
+        self.edge_file.clone()
+    }
+
+    /// The names file (`vertex,name` per line); empty without names or
+    /// unless asked for.
+    #[wasm_bindgen(js_name = namesFile)]
+    pub fn names_file(&self) -> Vec<u8> {
+        self.names_file.clone()
+    }
+}
+
+#[wasm_bindgen(js_class = Graph)]
+impl WasmGraph {
+    /// Cuts the graph to at most `max` vertices by `rule` (`seed` is the
+    /// ball's centre) and renumbers them from 1: the ball's seed, the most
+    /// connected vertex or vertex 1 becomes vertex 1. With `files`, the edge
+    /// file and the names file are written too, else only the sizes are
+    /// counted (a preview).
+    pub fn subgraph(&self, rule: SubgraphKind, seed: u32, max: u32, files: bool) -> Subgraph {
+        let kept =
+            dispatch!(&self.graph, g => graphman::algo::select(g, rule.into(), seed, max as usize));
+        let induced = dispatch!(&self.graph, g => graphman::algo::induce(g, kept));
+        let mut edge_file = Vec::new();
+        let mut names_file = Vec::new();
+        if files {
+            induced
+                .write_edges(&mut edge_file)
+                .expect("writing to a Vec never fails");
+            if let Some(names) = &self.names {
+                induced
+                    .write_names(names, &mut names_file)
+                    .expect("writing to a Vec never fails");
+            }
+        }
+        let bytes = if files {
+            edge_file.len() as f64
+        } else {
+            induced.file_bytes() as f64
+        };
+        Subgraph {
+            vertices: induced.vertex_count() as u32,
+            edges: induced.edge_count() as u32,
+            bytes,
+            edge_file,
+            names_file,
+        }
+    }
+}

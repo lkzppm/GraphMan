@@ -91,6 +91,7 @@ import { useT } from '@/i18n/LocaleProvider';
 import { onThemeFade } from '@/lib/theme';
 import type { Dictionary } from '@/i18n';
 import styles from './Observatory.module.css';
+import { takeGraph } from '@/lib/handoff';
 import Structures, {
   clampStrip,
   storedStripHeight,
@@ -444,6 +445,10 @@ export default function Observatory() {
   const graphRef = useRef<Graph | null>(null);
   const cameraRef = useRef<Camera>({ x: 0, y: 0, zoom: 1 });
   const fitRef = useRef<() => void>(() => {});
+  /** `parseBytes`, for the boot effect, which runs before it is defined. */
+  const parseRef = useRef<
+    (name: string, bytes: Uint8Array, names: NamesFile | null) => Promise<Pending | null>
+  >(async () => null);
 
   const [status, setStatus] = useState<Status>({ kind: 'booting' });
   const [meta, setMeta] = useState<GraphMeta | null>(null);
@@ -625,6 +630,9 @@ export default function Observatory() {
           if (autoFit.current) fitRef.current();
         };
         setStatus({ kind: 'ready' });
+        // A network built on the DBLP tab and opened here.
+        const handoff = takeGraph();
+        if (handoff) void parseRef.current(handoff.name, handoff.bytes, handoff.names);
       } catch (error) {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : String(error);
@@ -1098,9 +1106,13 @@ export default function Observatory() {
    * those only exist once the file has been read.
    */
   const parseBytes = useCallback(
-    async (name: string, bytes: Uint8Array, names: NamesFile | null = null) => {
+    async (
+      name: string,
+      bytes: Uint8Array,
+      names: NamesFile | null = null,
+    ): Promise<Pending | null> => {
       const wasm = wasmRef.current;
-      if (!wasm) return;
+      if (!wasm) return null;
       setStatus({ kind: 'parsing', name });
       setNotice(null);
       // Freed outside the state updater: StrictMode runs updaters twice, and
@@ -1115,7 +1127,7 @@ export default function Observatory() {
         const parsed = new wasm.Parsed(bytes);
         const parseMs = performance.now() - t0;
         const memory = readMemory(parsed.memoryReport());
-        setPending({
+        const waiting: Pending = {
           name,
           bytes: bytes.byteLength,
           vertices: parsed.vertexCount,
@@ -1124,16 +1136,21 @@ export default function Observatory() {
           memory,
           parsed,
           names,
-        });
+        };
+        setPending(waiting);
         setStatus({ kind: 'ready' });
+        return waiting;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         setNotice(tRef.current.couldNotLoad(name, message));
         setStatus({ kind: 'ready' });
+        return null;
       }
     },
     [clearGraph],
   );
+
+  parseRef.current = parseBytes;
 
   /** A names file on its own: into the open graph, or the one waiting. */
   const addNames = useCallback(
@@ -3377,7 +3394,7 @@ function usePhone() {
   );
 }
 
-function Panel({
+export function Panel({
   title,
   actions,
   grow = false,
@@ -3686,7 +3703,7 @@ function ExamplesMenu({
  * with the matching names offered under it (arrows to move, Enter or a click
  * to take one). Enter with no list open runs the search.
  */
-function VertexField({
+export function VertexField({
   id,
   label,
   value,
@@ -3950,7 +3967,7 @@ function SidebarHandle({
   );
 }
 
-function IconButton({
+export function IconButton({
   label,
   onClick,
   children,

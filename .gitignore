@@ -11,6 +11,8 @@ web/.vite/
 # (regenerate with `graphman export` and `npm run data`)
 /graphs/
 /web/public/data/
+# A local DBLP build for trying the tab (NEXT_PUBLIC_DBLP_SITE=/dblp-data)
+/web/public/dblp-data/
 *.tsbuildinfo
 
 # OS / editor
