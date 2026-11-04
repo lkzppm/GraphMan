@@ -8,6 +8,8 @@ scope) adds real edge weights and Dijkstra over two interchangeable
 frontiers (vector and decrease-key heap); Part 3 will add direction and
 flows on top of the same core, so keep the `Graph` trait small and the
 algorithms generic.
+The DBLP tab rebuilds the course's collaboration network from the
+monthly DBLP dump (`graphman dblp`, a GitHub Action, GitHub Pages).
 
 Everything in the repo is in English. The presentation and report are in
 Portuguese (the course language), but code, comments, docs and commits are
@@ -45,6 +47,7 @@ graphs/                course input graphs (gitignored, 100 MB–700 MB each)
 docs/                  course handouts (Portuguese) and the report
 spec/                  project knowledge for humans and agents
 assets/                brand assets (logo PNG/JPG + the SVG logo and one-colour mark)
+.github/workflows/     ci.yml (CI) and dblp.yml (the monthly DBLP build); scripts/dblp-site.mjs
 ```
 
 ## Commands
@@ -56,6 +59,7 @@ cargo fmt --all
 cargo build --release                       # binary at target/release/graphman
 graphman study graphs/grafo_1.txt --out studies   # case studies → JSON + RESULTS.md
 graphman dijkstra samples/weighted_100.txt --from 10 --to 20 30 --frontier vector
+graphman dblp dblp.xml.gz --out graphs --years 2009   # the DBLP dump → rede_colaboracao.txt + names, whole and up to 2009
 cd web && pnpm install && pnpm run dev      # builds the wasm, syncs data, starts Next.js
 cd web && pnpm run typecheck && pnpm run lint # must be green (CI enforces)
 ```
@@ -80,6 +84,18 @@ cd web && pnpm run typecheck && pnpm run lint # must be green (CI enforces)
   `default-features = false` (no mmap, no rayon).
 - The observatory computes everything client-side from the uploaded file:
   no pre-exported data, no server.
+- The DBLP tab is one console (`web/src/components/DblpConsole.tsx`), not
+  a second observatory: it fetches the monthly build from the repository's
+  GitHub Pages (`web/src/lib/dblp.ts`), never from dblp.org or from release
+  assets (neither sends CORS headers; DBLP's live API sits behind an
+  anti-bot challenge). Files above 95 MB are split into parts by
+  `.github/scripts/dblp-site.mjs` and the manifest says so; the page
+  stitches them back. A year's network is held in wasm and cut with
+  `algo::select` + `algo::induce` (ball, most connected, earliest); the cut
+  goes to the observatory in memory (`lib/handoff.ts`) or is exported.
+- The collaboration builder (`graphman::io::collaboration`) takes papers
+  (year, author names) from any source; DBLP's XML and gzip stay in the CLI.
+  Weights follow the course file: `1 / Σ 1/(authors − 1)` over shared papers.
 - The library page's code examples live in `crates/graphman/tests/wiki.rs`
   (blocks between `// wiki:start <id>` and `// wiki:end`, extracted by
   `web/scripts/sync-data.mjs`); change them there, never in the web code,

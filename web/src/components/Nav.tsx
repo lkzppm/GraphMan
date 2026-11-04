@@ -15,6 +15,7 @@ const TABS: { href: string; label: keyof Dictionary['nav'] }[] = [
   { href: '/observatory', label: 'observatory' },
   { href: '/library', label: 'library' },
   { href: '/studies', label: 'studies' },
+  { href: '/dblp', label: 'dblp' },
   { href: '/presentation', label: 'presentation' },
 ];
 

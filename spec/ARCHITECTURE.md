@@ -13,6 +13,8 @@ src/graph/            Graph + Weighted traits, Build trait, MemoryBudget, AnyGra
 src/io/
   edge_list.rs        parser for the course format (`u v` or `u v weight`) → normalised EdgeList
   names.rs            VertexNames: index ⇄ name for named networks
+  collaboration.rs    Papers → Network: a co-authorship graph from (year, authors) papers,
+                      written in the course format whole or as it stood at the end of a year
   summary.rs          the "output" file (counts, degree and weight stats, components)
 src/algo/
   traversal.rs        SearchTree, Visitor, bfs*, dfs*
@@ -23,6 +25,7 @@ src/algo/
   shortest_path.rs    ShortestPathTree, dijkstra*, shortest_path*, NegativeWeight
   stats.rs            DegreeStats (counting-sort median), WeightStats
   layout.rs           radial layout derived from a search tree (O(n))
+  subgraph.rs         select (ball / most connected / earliest) + induce: a cut, renumbered, written back out
 src/metrics/memory.rs process RSS / footprint / peak / total memory (macOS, Linux)
 ```
 
@@ -105,6 +108,23 @@ Design decisions worth presenting:
    of popping, which is how the observatory draws the real heap at any step
    without a second Dijkstra or a model of one.
 
+9. **A collaboration network is built, not downloaded.** The course's
+   `rede_colaboracao.txt` is DBLP's co-authorship graph of 2009;
+   `io::collaboration` rebuilds it from any list of papers. `Papers::paper`
+   interns the authors' names (DBLP already tells namesakes apart) and
+   pushes one term per pair: the year and `k`, the number of co-authors
+   each had on that paper. `finish` numbers the authors by the year of
+   their first co-authored paper, then by name, and sorts the terms by
+   pair, so the network up to year `y` is the prefix `1..=n_y` of the
+   numbering (its names file is the head of the whole one) and its edges
+   are read off the same sorted terms in one pass, each weight being
+   `1 / Σ 1/k` over the papers up to `y` (the course file's rule: one
+   two-author paper is distance 1, one four-author paper 3, frequent
+   co-authors close). An author who never wrote with anyone is not a
+   vertex. The DBLP XML, its gzip and its Latin-1 entities belong to the
+   CLI (`commands/dblp.rs`), which streams the 4 GB dump in under a minute
+   per gigabyte keeping only names and pairs.
+
 Features: `mmap` (memory-mapped file loading and anonymous edge store),
 `parallel` (rayon), `serde` (serialisable results). The core has no CLI or
 terminal dependencies, which is what lets `graphman-wasm` compile it to
@@ -124,6 +144,8 @@ src/commands/
   bench      time BFS/DFS (--recursive)/Dijkstra from N distinct random roots
   memory     RSS after loading one representation (run in a subprocess by `study`)
   generate   random graphs (optionally weighted, or the edges of a file with --like)
+  dblp       the DBLP XML dump (plain or .gz) → the course's collaboration network, whole and
+             --years Y,... as it stood then; --gzip, --formal-only; writes manifest.json + README.md
   study      the case-study runner: JSON per graph + merged results.json + RESULTS.md;
              Part 1 on unweighted files, Part 2 (study/weighted.rs: paths, frontier
              timings under a budget) on weighted ones, --only for some sections
@@ -188,12 +210,15 @@ src/app/layout.tsx, globals.css   fonts, metadata, the LocaleProvider, the share
 src/app/page.tsx                  Home tab: Hero + Pipeline
 src/app/library/, studies/        Library tab (Wiki, the interactive manual), Case studies tab (tables)
 src/app/presentation/             Presentation tab: the five slides (Deck)
+src/app/dblp/                     DBLP tab: the console (DblpConsole), client-only
 src/app/observatory/              the tool, client-only (dynamic import, ssr: false)
 src/components/                   Nav, Logo, BrandIcon, Reveal, Deck, Representations, Field, Wiki, Code, GraphFigure, page sections + CSS modules
 src/i18n/                         en.tsx (the schema), pt.tsx, LocaleProvider (useT / useLocale)
 src/lib/graphman.ts               loads the wasm glue once
 src/lib/studies.ts                types of studies/results.json (synced into src/data)
 src/lib/format.ts                 number formatting
+src/lib/dblp.ts                   the monthly build: manifest, part-aware cached fetch + gunzip, save
+src/lib/handoff.ts                a graph handed from the DBLP tab to the observatory in memory
 src/observatory/Observatory.tsx   state, file loading, pointer interaction, panels
 src/observatory/renderer.ts       vgpu: buffers, compute step, node + edge draws
 src/observatory/shaders.ts        WGSL (plain strings, reflected by vgpu)
@@ -341,6 +366,48 @@ not have. The page's drawings are worked out on the same sample graph in
 `web/src/lib/sample.ts`, whose BFS, DFS, components and shortest path
 mirror the library's order (ascending neighbours, DFS over neighbour
 iterators), so what is drawn is what the examples' comments say.
+
+### The DBLP tab
+
+`/dblp` is one console in the middle of the screen (`components/DblpConsole.tsx`,
+client-only like the observatory), three numbered steps down one column:
+the network, the cut, the result. It offers the course's collaboration
+network rebuilt from the current DBLP dump, at the end of a chosen year or
+whole, and cuts it to size before handing it over.
+
+The dump itself (1.1 GB gzipped, 4 GB of XML) cannot be read by the page:
+dblp.org and its DROPS mirror send no CORS headers, DBLP's live API sits
+behind an anti-bot challenge, and the size rules out a tab or a Vercel
+function anyway. So the conversion runs once a month in GitHub Actions
+(`.github/workflows/dblp.yml`): it finds the newest snapshot on DROPS
+(`https://drops.dagstuhl.de/storage/artifacts/dblp/xml/<year>/dblp-<date>.xml.gz`),
+runs `graphman dblp ... --years 1970,...,2020 --gzip`, publishes the files
+as a release tagged `dblp-<date>` (the archive) and deploys a copy to the
+repository's GitHub Pages, the one GitHub host that answers a browser's
+fetch with `Access-Control-Allow-Origin: *` (release assets do not;
+checked). GitHub's 100 MB per-file cap applies to Pages, so
+`.github/scripts/dblp-site.mjs` splits larger files into parts and records
+them in `manifest.json`.
+
+Step one lists the years as vertices on one edge and fetches the chosen
+one (`lib/dblp.ts`): both files stream through the browser's
+`DecompressionStream`, parts in order into one gunzip, the responses kept
+in the Cache API under the build's version so a second visit is instant;
+then `Parsed(bytes).build(Csr)` + `setNames` hold the whole year in wasm.
+Step two is local: a rule (a BFS ball around a researcher named in a field
+with the library's suggestions, the most connected, or the earliest, i.e.
+the file's own first vertices), a logarithmic size slider, and three live
+tiles (`Graph.subgraph(rule, seed, max, files=false)` → vertices, edges and
+the edge file's size, exact up to 200k edges and sampled past that) a
+moment after each change. Step three asks for the files (`files=true`): the
+library's `algo::select` picks the vertices in the order that numbers them
+(the seed, the most connected or vertex 1 becomes 1), `algo::induce`
+renumbers the edges among them, and the two course-format files either go
+to the observatory in memory (`lib/handoff.ts`: offered, then
+`/observatory` takes them once its wasm is ready and parses them like a
+dropped file, names attached) or are saved. `NEXT_PUBLIC_DBLP_SITE` points
+the page at another host, e.g. a local build in `web/public/dblp-data`
+(see `spec/WORKFLOW.md`).
 
 ### Timing in the browser
 

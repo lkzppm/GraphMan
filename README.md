@@ -14,7 +14,8 @@
   <a href="https://graphman-ufrj.vercel.app">graphman-ufrj.vercel.app</a> ·
   <a href="https://graphman-ufrj.vercel.app/observatory">observatory</a> ·
   <a href="https://graphman-ufrj.vercel.app/studies">case studies</a> ·
-  <a href="https://graphman-ufrj.vercel.app/presentation">presentation</a>
+  <a href="https://graphman-ufrj.vercel.app/presentation">presentation</a> ·
+  <a href="https://graphman-ufrj.vercel.app/dblp">dblp network</a>
 </p>
 
 GraphMan is the course project of *Teoria dos Grafos* (COS 242, UFRJ). Part 1
@@ -31,7 +32,7 @@ network), and a graph with a negative weight is refused, not answered wrongly.
 | Piece | Where | What it does |
 |---|---|---|
 | `graphman` | `crates/graphman` | The library: `Graph` and `Weighted` traits, adjacency list / bitset matrix / CSR (weighted or not), traversals with visitors, components, four diameter strategies, Dijkstra over three frontiers, vertex names, memory metrics. |
-| `graphman` CLI | `crates/graphman-cli` | One subcommand per assignment feature (`info`, `bfs`, `dfs`, `distance`, `diameter`, `components`, `dijkstra`), plus `bench`, `memory`, `generate` and `study` (the case-study runner). |
+| `graphman` CLI | `crates/graphman-cli` | One subcommand per assignment feature (`info`, `bfs`, `dfs`, `distance`, `diameter`, `components`, `dijkstra`), plus `bench`, `memory`, `generate`, `study` (the case-study runner) and `dblp` (the DBLP dump as the course's collaboration network). |
 | `graphman-wasm` | `crates/graphman-wasm` | The library compiled to WebAssembly for the browser. |
 | Site | `web/` | Next.js, bilingual (Portuguese by default, English by a switch), phone-ready: the landing page, the library page with runnable examples, the seven case-study questions drawn, the presentation deck, and the observatory: drop a graph file, drag its vertices, pick an origin and watch BFS, DFS or Dijkstra unfold on the GPU (vgpu / WebGPU), with the queue, stack or heap it uses drawn under the canvas, step by step. |
 
@@ -57,6 +58,7 @@ cargo build --release
 ./target/release/graphman dijkstra samples/collaboration.txt --names samples/collaboration_names.txt \
     --from "Edsger W. Dijkstra" --to "Alan M. Turing" "Éva Tardos" "Daniel R. Figueiredo"
 ./target/release/graphman generate --like graphs/grafo_1.txt --weights 0:1 -o grafo_W_1.txt
+./target/release/graphman dblp dblp.xml.gz --out graphs --years 2009   # DBLP today as rede_colaboracao.txt (+ names), and up to 2009
 
 # Observatory (needs the wasm32-unknown-unknown target; a WebGPU browser to view)
 cd web && pnpm install && pnpm run dev
@@ -118,6 +120,7 @@ studies/              case-study outputs
 samples/              small graphs to try (the handouts' figures, a weighted graph, a named network)
 spec/                 project knowledge (assignment, architecture, workflow, design)
 docs/                 course handouts, the deck as PDF and its speaking notes
+.github/              CI, and the monthly DBLP build (release + GitHub Pages)
 graphs/               inputs (gitignored)
 ```
 
