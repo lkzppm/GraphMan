@@ -1,10 +1,12 @@
-// Prepares the GitHub Pages copy of a `graphman dblp` build (the files the
-// site fetches): copies the gzipped files and the manifest, splits any file
-// above the host's 100 MB cap into numbered parts the page streams back
-// together, records those parts and the release link in the manifest, and
-// writes an index that sends a visitor to the site.
+// Prepares the GitHub Pages copy of a `graphman dblp --site` layout (the
+// files the page fetches: per year, the strengths and the names): copies
+// the gzipped files and the manifest, splits any file above the host's
+// 100 MB cap into numbered parts the page streams back together, records
+// those parts and the release link in the manifest, and writes an index
+// that sends a visitor to the site. A schema 1 build (the course-format
+// files of the release) is laid out the same way.
 //
-//   node .github/scripts/dblp-site.mjs <build dir> <site dir> [release url]
+//   node .github/scripts/dblp-site.mjs <layout dir> <site dir> [release url]
 
 import {
   closeSync,
@@ -30,8 +32,9 @@ const PART_BYTES = 95 * 1024 * 1024;
 const manifest = JSON.parse(readFileSync(join(from, "manifest.json"), "utf8"));
 mkdirSync(to, { recursive: true });
 
-for (const tier of manifest.tiers) {
-  for (const file of [tier.graph, tier.names]) {
+const entries = manifest.years ?? manifest.tiers ?? [];
+for (const entry of entries) {
+  for (const file of [entry.strengths ?? entry.graph, entry.names]) {
     const source = join(from, file.file);
     const size = statSync(source).size;
     if (size <= PART_BYTES) {
@@ -71,4 +74,4 @@ writeFileSync(
     "",
   ].join("\n"),
 );
-console.log(`site in ${to}: ${manifest.tiers.length} networks`);
+console.log(`site in ${to}: ${entries.length} ${manifest.years ? "years" : "networks"}`);

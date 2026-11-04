@@ -24,6 +24,8 @@ use quick_xml::escape::resolve_xml_entity;
 use quick_xml::events::{BytesRef, BytesStart, Event};
 use quick_xml::reader::Reader;
 use serde::Serialize;
+use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -68,6 +70,13 @@ pub struct Args {
     /// The dump's release date (`YYYY-MM-DD`), recorded in the manifest.
     #[arg(long)]
     date: Option<String>,
+
+    /// Also lay the network out by year in this directory, for the site:
+    /// per year, the strength every pair gained that year and the
+    /// researchers first seen that year, plus a manifest. The page sums the
+    /// years up to the one chosen, so any year can be picked.
+    #[arg(long)]
+    site: Option<PathBuf>,
 }
 
 /// The rule the weights follow, spelled out once for the manifest.
@@ -143,6 +152,13 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
     for until in years.iter().map(|&year| Some(year)).chain([None]) {
         tiers.push(write_tier(&network, until, &args, ui)?);
     }
+    let by_year = match &args.site {
+        Some(dir) => {
+            ui.step(&format!("laying out by year in {}", dir.display()));
+            write_site(&network, dir, &args, ui)?
+        }
+        None => Vec::new(),
+    };
 
     let built_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -168,10 +184,24 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
         first_year,
         last_year,
         tiers,
+        years: Vec::new(),
     };
     let path = args.out.join("manifest.json");
     serde_json::to_writer_pretty(BufWriter::new(File::create(&path)?), &manifest)
         .with_context(|| format!("writing {}", path.display()))?;
+    if let Some(dir) = &args.site {
+        let site = Manifest {
+            schema: 2,
+            generator: manifest.generator.clone(),
+            dump: manifest.dump.clone(),
+            tiers: Vec::new(),
+            years: by_year,
+            ..manifest
+        };
+        let path = dir.join("manifest.json");
+        serde_json::to_writer_pretty(BufWriter::new(File::create(&path)?), &site)
+            .with_context(|| format!("writing {}", path.display()))?;
+    }
     let path = args.out.join("README.md");
     std::fs::write(&path, readme(&manifest, &args))
         .with_context(|| format!("writing {}", path.display()))?;
@@ -591,7 +621,108 @@ struct Manifest<'a> {
     edges: usize,
     first_year: Option<u16>,
     last_year: Option<u16>,
+    /// The course-format files here (schema 1, the release).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     tiers: Vec<Tier>,
+    /// The network year by year (schema 2, the site).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    years: Vec<YearEntry>,
+}
+
+/// One year of the site layout: its two files, and the network up to it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct YearEntry {
+    year: u16,
+    /// The network up to and including this year.
+    vertices: usize,
+    edges: usize,
+    /// Pairs that gained strength this year: the strengths file's lines.
+    pairs: usize,
+    strengths: FileInfo,
+    names: FileInfo,
+}
+
+/// Writes the site layout into `dir`: for every year from the first to the
+/// last with a paper, `strengths_<year>.txt` (`u v strength` per line: what
+/// each pair gained that year, see `Network::strengths`) and
+/// `names_<year>.txt` (`vertex,name` per line: the researchers whose first
+/// collaboration was that year), so that the network up to a year is the
+/// sum of the files up to it. Undated papers count in the last year, which
+/// makes the last year the whole network. Every year's file stays open
+/// through the one pass over the strengths.
+fn write_site(network: &Network, dir: &Path, args: &Args, ui: &Ui) -> Result<Vec<YearEntry>> {
+    std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    let (first, last) = network
+        .years()
+        .context("no dated paper: nothing to lay out by year")?;
+    let bucket = |year: u16| if year == YEAR_UNKNOWN { last } else { year };
+    let mut open: BTreeMap<u16, OpenFile> = BTreeMap::new();
+    let mut new_pairs: BTreeMap<u16, usize> = BTreeMap::new();
+    let mut previous = None;
+    for (u, v, year, strength) in network.strengths() {
+        let year = bucket(year);
+        if previous != Some((u, v)) {
+            previous = Some((u, v));
+            *new_pairs.entry(year).or_default() += 1;
+        }
+        let file = match open.entry(year) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                entry.insert(OpenFile::create(dir, &strengths_name(year), args.gzip)?)
+            }
+        };
+        writeln!(file.sink, "{u} {v} {strength}")?;
+        file.lines += 1;
+    }
+    let mut years = Vec::with_capacity(usize::from(last - first) + 1);
+    let mut edges = 0;
+    let mut bytes = 0;
+    for year in first..=last {
+        let strengths = match open.remove(&year) {
+            Some(file) => file,
+            None => OpenFile::create(dir, &strengths_name(year), args.gzip)?,
+        };
+        let pairs = strengths.lines;
+        let strengths = strengths.close()?;
+        let before = year
+            .checked_sub(1)
+            .map_or(0, |previous| network.vertex_count(Some(previous)));
+        let until = if year == last { None } else { Some(year) };
+        let names = write_file(dir, &format!("names_{year}.txt"), args.gzip, |out| {
+            let mut out = BufWriter::new(out);
+            let mut count = 0;
+            for (v, name) in network.names(until).skip(before) {
+                writeln!(out, "{v},{name}")?;
+                count += 1;
+            }
+            out.flush()?;
+            Ok(count)
+        })?;
+        edges += new_pairs.get(&year).copied().unwrap_or(0);
+        bytes += strengths.bytes + names.info.bytes;
+        years.push(YearEntry {
+            year,
+            vertices: network.vertex_count(until),
+            edges,
+            pairs,
+            strengths,
+            names: names.info,
+        });
+    }
+    ui.kv(
+        "by year",
+        format!(
+            "{} years, {first} to {last}, {}",
+            years.len(),
+            ui::bytes(bytes as usize)
+        ),
+    );
+    Ok(years)
+}
+
+fn strengths_name(year: u16) -> String {
+    format!("strengths_{year}.txt")
 }
 
 fn write_tier(network: &Network, until: Option<u16>, args: &Args, ui: &Ui) -> Result<Tier> {
@@ -640,30 +771,58 @@ fn write_file(
     gzip: bool,
     write: impl FnOnce(&mut dyn Write) -> io::Result<usize>,
 ) -> Result<Written> {
-    let file_name = if gzip {
-        format!("{name}.gz")
-    } else {
-        name.to_owned()
-    };
-    let path = dir.join(&file_name);
-    let file = File::create(&path).with_context(|| format!("creating {}", path.display()))?;
-    let mut sink = Sink::new(file, gzip);
-    let mut counting = CountingWrite {
-        inner: &mut sink,
-        written: 0,
-    };
-    let count = write(&mut counting).with_context(|| format!("writing {}", path.display()))?;
-    let raw_bytes = counting.written;
-    sink.finish()?;
-    let bytes = std::fs::metadata(&path)?.len();
+    let mut open = OpenFile::create(dir, name, gzip)?;
+    let count =
+        write(&mut open.sink).with_context(|| format!("writing {}", open.path.display()))?;
     Ok(Written {
-        info: FileInfo {
-            file: file_name,
-            bytes,
-            raw_bytes,
-        },
+        info: open.close()?,
         count,
     })
+}
+
+/// A file being written, plain or gzipped, with its bytes counted.
+struct OpenFile {
+    path: PathBuf,
+    file: String,
+    sink: CountingWrite<Sink>,
+    lines: usize,
+}
+
+impl OpenFile {
+    fn create(dir: &Path, name: &str, gzip: bool) -> Result<Self> {
+        let file = if gzip {
+            format!("{name}.gz")
+        } else {
+            name.to_owned()
+        };
+        let path = dir.join(&file);
+        let created =
+            File::create(&path).with_context(|| format!("creating {}", path.display()))?;
+        Ok(Self {
+            sink: CountingWrite {
+                inner: Sink::new(created, gzip),
+                written: 0,
+            },
+            path,
+            file,
+            lines: 0,
+        })
+    }
+
+    /// Flushes and closes, giving the sizes on disk and before compression.
+    fn close(self) -> Result<FileInfo> {
+        let raw_bytes = self.sink.written;
+        self.sink
+            .inner
+            .finish()
+            .with_context(|| format!("finishing {}", self.path.display()))?;
+        let bytes = std::fs::metadata(&self.path)?.len();
+        Ok(FileInfo {
+            file: self.file,
+            bytes,
+            raw_bytes,
+        })
+    }
 }
 
 /// A plain or gzipped file being written.

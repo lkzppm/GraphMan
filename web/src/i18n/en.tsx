@@ -233,7 +233,6 @@ export const en = {
     releases: 'every monthly build',
     year: 'Year',
     upTo: (year: string) => `up to ${year}`,
-    all: 'everything',
     facts: {
       vertices: 'researchers',
       edges: 'collaborations',
@@ -241,7 +240,6 @@ export const en = {
       file: 'edge file',
     },
     fetching: (received: string, total: string) => `fetching: ${received} of ${total}`,
-    unpacking: 'unpacking',
     parsing: 'building the network in memory',
     cancel: 'Cancel',
     failedFetch: (reason: string) => `The download failed: ${reason}.`,

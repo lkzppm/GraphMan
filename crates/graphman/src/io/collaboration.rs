@@ -27,6 +27,14 @@
 //! count the papers up to that year). Papers without a year belong to the
 //! full network only.
 //!
+//! # One file per year
+//!
+//! [`Network::strengths`] gives every pair's strength year by year, so a
+//! network can be published as one small file per year and any year's
+//! weights recovered by summing the files up to it: the sum is made in the
+//! same order here and there (year by year, ascending), so the weights are
+//! bit for bit the ones [`Network::edges`] gives.
+//!
 //! ```
 //! use graphman::io::Papers;
 //!
@@ -248,6 +256,20 @@ impl Network {
         self.edges(until).count()
     }
 
+    /// Every pair's strength in every year it collaborated, sorted by
+    /// `(u, v, year)`: the sum of `1 / coauthors` over the pair's papers of
+    /// that year. Added up year by year, ascending, the strengths of the
+    /// years up to `until` invert to exactly the weight [`edges`] gives,
+    /// which is how a network is rebuilt from one file per year.
+    ///
+    /// [`edges`]: Self::edges
+    pub fn strengths(&self) -> Strengths<'_> {
+        Strengths {
+            terms: &self.terms,
+            at: 0,
+        }
+    }
+
     /// The earliest and latest known publication years, if any paper had one.
     pub fn years(&self) -> Option<(u16, u16)> {
         self.terms
@@ -307,24 +329,59 @@ impl Iterator for Edges<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         while self.at < self.terms.len() {
             let first = self.terms[self.at];
+            // Summed a year at a time, in the order `Strengths` gives them,
+            // so a network rebuilt from per-year strengths has these weights.
             let mut strength = 0.0;
+            let mut year = first.year;
+            let mut partial = 0.0;
             let mut end = self.at;
             while end < self.terms.len() {
                 let term = self.terms[end];
                 if (term.u, term.v) != (first.u, first.v) {
                     break;
                 }
+                if term.year != year {
+                    strength += partial;
+                    partial = 0.0;
+                    year = term.year;
+                }
                 if term.year <= self.until {
-                    strength += 1.0 / f64::from(term.coauthors);
+                    partial += 1.0 / f64::from(term.coauthors);
                 }
                 end += 1;
             }
+            strength += partial;
             self.at = end;
             if strength > 0.0 {
                 return Some((first.u, first.v, 1.0 / strength));
             }
         }
         None
+    }
+}
+
+/// Every pair's strength in every year it collaborated, from
+/// [`Network::strengths`]: `(u, v, year, strength)` sorted by `(u, v,
+/// year)`, the year being [`YEAR_UNKNOWN`] for undated papers.
+pub struct Strengths<'a> {
+    terms: &'a [Term],
+    at: usize,
+}
+
+impl Iterator for Strengths<'_> {
+    type Item = (Vertex, Vertex, u16, Weight);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let first = *self.terms.get(self.at)?;
+        let mut strength = 0.0;
+        while let Some(term) = self.terms.get(self.at) {
+            if (term.u, term.v, term.year) != (first.u, first.v, first.year) {
+                break;
+            }
+            strength += 1.0 / f64::from(term.coauthors);
+            self.at += 1;
+        }
+        Some((first.u, first.v, first.year, strength))
     }
 }
 
@@ -416,6 +473,42 @@ mod tests {
         assert_eq!(network.edge_count(Some(2005)), 6);
         assert_eq!(network.edge_count(Some(2010)), 7);
         assert_eq!(network.edge_count(None), 8);
+    }
+
+    #[test]
+    fn strengths_rebuild_every_year_exactly() {
+        let mut papers = Papers::new();
+        // Three papers of a pair in three years with awkward fractions.
+        papers.paper(Some(2001), ["A", "B", "C"]);
+        papers.paper(Some(2001), ["A", "B", "C", "D", "E", "F", "G"]);
+        papers.paper(Some(2003), ["A", "B", "C", "D"]);
+        papers.paper(
+            Some(2007),
+            ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
+        );
+        papers.paper(None, ["A", "B", "K"]);
+        let network = papers.finish();
+        let strengths: Vec<_> = network.strengths().collect();
+        assert!(
+            strengths
+                .windows(2)
+                .all(|w| (w[0].0, w[0].1, w[0].2) < (w[1].0, w[1].1, w[1].2))
+        );
+        assert_eq!(strengths[0], (1, 2, 2001, 0.5 + 1.0 / 6.0));
+        for until in [Some(2000), Some(2001), Some(2003), Some(2007), None] {
+            let mut rebuilt = std::collections::BTreeMap::new();
+            for &(u, v, year, strength) in &strengths {
+                if until.is_none_or(|limit| year <= limit) {
+                    *rebuilt.entry((u, v)).or_insert(0.0) += strength;
+                }
+            }
+            let expected: Vec<_> = network.edges(until).collect();
+            let got: Vec<_> = rebuilt
+                .into_iter()
+                .map(|((u, v), s)| (u, v, 1.0 / s))
+                .collect();
+            assert_eq!(got, expected, "up to {until:?}");
+        }
     }
 
     #[test]

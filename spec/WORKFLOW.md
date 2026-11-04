@@ -113,10 +113,11 @@ A file with a negative weight records the library's refusal instead.
 `.github/workflows/dblp.yml` runs on the 6th of every month and on demand
 (Actions → DBLP → Run workflow, optionally with the URL of any dump). It
 downloads the newest monthly snapshot from DROPS, converts it with
-`graphman dblp`, creates the release `dblp-<date>` with the gzipped files
-and `manifest.json` (the release notes are the generated `README.md`), and
-deploys the same files to GitHub Pages for the site's DBLP tab. A snapshot
-that already has a release is skipped unless `force` is ticked.
+`graphman dblp`, creates the release `dblp-<date>` with the course-format
+files (whole and up to 2009, gzipped) and `manifest.json` (the release
+notes are the generated `README.md`), and deploys the site layout (one
+file per year, `--site`) to GitHub Pages for the site's DBLP tab. A
+snapshot that already has a release is skipped unless `force` is ticked.
 
 One-time setup: Settings → Pages → Source: *GitHub Actions* (the workflow
 asks for it itself through `actions/configure-pages`, which may need that
@@ -128,6 +129,7 @@ By hand, with the dump at hand (https://dblp.org/xml/ or DROPS):
 ```
 ./target/release/graphman dblp dblp-2026-11-01.xml.gz --out graphs            # rede_colaboracao.txt + _vertices.txt
 ./target/release/graphman dblp dblp.xml.gz --out out --years 2009,2020 --gzip  # plus the network up to each year
+./target/release/graphman dblp dblp.xml.gz --out out --gzip --site by-year     # plus the site layout, one file per year
 ./target/release/graphman dblp dblp.xml.gz --out out --formal-only            # preprints left out
 ```
 
@@ -135,9 +137,10 @@ Minutes and a few GB of memory for the whole of DBLP (the XML is streamed).
 `graphman info` and `graphman dijkstra --names` read the files back.
 
 To try the tab before a monthly build exists, or against a build of your
-own, give the page a local copy: `node .github/scripts/dblp-site.mjs out
-web/public/dblp-data` lays the files out as Pages would (gitignored), and
-`NEXT_PUBLIC_DBLP_SITE=/dblp-data pnpm run dev` points the page at them.
+own, give the page a local copy: `node .github/scripts/dblp-site.mjs
+by-year web/public/dblp-data` lays the files out as Pages would
+(gitignored), and `NEXT_PUBLIC_DBLP_SITE=/dblp-data pnpm run dev` points
+the page at them.
 
 ## Web app
 

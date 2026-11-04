@@ -235,7 +235,6 @@ export const pt: Dictionary = {
     releases: 'todas as versões mensais',
     year: 'Ano',
     upTo: (year: string) => `até ${year}`,
-    all: 'tudo',
     facts: {
       vertices: 'pesquisadores',
       edges: 'colaborações',
@@ -243,7 +242,6 @@ export const pt: Dictionary = {
       file: 'arquivo de arestas',
     },
     fetching: (received: string, total: string) => `baixando: ${received} de ${total}`,
-    unpacking: 'descompactando',
     parsing: 'montando a rede na memória',
     cancel: 'Cancelar',
     failedFetch: (reason: string) => `O download falhou: ${reason}.`,
