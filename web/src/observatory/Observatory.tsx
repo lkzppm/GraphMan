@@ -356,6 +356,9 @@ const LAYOUTS: { id: LayoutId; icon: ReactNode }[] = [
   { id: 'degree', icon: <CircleDashed size={14} /> },
 ];
 
+/** Which way the layered tree grows: root on top, or root on the left. */
+type TreeDirection = 'vertical' | 'horizontal';
+
 /** How long a layout change takes to slide into place. */
 const MORPH_MS = 700;
 /** Share of the view a framed path fills (the path label floats over the top). */
@@ -528,6 +531,9 @@ export default function Observatory() {
   /** The current layout and its menu. */
   const [layout, setLayout] = useState<LayoutId>('force');
   const [layoutOpen, setLayoutOpen] = useState(false);
+  const [treeDirection, setTreeDirection] = useState<TreeDirection>('vertical');
+  const treeDirectionRef = useRef(treeDirection);
+  treeDirectionRef.current = treeDirection;
   const layoutMenuRef = useRef<HTMLDivElement>(null);
   /** What the arrow keys drive: the search timeline or the components. */
   const keysTarget = useRef<'search' | 'components'>('search');
@@ -804,7 +810,8 @@ export default function Observatory() {
   /**
    * Rearranges the graph: the level layouts start at `root`, the force
    * layout returns to the initial placement and warms the simulation up
-   * again. Vertices slide to their new places and the view follows: the
+   * again, and the layered one draws the tree of the search on screen when
+   * that search is a Dijkstra (a BFS tree from `root` otherwise). Vertices slide to their new places and the view follows: the
    * whole graph, or with `frame: 'component'` only the root's component
    * (a new search origin re-arranges that one, the rest just makes room).
    */
@@ -817,17 +824,24 @@ export default function Observatory() {
       setLayout(id);
       let positions: Float32Array;
       try {
-        positions =
-          id === 'force'
-            ? graph.initialLayout()
-            : graph.layout(
-                id === 'radial'
-                  ? wasm.LayoutKind.Radial
-                  : id === 'layered'
-                    ? wasm.LayoutKind.Layered
-                    : wasm.LayoutKind.Degree,
-                root,
-              );
+        if (id === 'force') {
+          positions = graph.initialLayout();
+        } else if (id === 'layered') {
+          const direction =
+            treeDirectionRef.current === 'vertical'
+              ? wasm.LayerDirection.Vertical
+              : wasm.LayerDirection.Horizontal;
+          const shown = searchRef.current;
+          positions =
+            shown?.kind === 'dijkstra'
+              ? graph.layeredTree(shown.result as ShortestPathResult, direction)
+              : graph.layered(root, direction);
+        } else {
+          positions = graph.layout(
+            id === 'radial' ? wasm.LayoutKind.Radial : wasm.LayoutKind.Degree,
+            root,
+          );
+        }
       } catch (error) {
         setNotice(error instanceof Error ? error.message : String(error));
         return;
@@ -846,15 +860,20 @@ export default function Observatory() {
     [glideToFit],
   );
 
-  /** The level layouts follow the search: a new origin re-arranges its component. */
+  /** The level layouts follow the search: a new origin re-arranges its component,
+      and the layered tree also changes between a Dijkstra and any other search. */
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   const searchRoot = search?.root ?? 0;
+  const searchIsDijkstra = search?.kind === 'dijkstra';
   useEffect(() => {
-    if (!searchRoot) return;
-    const id = layoutRef.current;
-    if (id === 'radial' || id === 'layered') applyLayout(id, searchRoot, 'component');
+    if (searchRoot && layoutRef.current === 'radial')
+      applyLayout('radial', searchRoot, 'component');
   }, [searchRoot, applyLayout]);
+  useEffect(() => {
+    if (searchRoot && layoutRef.current === 'layered')
+      applyLayout('layered', searchRoot, 'component');
+  }, [searchRoot, searchIsDijkstra, applyLayout]);
 
   /** Lights component `c` (0 clears), frames it, and hands the arrow keys to it. */
   const selectComponent = useCallback(
@@ -3080,17 +3099,49 @@ export default function Observatory() {
                         aria-checked={layout === item.id}
                         className={styles.menuItem}
                         onClick={() => {
-                          setLayoutOpen(false);
+                          // Layered stays open: its direction toggle is right there.
+                          if (item.id !== 'layered') setLayoutOpen(false);
                           applyLayout(item.id, search?.root ?? (selected || 1));
                         }}
                       >
                         <span className={styles.menuIcon}>{item.icon}</span>
                         <span className={styles.menuText}>
                           <span>{t.layouts[item.id].label}</span>
-                          <span className={styles.menuHint}>{t.layouts[item.id].hint}</span>
+                          <span className={styles.menuHint}>
+                            {item.id === 'layered' && search?.kind === 'dijkstra'
+                              ? t.layouts.layered.hintDijkstra
+                              : t.layouts[item.id].hint}
+                          </span>
                         </span>
                       </button>
                     ))}
+                    {layout === 'layered' && (
+                      <div className={styles.menuFooter}>
+                        <span className={`label ${styles.helpTitle}`}>{t.treeDirection}</span>
+                        <span className={styles.menuButtons}>
+                          {(
+                            [
+                              ['vertical', t.treeVertical, <Rows3 key="icon" size={15} />],
+                              ['horizontal', t.treeHorizontal, <Columns3 key="icon" size={15} />],
+                            ] as const
+                          ).map(([direction, label, icon]) => (
+                            <IconButton
+                              key={direction}
+                              label={label}
+                              pressed={treeDirection === direction}
+                              onClick={() => {
+                                if (treeDirection === direction) return;
+                                treeDirectionRef.current = direction;
+                                setTreeDirection(direction);
+                                applyLayout('layered', search?.root ?? (selected || 1));
+                              }}
+                            >
+                              {icon}
+                            </IconButton>
+                          ))}
+                        </span>
+                      </div>
+                    )}
                     {layout === 'force' && (
                       <div className={styles.menuFooter}>
                         <span className={`label ${styles.helpTitle}`}>{t.simulation}</span>

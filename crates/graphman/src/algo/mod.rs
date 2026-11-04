@@ -9,7 +9,7 @@
 //! * [`Components`] — connected components, largest first.
 //! * [`diameter`] — exact (brute force or iFUB) and approximate (4-sweep) diameter.
 //! * [`degree_stats`] / [`weight_stats`] — min, max, mean (and median) degree and weight.
-//! * [`radial_layout`] — a free `O(n)` layout derived from a search tree, used by the observatory.
+//! * [`radial_layout`], [`tree_layout`] — free `O(n)` layouts derived from a search tree, used by the observatory.
 
 mod components;
 mod diameter;
@@ -28,7 +28,7 @@ pub use frontier::{
     LazyHeapFrontier, Measured, PairingHeapFrontier, QuadHeapFrontier, RadixHeapFrontier,
     VectorFrontier,
 };
-pub use layout::{RadialLayout, radial_layout};
+pub use layout::{RadialLayout, TreeLayout, radial_layout, tree_layout};
 pub use shortest_path::{
     NegativeWeight, Path, ShortestPathTree, dijkstra, dijkstra_into, dijkstra_with, shortest_path,
     shortest_path_into,

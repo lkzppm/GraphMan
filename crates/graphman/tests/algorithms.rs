@@ -214,6 +214,41 @@ fn radial_layout_partitions_the_circle() {
 }
 
 #[test]
+fn tree_layout_gives_every_leaf_its_slot_and_centres_parents() {
+    // 1 -> {2, 3}, 2 -> {4, 5}, and a second tree 6 -> 7.
+    let parents = [0, 0, 1, 1, 2, 2, 0, 6];
+    let order = [1, 2, 3, 4, 5, 6, 7];
+    let layout = algo::tree_layout(&parents, &order);
+    assert_eq!(layout.leaves, 4);
+    assert_eq!(layout.depth, [0, 0, 1, 1, 2, 2, 0, 1]);
+    // Leaves 4, 5, 3, 7 in slots; 2 over its children, 1 over 2 and 3.
+    assert_eq!(layout.slot[4], 0.5);
+    assert_eq!(layout.slot[5], 1.5);
+    assert_eq!(layout.slot[2], 1.0);
+    assert_eq!(layout.slot[3], 2.5);
+    assert_eq!(layout.slot[1], 1.75);
+    assert_eq!(layout.slot[7], 3.5);
+    assert_eq!(layout.slot[6], 3.5);
+}
+
+#[test]
+fn tree_layout_never_stacks_two_vertices_of_a_level() {
+    let g = Csr::build(&random_graph(11, 2000, 6000)).unwrap();
+    let tree = algo::bfs(&g, 1);
+    let layout = algo::tree_layout(tree.parents_raw(), tree.order());
+    let mut placed: Vec<(u32, f64)> = tree
+        .order()
+        .iter()
+        .map(|&v| (layout.depth[v as usize], layout.slot[v as usize]))
+        .collect();
+    for &v in tree.order() {
+        assert_eq!(layout.depth[v as usize], tree.level(v).unwrap());
+    }
+    placed.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    assert!(placed.windows(2).all(|w| w[0] != w[1]));
+}
+
+#[test]
 fn search_tree_reset_is_incremental_and_correct() {
     let g = Csr::build(&random_graph(5, 100, 150)).unwrap();
     let mut tree = graphman::SearchTree::new(100);
