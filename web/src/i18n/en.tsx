@@ -259,7 +259,6 @@ export const en = {
     seed: 'Researcher',
     seedPlaceholder: 'a name, or a vertex number',
     invalidSeed: 'Not a researcher of this network.',
-    idle: 'choose a year: its network loads at once',
     needSeed: 'name a researcher to cut around',
     size: 'Size, in researchers',
     open: 'Open in the observatory',
