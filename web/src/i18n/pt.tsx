@@ -261,7 +261,6 @@ export const pt: Dictionary = {
     seed: 'Pesquisador',
     seedPlaceholder: 'um nome, ou o número de um vértice',
     invalidSeed: 'Não é um pesquisador desta rede.',
-    idle: 'escolha um ano: a rede carrega na hora',
     needSeed: 'nomeie um pesquisador para recortar ao redor',
     size: 'Tamanho, em pesquisadores',
     open: 'Abrir no observatório',

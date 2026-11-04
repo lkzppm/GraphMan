@@ -507,6 +507,7 @@ export default function DblpConsole() {
                 <Tile
                   icon={UsersRound}
                   value={preview?.vertices ?? null}
+                  loading={job !== null}
                   format={formatInt}
                   share={preview && base ? preview.vertices / base.vertices : null}
                   label={t.facts.vertices}
@@ -514,19 +515,21 @@ export default function DblpConsole() {
                 <Tile
                   icon={Share2}
                   value={preview?.edges ?? null}
+                  loading={job !== null}
                   format={formatInt}
                   share={preview && base ? preview.edges / base.edges : null}
                   label={t.facts.edges}
                 />
                 <FileSize
                   value={preview?.bytes ?? null}
+                  loading={job !== null}
                   label={t.facts.file}
                   files={base ? [`${stem}.txt`, `${stem}_vertices.txt`] : null}
                   caption={t.filesCaption}
                 />
               </div>
-              {(!live || (rule === 'ball' && !seedVertex)) && (
-                <p className={`comment ${styles.line}`}>{!live ? t.idle : t.needSeed}</p>
+              {live && rule === 'ball' && !seedVertex && (
+                <p className={`comment ${styles.line}`}>{t.needSeed}</p>
               )}
             </section>
 
@@ -610,12 +613,14 @@ function useCountUp(target: number | null, ms = 450): number | null {
 function Tile({
   icon: Icon,
   value,
+  loading,
   format,
   share,
   label,
 }: {
   icon: typeof UsersRound;
   value: number | null;
+  loading: boolean;
   format: (value: number) => string;
   share: number | null;
   label: string;
@@ -629,7 +634,13 @@ function Tile({
         <span className={`label ${styles.tileLabel}`}>{label}</span>
       </span>
       <span className={`mono ${styles.tileValue}`}>
-        {shown === null ? '·' : format(Math.round(shown))}
+        {loading ? (
+          <LoaderCircle size={18} className={styles.spinner} aria-hidden="true" />
+        ) : shown === null ? (
+          '·'
+        ) : (
+          format(Math.round(shown))
+        )}
       </span>
       <span className={styles.tileBar} aria-hidden="true">
         <span className={styles.tileFill} style={{ width: `${percent}%` }} />
@@ -645,11 +656,13 @@ function Tile({
     the two files' names behind a file icon, like the rules' captions. */
 function FileSize({
   value,
+  loading,
   label,
   files,
   caption,
 }: {
   value: number | null;
+  loading: boolean;
   label: string;
   files: string[] | null;
   caption: string;
@@ -680,7 +693,13 @@ function FileSize({
         )}
       </span>
       <span className={`mono ${styles.fileSizeValue}`}>
-        {shown === null ? '·' : formatBytes(Math.round(shown))}
+        {loading ? (
+          <LoaderCircle size={22} className={styles.spinner} aria-hidden="true" />
+        ) : shown === null ? (
+          '·'
+        ) : (
+          formatBytes(Math.round(shown))
+        )}
       </span>
     </div>
   );
