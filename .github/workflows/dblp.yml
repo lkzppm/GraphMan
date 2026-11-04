@@ -2,10 +2,11 @@ name: DBLP
 
 # Rebuilds the course's collaboration network from the newest DBLP dump.
 # `graphman dblp` turns the XML into the course format (the whole network
-# and the network up to a few years); the files go to a release tagged with
-# the dump's date, and a copy goes to GitHub Pages, the host the site can
-# fetch from (release assets send no CORS headers). Runs monthly, and on
-# demand with any dump URL.
+# and the network up to 2009, the course file's twin), which goes to a
+# release tagged with the dump's date, and into the site layout (one file
+# per year, summed by the page into any year's network), which goes to
+# GitHub Pages, the host the site can fetch from (release assets send no
+# CORS headers). Runs monthly, and on demand with any dump URL.
 
 on:
   schedule:
@@ -40,8 +41,8 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     env:
       GH_TOKEN: ${{ github.token }}
-      # The networks the site offers besides the whole one.
-      YEARS: 1970,1980,1990,2000,2005,2009,2015,2020
+      # The course-format networks in the release besides the whole one.
+      YEARS: 2009
     steps:
       - uses: actions/checkout@v4
 
@@ -103,9 +104,10 @@ jobs:
           DATE: ${{ steps.source.outputs.date }}
         run: |
           ./target/release/graphman dblp dump.xml.gz --out out --years "$YEARS" --gzip \
-            --date "$DATE" --source "$URL"
+            --site by-year --date "$DATE" --source "$URL"
           rm dump.xml.gz
           ls -l out
+          du -sh by-year
           cat out/README.md
 
       - name: Release
@@ -124,7 +126,7 @@ jobs:
         if: steps.existing.outputs.skip != 'true'
         env:
           TAG: ${{ steps.source.outputs.tag }}
-        run: node .github/scripts/dblp-site.mjs out site "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+        run: node .github/scripts/dblp-site.mjs by-year site "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
 
       - if: steps.existing.outputs.skip != 'true'
         uses: actions/configure-pages@v5

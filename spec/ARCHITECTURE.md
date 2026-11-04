@@ -121,7 +121,11 @@ Design decisions worth presenting:
    `1 / Σ 1/k` over the papers up to `y` (the course file's rule: one
    two-author paper is distance 1, one four-author paper 3, frequent
    co-authors close). An author who never wrote with anyone is not a
-   vertex. The DBLP XML, its gzip and its Latin-1 entities belong to the
+   vertex. `strengths` gives the same terms grouped by pair and year, and
+   `edges` sums them year by year in that order, so a network published as
+   one file per year and summed back (the site, `NetworkBuilder` in the
+   wasm crate) has the CLI's weights bit for bit. The DBLP XML, its gzip
+   and its Latin-1 entities belong to the
    CLI (`commands/dblp.rs`), which streams the 4 GB dump in under a minute
    per gigabyte keeping only names and pairs.
 
@@ -145,7 +149,8 @@ src/commands/
   memory     RSS after loading one representation (run in a subprocess by `study`)
   generate   random graphs (optionally weighted, or the edges of a file with --like)
   dblp       the DBLP XML dump (plain or .gz) → the course's collaboration network, whole and
-             --years Y,... as it stood then; --gzip, --formal-only; writes manifest.json + README.md
+             --years Y,... as it stood then; --gzip, --formal-only; writes manifest.json + README.md;
+             --site DIR lays it out one file per year for the site (strengths + names per year)
   study      the case-study runner: JSON per graph + merged results.json + RESULTS.md;
              Part 1 on unweighted files, Part 2 (study/weighted.rs: paths, frontier
              timings under a budget) on weighted ones, --only for some sections
@@ -370,10 +375,10 @@ iterators), so what is drawn is what the examples' comments say.
 ### The DBLP tab
 
 `/dblp` is one console in the middle of the screen (`components/DblpConsole.tsx`,
-client-only like the observatory), three numbered steps down one column:
-the network, the cut, the result. It offers the course's collaboration
-network rebuilt from the current DBLP dump, at the end of a chosen year or
-whole, and cuts it to size before handing it over.
+client-only like the observatory), three boxes in a row: the year, the
+cut, the result. It offers the course's collaboration network rebuilt from
+the current DBLP dump as it stood at the end of any year, from the first
+in DBLP to the dump's, and cuts it to size before handing it over.
 
 The dump itself (1.1 GB gzipped, 4 GB of XML) cannot be read by the page:
 dblp.org and its DROPS mirror send no CORS headers, DBLP's live API sits
@@ -381,25 +386,40 @@ behind an anti-bot challenge, and the size rules out a tab or a Vercel
 function anyway. So the conversion runs once a month in GitHub Actions
 (`.github/workflows/dblp.yml`): it finds the newest snapshot on DROPS
 (`https://drops.dagstuhl.de/storage/artifacts/dblp/xml/<year>/dblp-<date>.xml.gz`),
-runs `graphman dblp ... --years 1970,...,2020 --gzip`, publishes the files
-as a release tagged `dblp-<date>` (the archive) and deploys a copy to the
+runs `graphman dblp ... --years 2009 --gzip --site by-year`, publishes the
+course-format files (whole and up to 2009) as a release tagged
+`dblp-<date>` (the archive) and deploys the site layout to the
 repository's GitHub Pages, the one GitHub host that answers a browser's
 fetch with `Access-Control-Allow-Origin: *` (release assets do not;
 checked). GitHub's 100 MB per-file cap applies to Pages, so
 `.github/scripts/dblp-site.mjs` splits larger files into parts and records
 them in `manifest.json`.
 
-Step one lists the years as vertices on one edge and fetches the chosen
-one (`lib/dblp.ts`): both files stream through the browser's
-`DecompressionStream`, parts in order into one gunzip, the responses kept
-in the Cache API under the build's version so a second visit is instant;
-then `Parsed(bytes).build(Csr)` + `setNames` hold the whole year in wasm.
-Step two is local: a rule (a BFS ball around a researcher named in a field
+The site layout is one pair of files per year, from the first year in
+DBLP to the dump's: `strengths_<year>.txt.gz` holds `u v strength` lines,
+the strength every pair gained that year (`Σ 1/k` over that year's shared
+papers), and `names_<year>.txt.gz` the researchers whose first
+collaboration was that year, so the network up to a year is the sum of the
+files up to it (undated papers count in the last year, which is the whole
+network). The manifest (schema 2) lists every year with the size of the
+network up to it, so the selector can be free. A list of fixed years was
+the first version; one complete file per year would have put 1.6 GB on a
+1 GB Pages site, most of it the same edges repeated.
+
+The year box fetches the years up to the chosen one (`lib/dblp.ts`), a few
+downloads running ahead of the parse: each file streams through the
+browser's `DecompressionStream`, parts in order into one gunzip, the
+responses kept in the Cache API under the build's version so a second
+visit, or a later year, reads the early years from disk; the wasm
+`NetworkBuilder` sums the strengths per pair (a hash table keyed by the
+pair) in year order, which makes the weights the CLI's bit for bit, and
+`finish(Csr)` builds the named graph.
+The cut box is local: a rule (a BFS ball around a researcher named in a field
 with the library's suggestions, the most connected, or the earliest, i.e.
 the file's own first vertices), a logarithmic size slider, and three live
 tiles (`Graph.subgraph(rule, seed, max, files=false)` → vertices, edges and
 the edge file's size, exact up to 200k edges and sampled past that) a
-moment after each change. Step three asks for the files (`files=true`): the
+moment after each change. The result box asks for the files (`files=true`): the
 library's `algo::select` picks the vertices in the order that numbers them
 (the seed, the most connected or vertex 1 becomes 1), `algo::induce`
 renumbers the edges among them, and the two course-format files either go

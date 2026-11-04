@@ -60,6 +60,7 @@ cargo build --release                       # binary at target/release/graphman
 graphman study graphs/grafo_1.txt --out studies   # case studies → JSON + RESULTS.md
 graphman dijkstra samples/weighted_100.txt --from 10 --to 20 30 --frontier vector
 graphman dblp dblp.xml.gz --out graphs --years 2009   # the DBLP dump → rede_colaboracao.txt + names, whole and up to 2009
+graphman dblp dblp.xml.gz --out out --gzip --site by-year   # plus the site layout: one file per year
 cd web && pnpm install && pnpm run dev      # builds the wasm, syncs data, starts Next.js
 cd web && pnpm run typecheck && pnpm run lint # must be green (CI enforces)
 ```
@@ -88,9 +89,14 @@ cd web && pnpm run typecheck && pnpm run lint # must be green (CI enforces)
   a second observatory: it fetches the monthly build from the repository's
   GitHub Pages (`web/src/lib/dblp.ts`), never from dblp.org or from release
   assets (neither sends CORS headers; DBLP's live API sits behind an
-  anti-bot challenge). Files above 95 MB are split into parts by
+  anti-bot challenge). The build is laid out one file per year
+  (`graphman dblp --site`: the strength each pair gained that year, the
+  researchers first seen that year); the page fetches the years up to the
+  chosen one and sums them in wasm (`NetworkBuilder`), so any year is
+  selectable and the weights match the CLI's bit for bit (the CLI sums
+  year by year too). Files above 95 MB are split into parts by
   `.github/scripts/dblp-site.mjs` and the manifest says so; the page
-  stitches them back. A year's network is held in wasm and cut with
+  stitches them back. The year's network is held in wasm and cut with
   `algo::select` + `algo::induce` (ball, most connected, earliest); the cut
   goes to the observatory in memory (`lib/handoff.ts`) or is exported.
 - The collaboration builder (`graphman::io::collaboration`) takes papers

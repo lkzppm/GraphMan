@@ -27,9 +27,11 @@ import {
   fetchFile,
   fetchManifest,
   saveFile,
-  unpackedName,
+  transferBytes,
+  yearsUpTo,
+  type DblpFile,
   type DblpManifest,
-  type DblpTier,
+  type DblpYear,
 } from '@/lib/dblp';
 import { formatBytes, formatInt } from '@/lib/format';
 import { loadGraphman, type Graph, type GraphmanModule } from '@/lib/graphman';
@@ -51,21 +53,23 @@ const STEPS = 1000;
 /** Past this many vertices the observatory draws, but slowly. */
 const HEAVY = 300_000;
 
-/** A year's whole network, parsed and held in wasm for cutting. */
+/** The network up to a year, summed and held in wasm for cutting. */
 interface Base {
   graph: Graph;
-  tier: DblpTier;
+  year: number;
   vertices: number;
   edges: number;
 }
 
 /** A download in flight. */
 interface Job {
-  what: string;
   received: number;
   total: number;
-  phase: 'fetching' | 'unpacking' | 'parsing';
+  phase: 'fetching' | 'parsing';
 }
+
+/** How many years download ahead of the one being summed. */
+const AHEAD = 4;
 
 interface Preview {
   vertices: number;
@@ -73,17 +77,19 @@ interface Preview {
   bytes: number;
 }
 
-/** The network a fresh page offers: the course file's twin, else the last year. */
-function initialTier(manifest: DblpManifest): number {
-  const twin = manifest.tiers.findIndex((tier) => tier.year === 2009);
-  return twin >= 0 ? twin : Math.max(0, manifest.tiers.length - 2);
+/** The year a fresh page offers: the course file's, 2009, when the build
+    reaches it, else the last. */
+function initialYear(manifest: DblpManifest): number {
+  const last = manifest.years[manifest.years.length - 1].year;
+  return manifest.years.some((entry) => entry.year === 2009) ? 2009 : last;
 }
 
 /**
  * The DBLP tab: one console in the middle of the screen, three boxes in a
- * row. Left, the year: choosing one fetches that network into memory
- * (unpacked in the tab, parsed by the wasm library, kept in the browser's
- * cache for next time). Centre, the cut: around a researcher, the most
+ * row. Left, the year: choosing one fetches the years up to it (one small
+ * file per year, unpacked in the tab, kept in the browser's cache for next
+ * time) and sums them in wasm into that year's network, so any year from
+ * the first in DBLP to the dump's can be picked. Centre, the cut: around a researcher, the most
  * connected or the earliest, at the size wanted, with what it will weigh
  * counted live. Right, the result: opened in the observatory, or exported
  * as the two course-format files.
@@ -96,7 +102,7 @@ export default function DblpConsole() {
   const [wasm, setWasm] = useState<GraphmanModule | null>(null);
   const [manifest, setManifest] = useState<DblpManifest | null>(null);
   const [manifestError, setManifestError] = useState<string | null>(null);
-  const [tierIndex, setTierIndex] = useState(0);
+  const [year, setYear] = useState(0);
   const [base, setBase] = useState<Base | null>(null);
   const baseRef = useRef<Base | null>(null);
   const [job, setJob] = useState<Job | null>(null);
@@ -121,7 +127,7 @@ export default function DblpConsole() {
     const controller = new AbortController();
     fetchManifest(controller.signal)
       .then((loaded) => {
-        setTierIndex(initialTier(loaded));
+        setYear(initialYear(loaded));
         setManifest(loaded);
       })
       .catch((error: unknown) => {
@@ -144,58 +150,68 @@ export default function DblpConsole() {
     [],
   );
 
-  const chosen = manifest?.tiers[tierIndex] ?? null;
-  const tierName = (tier: DblpTier) => (tier.year === null ? t.all : t.upTo(String(tier.year)));
+  const chosen = manifest?.years.find((entry) => entry.year === year) ?? null;
 
-  /** Downloads the chosen year, unpacks it and parses it into wasm. */
+  /** Downloads the years up to the chosen one, unpacks them and sums them
+      in wasm into that year's network. A few years download ahead of the
+      one being summed, which takes them in order. */
   const fetchNetwork = useCallback(async () => {
-    const tier = manifest?.tiers[tierIndex];
-    if (!wasm || !manifest || !tier) return;
+    if (!wasm || !manifest) return;
+    const years = yearsUpTo(manifest, year);
+    if (years.length === 0) return;
     jobRef.current?.abort();
     const controller = new AbortController();
     jobRef.current = controller;
     setNotice(null);
-    const total = tier.graph.bytes + tier.names.bytes;
+    const total = transferBytes(manifest, year);
     const version = String(manifest.builtAt);
+    const builder = new wasm.NetworkBuilder();
+    let finished = false;
     try {
-      let before = 0;
+      // Every file's compressed bytes so far, for the one progress bar.
+      const got = new Map<string, number>();
       let painted = 0;
-      const got: Uint8Array[] = [];
-      for (const file of [tier.graph, tier.names]) {
-        const what = unpackedName(file);
-        setJob({ what, received: before, total, phase: 'fetching' });
-        got.push(
-          await fetchFile(
-            file,
-            version,
-            (received) => {
-              const now = performance.now();
-              const done = received >= file.bytes;
-              if (now - painted < 80 && !done) return;
-              painted = now;
-              setJob({
-                what,
-                received: before + received,
-                total,
-                phase: done ? 'unpacking' : 'fetching',
-              });
-            },
-            controller.signal,
-          ),
-        );
-        before += file.bytes;
+      const progress = (file: DblpFile) => (received: number) => {
+        got.set(file.file, received);
+        const now = performance.now();
+        if (now - painted < 80 && received < file.bytes) return;
+        painted = now;
+        let sum = 0;
+        for (const bytes of got.values()) sum += bytes;
+        setJob({ received: Math.min(sum, total), total, phase: 'fetching' });
+      };
+      setJob({ received: 0, total, phase: 'fetching' });
+      const queue: Promise<[Uint8Array, Uint8Array]>[] = [];
+      const start = (entry: DblpYear) => {
+        const pair = Promise.all([
+          fetchFile(entry.strengths, version, progress(entry.strengths), controller.signal),
+          fetchFile(entry.names, version, progress(entry.names), controller.signal),
+        ]);
+        // Reported where it is awaited, not as an unhandled rejection.
+        pair.catch(() => {});
+        queue.push(pair);
+      };
+      let next = 0;
+      for (; next < Math.min(AHEAD, years.length); next++) start(years[next]);
+      for (let i = 0; i < years.length; i++) {
+        const [strengths, names] = await queue[i];
+        if (next < years.length) start(years[next++]);
+        if (controller.signal.aborted) return;
+        builder.addStrengths(strengths);
+        builder.addNames(names);
+        // Let the progress paint between two years.
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
-      setJob({ what: '', received: total, total, phase: 'parsing' });
-      // Let the status paint before the (synchronous) parse.
+      setJob({ received: total, total, phase: 'parsing' });
+      // Let the status paint before the (synchronous) build.
       await new Promise((resolve) => setTimeout(resolve, 30));
       if (controller.signal.aborted) return;
-      const parsed = new wasm.Parsed(got[0]);
-      const graph = parsed.build(wasm.RepresentationKind.Csr);
-      graph.setNames(got[1]);
+      finished = true;
+      const graph = builder.finish(wasm.RepresentationKind.Csr);
       baseRef.current?.graph.free();
-      const next: Base = { graph, tier, vertices: graph.vertexCount, edges: graph.edgeCount };
-      baseRef.current = next;
-      setBase(next);
+      const loaded: Base = { graph, year, vertices: graph.vertexCount, edges: graph.edgeCount };
+      baseRef.current = loaded;
+      setBase(loaded);
       const seed = graph.vertexNamed(DEFAULT_SEED);
       setSeedInput(seed ? DEFAULT_SEED : (graph.name(1) ?? '1'));
       setSize((current) => Math.min(current, graph.vertexCount));
@@ -205,23 +221,24 @@ export default function DblpConsole() {
         setNotice(t.failedFetch(message));
       }
     } finally {
+      // `finish` consumed the builder; otherwise its table is freed here.
+      if (!finished) builder.free();
       if (jobRef.current === controller) {
         jobRef.current = null;
         setJob(null);
       }
     }
-  }, [wasm, manifest, tierIndex, t]);
+  }, [wasm, manifest, year, t]);
 
   // A chosen year is fetched at once; choosing another cancels the first.
   useEffect(() => {
-    const tier = manifest?.tiers[tierIndex];
-    if (!wasm || !tier || baseRef.current?.tier === tier) return;
+    if (!wasm || !manifest || !year || baseRef.current?.year === year) return;
     const timer = setTimeout(() => void fetchNetwork(), 0);
     return () => {
       clearTimeout(timer);
       jobRef.current?.abort();
     };
-  }, [wasm, manifest, tierIndex, fetchNetwork]);
+  }, [wasm, manifest, year, fetchNetwork]);
 
   /** The seed as a vertex of the loaded network, 0 when it is not one. */
   const seedVertex = useMemo(() => {
@@ -270,7 +287,7 @@ export default function DblpConsole() {
   const files = () => {
     if (!base || !wasm) return null;
     const cut = base.graph.subgraph(kindOf(wasm, rule), seedVertex || 1, size, true);
-    const stem = `dblp_${base.tier.year ?? 'all'}_${rule.toLowerCase()}_${cut.vertices}`;
+    const stem = `dblp_${base.year}_${rule.toLowerCase()}_${cut.vertices}`;
     const names = cut.namesFile();
     const built = {
       name: `${stem}.txt`,
@@ -309,7 +326,7 @@ export default function DblpConsole() {
   const live = base !== null && job === null;
   const canCut = live && preview !== null && !opening;
   const stem = base
-    ? `dblp_${base.tier.year ?? 'all'}_${rule.toLowerCase()}_${preview?.vertices ?? size}`
+    ? `dblp_${base.year}_${rule.toLowerCase()}_${preview?.vertices ?? size}`
     : '';
 
   return (
@@ -348,14 +365,17 @@ export default function DblpConsole() {
                   <select
                     id="dblp-year"
                     className={`mono ${styles.input}`}
-                    value={tierIndex}
-                    onChange={(event) => setTierIndex(Number(event.target.value))}
+                    value={year}
+                    onChange={(event) => setYear(Number(event.target.value))}
                   >
-                    {manifest.tiers.map((tier, i) => (
-                      <option key={tier.year ?? 'all'} value={i}>
-                        {tierName(tier)}
-                      </option>
-                    ))}
+                    {manifest.years
+                      .slice()
+                      .reverse()
+                      .map((entry) => (
+                        <option key={entry.year} value={entry.year}>
+                          {t.upTo(String(entry.year))}
+                        </option>
+                      ))}
                   </select>
                   <ChevronDown size={14} className={styles.chevron} aria-hidden="true" />
                 </span>
@@ -371,7 +391,7 @@ export default function DblpConsole() {
                 </div>
                 <div>
                   <dt>{t.facts.transfer}</dt>
-                  <dd className="mono">{formatBytes(chosen.graph.bytes + chosen.names.bytes)}</dd>
+                  <dd className="mono">{formatBytes(transferBytes(manifest, year))}</dd>
                 </div>
               </dl>
               <div className={styles.status} data-open={job !== null || undefined}>
@@ -389,9 +409,7 @@ export default function DblpConsole() {
                         <span className={`comment ${styles.progressText}`}>
                           {job.phase === 'parsing'
                             ? t.parsing
-                            : job.phase === 'unpacking'
-                              ? t.unpacking
-                              : t.fetching(formatBytes(job.received), formatBytes(job.total))}
+                            : t.fetching(formatBytes(job.received), formatBytes(job.total))}
                         </span>
                         <button
                           type="button"

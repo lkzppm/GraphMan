@@ -1500,6 +1500,151 @@ pub fn edge_length() -> f64 {
     EDGE_LENGTH
 }
 
+// ---------------------------------------------------------------------------
+// The DBLP site's per-year files, summed into one network
+
+/// One pair's key in the builder's table: `u` in the high half, `v` low.
+fn pair_key(u: Vertex, v: Vertex) -> u64 {
+    (u64::from(u) << 32) | u64::from(v)
+}
+
+/// A hasher for those keys: splitmix64's finaliser, a few multiplies. The
+/// keys are distinct integers already, and std's SipHash would cost more
+/// than the parse on tens of millions of lines.
+#[derive(Default)]
+struct PairHasher(u64);
+
+impl std::hash::Hasher for PairHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.write_u64(u64::from(byte));
+        }
+    }
+
+    fn write_u64(&mut self, key: u64) {
+        let mut x = key ^ self.0;
+        x ^= x >> 30;
+        x = x.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        x ^= x >> 27;
+        x = x.wrapping_mul(0x94d0_49bb_1331_11eb);
+        x ^= x >> 31;
+        self.0 = x;
+    }
+}
+
+type PairStrengths = std::collections::HashMap<u64, f64, std::hash::BuildHasherDefault<PairHasher>>;
+
+/// The DBLP site's network up to a year, summed from one file per year.
+///
+/// `graphman dblp --site` publishes, per year, the strength every pair
+/// gained that year (`u v strength` lines) and the researchers whose first
+/// collaboration was that year (`vertex,name` lines). Adding the years up
+/// to the one wanted, ascending, and inverting the sums gives that year's
+/// weights, bit for bit the ones the CLI writes (the sums are made in the
+/// same order, see `graphman::io::Network::strengths`). [`finish`] builds
+/// the graph, named.
+///
+/// [`finish`]: Self::finish
+#[wasm_bindgen(js_name = NetworkBuilder)]
+#[derive(Default)]
+pub struct WasmNetworkBuilder {
+    strengths: PairStrengths,
+    names: Vec<u8>,
+}
+
+#[wasm_bindgen(js_class = NetworkBuilder)]
+impl WasmNetworkBuilder {
+    /// No years yet.
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds a year's strengths (`u v strength` per line); the years must
+    /// come in ascending order for the sums to match the CLI's. Returns
+    /// how many lines it read. Throws on a malformed line.
+    #[wasm_bindgen(js_name = addStrengths)]
+    pub fn add_strengths(&mut self, bytes: &[u8]) -> Result<u32, JsError> {
+        let mut lines = 0u32;
+        for (index, line) in bytes.split(|&b| b == b'\n').enumerate() {
+            let line = line.strip_suffix(b"\r").unwrap_or(line);
+            if line.is_empty() {
+                continue;
+            }
+            let (u, v, strength) = parse_strength(line).ok_or_else(|| {
+                JsError::new(&format!("line {}: expected `u v strength`", index + 1))
+            })?;
+            *self.strengths.entry(pair_key(u, v)).or_insert(0.0) += strength;
+            lines += 1;
+        }
+        Ok(lines)
+    }
+
+    /// Adds a year's names (`vertex,name` per line).
+    #[wasm_bindgen(js_name = addNames)]
+    pub fn add_names(&mut self, bytes: &[u8]) {
+        self.names.extend_from_slice(bytes);
+        if !bytes.ends_with(b"\n") {
+            self.names.push(b'\n');
+        }
+    }
+
+    /// Pairs summed so far: the edges `finish` will build.
+    #[wasm_bindgen(getter, js_name = edgeCount)]
+    pub fn edge_count(&self) -> u32 {
+        self.strengths.len() as u32
+    }
+
+    /// Builds the network: a vertex per name given, an edge per pair summed,
+    /// weighted by the inverse of its strength. The table is freed as the
+    /// edges leave it, before the representation is built.
+    pub fn finish(self, representation: RepresentationKind) -> Result<WasmGraph, JsError> {
+        let names = VertexNames::parse(&self.names).map_err(|e| JsError::new(&e.to_string()))?;
+        let mut strengths = self.strengths;
+        let edges = EdgeList::from_weighted_edges(
+            names.len(),
+            strengths
+                .drain()
+                .map(|(key, strength)| ((key >> 32) as Vertex, key as Vertex, 1.0 / strength)),
+        )
+        .map_err(|e| JsError::new(&e.to_string()))?;
+        drop(strengths);
+        let mut graph = WasmGraph::of(edges, representation)?;
+        graph.names = Some(names);
+        Ok(graph)
+    }
+}
+
+/// `u v strength`, the strength positive and finite.
+fn parse_strength(line: &[u8]) -> Option<(Vertex, Vertex, f64)> {
+    let mut fields = line.split(|&b| b == b' ').filter(|field| !field.is_empty());
+    let u = parse_vertex(fields.next()?)?;
+    let v = parse_vertex(fields.next()?)?;
+    let strength: f64 = core::str::from_utf8(fields.next()?).ok()?.parse().ok()?;
+    if fields.next().is_some() || !strength.is_finite() || strength <= 0.0 {
+        return None;
+    }
+    Some((u, v, strength))
+}
+
+fn parse_vertex(field: &[u8]) -> Option<Vertex> {
+    if field.is_empty() || field.len() > 10 {
+        return None;
+    }
+    let mut value: u64 = 0;
+    for &byte in field {
+        if !byte.is_ascii_digit() {
+            return None;
+        }
+        value = value * 10 + u64::from(byte - b'0');
+    }
+    Vertex::try_from(value).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1667,6 +1812,33 @@ mod tests {
         assert_eq!(g.vertex_named("Edsger W. Dijkstra"), Some(1));
         assert_eq!(g.vertex_named("Out of range"), None);
         assert_eq!(g.search_names("eva", 5), vec![3]);
+    }
+
+    #[test]
+    fn network_builder_sums_the_years_in_order() {
+        let mut builder = WasmNetworkBuilder::new();
+        builder.add_strengths(b"1 2 0.5\n1 3 1\n").unwrap();
+        builder.add_names(b"1,Ana\n2,Bia\n3,Caio");
+        builder.add_strengths(b"1 2 0.25\r\n2 4 1\n\n").unwrap();
+        builder.add_names(b"4,Dora\n");
+        assert_eq!(builder.edge_count(), 3);
+        let graph = builder.finish(RepresentationKind::Csr).unwrap();
+        assert_eq!(graph.vertex_count(), 4);
+        assert_eq!(graph.edge_count(), 3);
+        assert_eq!(graph.name(4).as_deref(), Some("Dora"));
+        assert_eq!(graph.edges.edges(), [[1, 2], [1, 3], [2, 4]]);
+        // 1 and 2: 0.5 in the first year, then 0.25, summed in that order.
+        assert_eq!(
+            graph.edges.weights(),
+            Some([1.0 / (0.5 + 0.25), 1.0, 1.0].as_slice())
+        );
+
+        // A JsError cannot be made off wasm, so the parser is checked itself.
+        assert_eq!(parse_strength(b"7  9 0.25"), Some((7, 9, 0.25)));
+        assert_eq!(parse_strength(b"1 2"), None);
+        assert_eq!(parse_strength(b"1 2 0"), None);
+        assert_eq!(parse_strength(b"1 x 1"), None);
+        assert_eq!(parse_strength(b"1 2 1 4"), None);
     }
 }
 

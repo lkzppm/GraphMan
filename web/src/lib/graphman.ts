@@ -8,6 +8,7 @@ export type {
   DiameterResult,
   Graph,
   MemoryReport,
+  NetworkBuilder,
   Parsed,
   SearchResult,
   ShortestPathResult,
