@@ -17,7 +17,7 @@ use graphman::algo::{
     self, Components, Control, DegreeStats, DiameterMethod, Frontier, FrontierEntry, FrontierKind,
     HeapFrontier, LazyHeapFrontier, PairingHeapFrontier, QuadHeapFrontier, RadixHeapFrontier,
     SearchTree, ShortestPathTree, UNREACHED, VectorFrontier, Visitor, WeightStats, bfs_into,
-    dfs_into, dfs_recursive_into, dijkstra_into, radial_layout,
+    dfs_into, dfs_recursive_into, dijkstra_into, radial_layout, tree_layout,
 };
 use graphman::io::write_summary;
 use graphman::{
@@ -51,11 +51,18 @@ pub enum LayoutKind {
     /// BFS levels from the root as evenly spaced rings, subtrees in wedges;
     /// the other components packed around.
     Radial = 0,
-    /// BFS levels from the root as rows, level 0 on top, subtrees kept
-    /// together; the other components packed around.
-    Layered = 1,
     /// Every vertex on one circle, sorted by degree (highest first).
-    Degree = 2,
+    Degree = 1,
+}
+
+/// Which way [`WasmGraph::layered`] and [`WasmGraph::layered_tree`] grow.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayerDirection {
+    /// Levels as rows, the root on top.
+    Vertical = 0,
+    /// Levels as columns, the root on the left.
+    Horizontal = 1,
 }
 
 /// Which diameter strategy to run (see the library's `DiameterMethod`).
@@ -1179,11 +1186,10 @@ impl WasmGraph {
     }
 
     /// Positions for every vertex (same shape as [`initialLayout`](Self::initial_layout))
-    /// arranged by `kind`. Every component gets the layout: the level ones
-    /// start at `root` in its component and at the smallest vertex in the
-    /// others. Radial components are packed as discs, the root's at the
-    /// origin; layered components stand side by side, level 0 on one line.
-    /// `O(n + m)`.
+    /// arranged by `kind`. Every component gets the layout: the radial one
+    /// starts at `root` in its component and at the smallest vertex in the
+    /// others, and its components are packed as discs, the root's at the
+    /// origin. `O(n + m)`.
     pub fn layout(&mut self, kind: LayoutKind, root: u32) -> Result<Vec<f32>, JsError> {
         self.check(root)?;
         let components = self.components().clone();
@@ -1191,6 +1197,40 @@ impl WasmGraph {
             dispatch!(&self.graph, g => layout_of(g, &mut self.tree, &components, kind, root));
         self.tree.reset();
         Ok(positions)
+    }
+
+    /// The BFS tree from `root` drawn level by level, the other components'
+    /// trees (from their smallest vertex) beside it with level 0 on one line.
+    /// Same shape as [`initialLayout`](Self::initial_layout). `O(n + m)`.
+    pub fn layered(&mut self, root: u32, direction: LayerDirection) -> Result<Vec<f32>, JsError> {
+        self.check(root)?;
+        Ok(self.layered_from(root, None, direction))
+    }
+
+    /// Like [`layered`](Self::layered), with the root's component drawn as
+    /// the shortest-path tree of `run`: levels count the edges of the tree, not
+    /// the distance. `O(n + m)`.
+    #[wasm_bindgen(js_name = layeredTree)]
+    pub fn layered_tree(
+        &mut self,
+        run: &ShortestPathResult,
+        direction: LayerDirection,
+    ) -> Vec<f32> {
+        self.layered_from(run.tree.root(), Some(&run.tree), direction)
+    }
+
+    fn layered_from(
+        &mut self,
+        root: Vertex,
+        shortest: Option<&ShortestPathTree>,
+        direction: LayerDirection,
+    ) -> Vec<f32> {
+        let components = self.components().clone();
+        let positions = dispatch!(&self.graph, g => {
+            layered_layout_of(g, &mut self.tree, &components, root, shortest, direction)
+        });
+        self.tree.reset();
+        positions
     }
 
     fn components(&mut self) -> &Components {
@@ -1255,14 +1295,12 @@ fn layout_of<G: Graph>(
     }
 
     // Each component around its own origin first: the root's, then the
-    // rest largest first. `extent` is a disc radius (radial) or a block
-    // width (layered); layered rows are shared so levels line up.
+    // rest largest first. `extent` is a disc radius.
     let home = (components.component_of(root) - 1) as usize;
     let order: Vec<usize> = core::iter::once(home)
         .chain((0..components.count()).filter(|&c| c != home))
         .collect();
     let mut extent = vec![0f64; components.count()];
-    let mut depths = vec![0usize; components.count()];
     for &c in &order {
         let members = components.members(c as u32 + 1);
         let start = if c == home { root } else { members[0] };
@@ -1273,76 +1311,104 @@ fn layout_of<G: Graph>(
         for &v in tree.order() {
             counts[tree.level(v).expect("reached") as usize] += 1.0;
         }
-        depths[c] = depth;
-        match kind {
-            LayoutKind::Radial => {
-                // Rings far enough apart that the fullest one has room.
-                let gap = counts
-                    .iter()
-                    .enumerate()
-                    .skip(1)
-                    .map(|(l, &count)| count * SPACING / (TAU * l as f64))
-                    .fold(2.0 * EDGE_LENGTH, f64::max);
-                for &v in tree.order() {
-                    let l = tree.level(v).expect("reached") as f64;
-                    let a = layout.angle[v as usize] as f64;
-                    positions[2 * v as usize] = (l * gap * a.cos()) as f32;
-                    positions[2 * v as usize + 1] = (l * gap * a.sin()) as f32;
-                }
-                extent[c] = depth as f64 * gap + EDGE_LENGTH;
-            }
-            LayoutKind::Layered => {
-                // Rows as wide as the fullest level; a vertex's x comes
-                // from its wedge angle, so every subtree is a contiguous
-                // block. y is the level for now, scaled by `row` below.
-                let width = counts
-                    .iter()
-                    .fold(4.0 * EDGE_LENGTH, |w, &count| w.max(count * SPACING));
-                for &v in tree.order() {
-                    let l = tree.level(v).expect("reached") as f32;
-                    let t = layout.angle[v as usize] as f64 / TAU;
-                    positions[2 * v as usize] = ((t - 0.5) * width) as f32;
-                    positions[2 * v as usize + 1] = l;
-                }
-                extent[c] = width;
-            }
-            LayoutKind::Degree => unreachable!("handled above"),
+        // Rings far enough apart that the fullest one has room.
+        let gap = counts
+            .iter()
+            .enumerate()
+            .skip(1)
+            .map(|(l, &count)| count * SPACING / (TAU * l as f64))
+            .fold(2.0 * EDGE_LENGTH, f64::max);
+        for &v in tree.order() {
+            let l = tree.level(v).expect("reached") as f64;
+            let a = layout.angle[v as usize] as f64;
+            positions[2 * v as usize] = (l * gap * a.cos()) as f32;
+            positions[2 * v as usize + 1] = (l * gap * a.sin()) as f32;
         }
+        extent[c] = depth as f64 * gap + EDGE_LENGTH;
     }
 
     // Then move each component to its place.
-    match kind {
-        LayoutKind::Radial => {
-            let centres = pack_discs(&extent, home);
-            for (c, members) in components.iter().enumerate() {
-                let (cx, cy) = centres[c];
-                for &v in members {
-                    positions[2 * v as usize] += cx as f32;
-                    positions[2 * v as usize + 1] += cy as f32;
-                }
-            }
+    let centres = pack_discs(&extent, home);
+    for (c, members) in components.iter().enumerate() {
+        let (cx, cy) = centres[c];
+        for &v in members {
+            positions[2 * v as usize] += cx as f32;
+            positions[2 * v as usize + 1] += cy as f32;
         }
-        LayoutKind::Layered => {
-            // Side by side in `order`, level 0 on one line, centred as a
-            // whole. One row height for every component, so levels line
-            // up, chosen so the whole picture is about 2.5:1.
-            let gap = 4.0 * EDGE_LENGTH;
-            let total: f64 = extent.iter().sum::<f64>() + gap * (extent.len() - 1) as f64;
-            let deepest = depths.iter().copied().max().unwrap_or(0);
-            let row = (total / (2.5 * deepest.max(1) as f64)).max(2.0 * EDGE_LENGTH);
-            let height = deepest as f64 * row;
-            let mut x = -total / 2.0;
-            for &c in &order {
-                let cx = x + extent[c] / 2.0;
-                x += extent[c] + gap;
-                for &v in components.members(c as u32 + 1) {
-                    positions[2 * v as usize] += cx as f32;
-                    let l = positions[2 * v as usize + 1] as f64;
-                    positions[2 * v as usize + 1] = (l * row - height / 2.0) as f32;
-                }
+    }
+    positions
+}
+
+/// Every component as a tree drawn level by level; see [`WasmGraph::layered`].
+/// `shortest`, when given, is the root's component's tree; the others grow a
+/// BFS tree from their smallest vertex.
+fn layered_layout_of<G: Graph>(
+    graph: &G,
+    tree: &mut SearchTree,
+    components: &Components,
+    root: Vertex,
+    shortest: Option<&ShortestPathTree>,
+    direction: LayerDirection,
+) -> Vec<f32> {
+    let n = graph.vertex_count();
+
+    // One forest: the root's tree first, then the rest largest first.
+    let mut parents = vec![NO_VERTEX; n + 1];
+    let mut order = Vec::with_capacity(n);
+    let home = (components.component_of(root) - 1) as usize;
+    for c in core::iter::once(home).chain((0..components.count()).filter(|&c| c != home)) {
+        let (grown_parents, grown_order) = match shortest {
+            Some(run) if c == home => (run.parents_raw(), run.order()),
+            _ => {
+                let start = if c == home {
+                    root
+                } else {
+                    components.members(c as u32 + 1)[0]
+                };
+                bfs_into(graph, start, tree, &mut ());
+                (tree.parents_raw(), tree.order())
             }
+        };
+        for &v in grown_order {
+            parents[v as usize] = grown_parents[v as usize];
         }
-        LayoutKind::Degree => unreachable!("handled above"),
+        order.extend_from_slice(grown_order);
+    }
+    let layout = tree_layout(&parents, &order);
+
+    // A gap between trees, and one level spacing for all of them so levels
+    // line up, chosen for the proportions of a wide canvas: 2.5:1 when the
+    // breadth runs along it, 1.5:1 when the levels do.
+    let gap = 4.0 * EDGE_LENGTH;
+    let trees = components.count();
+    let breadth = layout.leaves as f64 * SPACING + gap * trees.saturating_sub(1) as f64;
+    let deepest = order
+        .iter()
+        .map(|&v| layout.depth[v as usize])
+        .max()
+        .unwrap_or(0)
+        .max(1) as f64;
+    let levels_span = match direction {
+        LayerDirection::Vertical => breadth / 2.5,
+        LayerDirection::Horizontal => breadth * 1.5,
+    };
+    let level = (levels_span / deepest).max(2.0 * EDGE_LENGTH);
+
+    let mut positions = vec![0f32; 2 * (n + 1)];
+    let mut gaps = 0.0;
+    for (i, &v) in order.iter().enumerate() {
+        let v = v as usize;
+        if i > 0 && parents[v] == NO_VERTEX {
+            gaps += gap;
+        }
+        let across = layout.slot[v] * SPACING + gaps - breadth / 2.0;
+        let along = layout.depth[v] as f64 * level - deepest * level / 2.0;
+        let (x, y) = match direction {
+            LayerDirection::Vertical => (across, along),
+            LayerDirection::Horizontal => (along, across),
+        };
+        positions[2 * v] = x as f32;
+        positions[2 * v + 1] = y as f32;
     }
     positions
 }
@@ -1394,7 +1460,7 @@ fn disc_layout<G: Graph>(
 /// simulation on the web side uses the same constant as its rest length.
 pub const EDGE_LENGTH: f64 = 24.0;
 
-/// Room given to each vertex along a ring or a row in the level layouts.
+/// Room given to each vertex along a ring, or to each leaf across the levels.
 const SPACING: f64 = EDGE_LENGTH / 2.0;
 
 /// Disc radius of a component: area proportional to its size.
@@ -1443,6 +1509,59 @@ mod tests {
 
     fn graph(kind: RepresentationKind) -> WasmGraph {
         WasmGraph::new(SAMPLE, kind).expect("the sample parses and fits the budget")
+    }
+
+    /// 1-2-3-4 is the short way round; the edge 1-3 is one hop but heavy.
+    /// Vertex 5 is alone.
+    const DETOUR: &[u8] = b"5\n1 2 1\n2 3 1\n1 3 5\n3 4 1\n";
+
+    fn y(positions: &[f32], v: usize) -> f32 {
+        positions[2 * v + 1]
+    }
+
+    fn x(positions: &[f32], v: usize) -> f32 {
+        positions[2 * v]
+    }
+
+    #[test]
+    fn the_layers_draw_the_tree_of_the_search_that_ran() {
+        let mut g = WasmGraph::new(DETOUR, RepresentationKind::Csr).expect("parses");
+
+        // The BFS takes the heavy edge: 2 and 3 share level 1.
+        let bfs = g.layered(1, LayerDirection::Vertical).unwrap();
+        assert_eq!(y(&bfs, 2), y(&bfs, 3));
+        assert!(y(&bfs, 1) < y(&bfs, 2) && y(&bfs, 3) < y(&bfs, 4));
+
+        // Dijkstra goes round it: every vertex a level further down.
+        let mut tree = ShortestPathTree::new(5);
+        dispatch!(&g.graph, graph => {
+            dijkstra_into(graph, 1, &mut HeapFrontier::new(5), &mut tree, &mut ())
+        })
+        .expect("no negative weights");
+        let run = ShortestPathResult {
+            frontier: FrontierType::Heap,
+            tree,
+            elapsed_ms: 0.0,
+        };
+        let shortest = g.layered_tree(&run, LayerDirection::Vertical);
+        assert!(y(&shortest, 1) < y(&shortest, 2));
+        assert!(y(&shortest, 2) < y(&shortest, 3));
+        assert!(y(&shortest, 3) < y(&shortest, 4));
+
+        // The other component stands beside the tree, level 0 on one line.
+        assert_eq!(y(&shortest, 5), y(&shortest, 1));
+        assert!(x(&shortest, 5) > x(&shortest, 1));
+    }
+
+    #[test]
+    fn the_layers_turn_on_their_side() {
+        let mut g = WasmGraph::new(DETOUR, RepresentationKind::Csr).expect("parses");
+        let across = g.layered(1, LayerDirection::Horizontal).unwrap();
+        // Levels as columns, the root on the left.
+        assert_eq!(x(&across, 2), x(&across, 3));
+        assert!(x(&across, 1) < x(&across, 2) && x(&across, 3) < x(&across, 4));
+        assert_eq!(x(&across, 5), x(&across, 1));
+        assert!(y(&across, 5) > y(&across, 1));
     }
 
     #[test]

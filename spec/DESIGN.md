@@ -631,13 +631,17 @@ tint, accent text), drawn last so they sit on top.
   numbers `#`; follow), on the right the layout menu
   (`Shapes`). The menu is a popover like the help one, hung under the
   cluster: Force (springs and repulsion), Radial levels (BFS rings around
-  the origin), Layered (levels as rows, subtrees together), Degree circle
+  the origin), Layered (a tree drawn level by level: the BFS tree, or after
+  a Dijkstra its shortest-path tree, levels counting tree edges), Degree circle
   (sorted by degree, edges as chords), each a `menuitemradio` with an icon,
   name and one-line hint; while Force is current a footer row holds the
-  simulation toggle (magnet) and reheat. Picking a layout slides every
+  simulation toggle (magnet) and reheat, and while Layered is current one
+  holds the tree direction (vertical, root on top; horizontal, root on the
+  left), for which the menu stays open. Picking a layout slides every
   vertex to its new place over 700 ms and glides the view to fit; the
   level layouts start at the search origin (or the selected vertex, else
-  1. and re-arrange when a new search runs, the view then framing the
+  1. and re-arrange when a new search runs (Layered also when a Dijkstra
+     replaces another search or the reverse), the view then framing the
      origin's component only (the rest just makes room). Every component
      gets the layout: radial components are packed as discs around the
      origin's, layered ones stand side by side with level 0 on one line.
