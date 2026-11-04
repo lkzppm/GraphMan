@@ -637,7 +637,13 @@ tint, accent text), drawn last so they sit on top.
   name and one-line hint; while Force is current a footer row holds the
   simulation toggle (magnet) and reheat, and while Layered is current one
   holds the tree direction (vertical, root on top; horizontal, root on the
-  left), for which the menu stays open. Picking a layout slides every
+  left). Under them, the spacing sliders, a factor from ¼ to 4 on a log
+  scale, its value a button back to ×1: Force has the edge length, Radial the
+  distance between rings, Layered the distance between levels and within a
+  level, Degree the room around the circle. They stretch the picture at once
+  about the origin, holding the zoom and the part of the picture in view, and
+  reset with the graph. The menu stays open on a pick, so these controls are
+  right there. Picking a layout slides every
   vertex to its new place over 700 ms and glides the view to fit; the
   level layouts start at the search origin (or the selected vertex, else
   1. and re-arrange when a new search runs (Layered also when a Dijkstra
