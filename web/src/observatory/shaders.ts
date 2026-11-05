@@ -284,9 +284,9 @@ struct Kind { tree: u32 }
 @group(0) @binding(7) var<storage, read> labels: array<u32>;
 // The edges at the selected vertex as [a, b] pairs (view.incident of them).
 @group(0) @binding(8) var<storage, read> extras: array<u32>;
-// 1 per vertex and per edge a distribution column lit (see view.marked).
+// 1 per vertex, then per edge (from slot n + 1), a distribution column lit
+// (see view.marked); one buffer, as the vertex stage binds eight at most.
 @group(0) @binding(9) var<storage, read> marks: array<u32>;
-@group(0) @binding(10) var<storage, read> edgeMarks: array<u32>;
 
 struct VOut {
   @builtin(position) pos: vec4f,
@@ -353,7 +353,7 @@ fn cull() -> VOut {
   }
   if (view.marked != 0u) {
     var lit = marks[a] != 0u && marks[b] != 0u;
-    if (view.marked == 2u && !incident) { lit = edgeMarks[e] != 0u; }
+    if (view.marked == 2u && !incident) { lit = marks[view.n + 1u + e] != 0u; }
     if (!lit) { color = color * 0.12; }
   }
   if (view.mute != 0u && view.dest != 0u && !incident) { color = view.edgeDim; }
