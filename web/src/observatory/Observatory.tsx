@@ -2501,27 +2501,55 @@ export default function Observatory() {
     });
   }, []);
 
-  /** A distribution column lit: the renderer dims everything else. */
-  const markVertices = useCallback((vertices: Uint32Array | null, edges: Uint32Array | null) => {
-    rendererRef.current?.setMarks(vertices, edges);
-  }, []);
-
-  /** Selects `v` and brings it to the centre, close: the vertex and its
-      nearest neighbours fill the view. */
-  const goToVertex = useCallback(
+  /** Brings `v` to the centre, close: the vertex and its nearest
+      neighbours fill the view, and the view never zooms out for it. */
+  const centreOn = useCallback(
     (v: number) => {
       const renderer = rendererRef.current;
-      if (!meta || !renderer || !Number.isInteger(v) || v < 1 || v > meta.vertices) return;
-      setSelected(v);
-      renderer.setSelected(v);
+      if (!renderer) return;
       autoFit.current = false;
       const positions = renderer.positionsMirror;
       const [w, h] = renderer.cssSize;
       const zoom = Math.min(40, Math.max(cameraRef.current.zoom, (Math.min(w, h) * 0.8) / 60));
       glideTo({ x: positions[2 * v], y: positions[2 * v + 1], zoom });
+    },
+    [glideTo],
+  );
+
+  /** Selects `v` and centres on it. */
+  const goToVertex = useCallback(
+    (v: number) => {
+      if (!meta || !Number.isInteger(v) || v < 1 || v > meta.vertices) return;
+      setSelected(v);
+      rendererRef.current?.setSelected(v);
+      centreOn(v);
       setFindOpen(false);
     },
-    [meta, glideTo],
+    [meta, centreOn],
+  );
+
+  /** A distribution column lit: the renderer dims everything else. An
+      axis end also brings what it lit into view: one vertex to the
+      centre, close; a few framed together. */
+  const markVertices = useCallback(
+    (vertices: Uint32Array | null, edges: Uint32Array | null, frame: boolean) => {
+      rendererRef.current?.setMarks(vertices, edges);
+      if (!frame || !vertices) return;
+      let count = 0;
+      let only = 0;
+      for (let v = 1; v < vertices.length; v++) {
+        if (vertices[v]) {
+          count += 1;
+          only = v;
+        }
+      }
+      if (count === 1) centreOn(only);
+      else if (count > 1) {
+        autoFit.current = false;
+        fitVertices((v) => vertices[v] === 1);
+      }
+    },
+    [centreOn, fitVertices],
   );
 
   /** The find field on Enter: whatever is typed, resolved. */
@@ -4471,7 +4499,7 @@ function Distribution({
 }: {
   t: Strings;
   meta: GraphMeta;
-  onMark: (vertices: Uint32Array | null, edges: Uint32Array | null) => void;
+  onMark: (vertices: Uint32Array | null, edges: Uint32Array | null, frame: boolean) => void;
 }) {
   const [of, setOf] = useState<'degree' | 'weight'>('degree');
   /** The column under the pointer: its value replaces the unit above. */
@@ -4485,16 +4513,18 @@ function Distribution({
     onMarkRef.current = onMark;
   });
   // Leaving the panel, or the graph, clears the canvas.
-  useEffect(() => () => onMarkRef.current(null, null), []);
+  useEffect(() => () => onMarkRef.current(null, null, false), []);
   /** Lights `next` on the canvas (a click on the lit column clears it). */
   const light = (next: Lit | null, bars: Bar[]) => {
     const same = next && lit && next.which === lit.which && next.bar === lit.bar;
     const chosen = same ? null : next;
     setLit(chosen);
     if (!chosen) {
-      onMarkRef.current(null, null);
+      onMarkRef.current(null, null, false);
       return;
     }
+    // An axis end is one value: what it lights is also brought into view.
+    const frame = chosen.bar === 'min' || chosen.bar === 'max';
     const n = meta.vertices;
     const marks = new Uint32Array(n + 1);
     if (chosen.which === 'degree') {
@@ -4508,7 +4538,7 @@ function Distribution({
         const d = meta.degrees[v];
         if (d >= lo && d <= hi) marks[v] = 1;
       }
-      onMarkRef.current(marks, null);
+      onMarkRef.current(marks, null, frame);
       return;
     }
     if (!weights || !meta.weights) return;
@@ -4527,7 +4557,7 @@ function Distribution({
       marks[meta.edgeList[2 * e]] = 1;
       marks[meta.edgeList[2 * e + 1]] = 1;
     }
-    onMarkRef.current(marks, edgeMarks);
+    onMarkRef.current(marks, edgeMarks, frame);
   };
   const degreeBars = useMemo(() => degreeHistogram(meta.degrees, meta.degree.max), [meta]);
   const weightBars = useMemo(
