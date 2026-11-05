@@ -234,7 +234,6 @@ export const pt: Dictionary = {
     failed: (reason: string) => `A versão mais recente não pôde ser buscada (${reason}). Veja`,
     releases: 'todas as versões mensais',
     year: 'Ano',
-    upTo: (year: string) => `até ${year}`,
     facts: {
       vertices: 'pesquisadores',
       edges: 'colaborações',
