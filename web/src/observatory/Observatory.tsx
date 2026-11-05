@@ -2506,22 +2506,29 @@ export default function Observatory() {
     rendererRef.current?.setMarks(vertices, edges);
   }, []);
 
-  /** The find field: the vertex typed is selected and its neighbourhood framed. */
-  const findVertex = useCallback(() => {
-    const v = resolveVertex(findInput);
-    if (!meta || !Number.isInteger(v) || v < 1 || v > meta.vertices) return;
-    const renderer = rendererRef.current;
-    if (!renderer) return;
-    setSelected(v);
-    renderer.setSelected(v);
-    autoFit.current = false;
-    // Centred, close: the vertex and its nearest neighbours fill the view.
-    const positions = renderer.positionsMirror;
-    const [w, h] = renderer.cssSize;
-    const zoom = Math.min(40, Math.max(cameraRef.current.zoom, (Math.min(w, h) * 0.8) / 60));
-    glideTo({ x: positions[2 * v], y: positions[2 * v + 1], zoom });
-    setFindOpen(false);
-  }, [resolveVertex, findInput, meta, glideTo]);
+  /** Selects `v` and brings it to the centre, close: the vertex and its
+      nearest neighbours fill the view. */
+  const goToVertex = useCallback(
+    (v: number) => {
+      const renderer = rendererRef.current;
+      if (!meta || !renderer || !Number.isInteger(v) || v < 1 || v > meta.vertices) return;
+      setSelected(v);
+      renderer.setSelected(v);
+      autoFit.current = false;
+      const positions = renderer.positionsMirror;
+      const [w, h] = renderer.cssSize;
+      const zoom = Math.min(40, Math.max(cameraRef.current.zoom, (Math.min(w, h) * 0.8) / 60));
+      glideTo({ x: positions[2 * v], y: positions[2 * v + 1], zoom });
+      setFindOpen(false);
+    },
+    [meta, glideTo],
+  );
+
+  /** The find field on Enter: whatever is typed, resolved. */
+  const findVertex = useCallback(
+    () => goToVertex(resolveVertex(findInput)),
+    [goToVertex, resolveVertex, findInput],
+  );
   const target = useMemo(() => resolveVertex(targetInput), [resolveVertex, targetInput]);
   const targetValid =
     meta !== null && Number.isInteger(target) && target >= 1 && target <= meta.vertices;
@@ -3336,6 +3343,7 @@ export default function Observatory() {
                       value={findInput}
                       onChange={setFindInput}
                       onEnter={findVertex}
+                      onPick={goToVertex}
                       placeholder={names ? t.namePlaceholder : t.findPlaceholder}
                       named={names !== null}
                       suggest={suggestNames}
@@ -4127,6 +4135,7 @@ export function VertexField({
   named,
   suggest,
   suggestionsLabel,
+  onPick,
 }: {
   id: string;
   label: string;
@@ -4138,6 +4147,8 @@ export function VertexField({
   named: boolean;
   suggest: (text: string) => { vertex: number; name: string }[];
   suggestionsLabel: string;
+  /** A suggestion taken (by click, or Enter on it), with its vertex. */
+  onPick?: (vertex: number) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -4146,9 +4157,10 @@ export function VertexField({
   const shown = suggestions.length === 1 && suggestions[0].name === value.trim() ? [] : suggestions;
   const listId = `${id}-names`;
 
-  const take = (name: string) => {
+  const take = (name: string, vertex: number) => {
     onChange(name);
     setOpen(false);
+    onPick?.(vertex);
   };
 
   return (
@@ -4184,7 +4196,10 @@ export function VertexField({
           } else if (event.key === 'Escape') {
             setOpen(false);
           } else if (event.key === 'Enter') {
-            if (shown.length) take(shown[Math.min(active, shown.length - 1)].name);
+            if (shown.length) {
+              const picked = shown[Math.min(active, shown.length - 1)];
+              take(picked.name, picked.vertex);
+            }
             else onEnter();
           }
         }}
@@ -4201,7 +4216,7 @@ export function VertexField({
               // Before the input's blur, so the click lands.
               onPointerDown={(event) => {
                 event.preventDefault();
-                take(name);
+                take(name, vertex);
               }}
               onPointerEnter={() => setActive(i)}
             >
