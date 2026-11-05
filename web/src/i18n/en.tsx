@@ -749,6 +749,7 @@ export const en = {
     distribution: 'Distribution',
     distributions: { degree: 'Degrees', weight: 'Weights' },
     openTree: 'Open the search tree as a graph',
+    closeTree: 'Back to the graph the search ran on',
     axisMin: { degree: 'Light the vertices of the lowest degree', weight: 'Light the lightest edges' },
     axisMax: { degree: 'Light the vertices of the highest degree', weight: 'Light the heaviest edges' },
     columnHint: 'click a column to light its vertices; click again to clear',
