@@ -751,6 +751,10 @@ export const pt: Dictionary = {
       `${name} tem ${size}; o observatório aceita arquivos de até ${limit}.`,
     distribution: 'Distribuição',
     distributions: { degree: 'Graus', weight: 'Pesos' },
+    openTree: 'Abrir a árvore da busca como grafo',
+    axisMin: { degree: 'Acender os vértices de menor grau', weight: 'Acender as arestas mais leves' },
+    axisMax: { degree: 'Acender os vértices de maior grau', weight: 'Acender as arestas mais pesadas' },
+    columnHint: 'clique numa coluna para acender seus vértices; clique de novo para apagar',
     distributionUnit: { degree: 'vértices por grau', weight: 'arestas por peso' },
     distributionBucket: {
       degree: (range: string, count: string) => `${count} com grau ${range}`,
