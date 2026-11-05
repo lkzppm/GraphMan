@@ -2510,12 +2510,18 @@ export default function Observatory() {
   const findVertex = useCallback(() => {
     const v = resolveVertex(findInput);
     if (!meta || !Number.isInteger(v) || v < 1 || v > meta.vertices) return;
+    const renderer = rendererRef.current;
+    if (!renderer) return;
     setSelected(v);
-    rendererRef.current?.setSelected(v);
+    renderer.setSelected(v);
     autoFit.current = false;
-    fitVertices((u) => u === v);
+    // Centred, close: the vertex and its nearest neighbours fill the view.
+    const positions = renderer.positionsMirror;
+    const [w, h] = renderer.cssSize;
+    const zoom = Math.min(40, Math.max(cameraRef.current.zoom, (Math.min(w, h) * 0.8) / 60));
+    glideTo({ x: positions[2 * v], y: positions[2 * v + 1], zoom });
     setFindOpen(false);
-  }, [resolveVertex, findInput, meta, fitVertices]);
+  }, [resolveVertex, findInput, meta, glideTo]);
   const target = useMemo(() => resolveVertex(targetInput), [resolveVertex, targetInput]);
   const targetValid =
     meta !== null && Number.isInteger(target) && target >= 1 && target <= meta.vertices;
