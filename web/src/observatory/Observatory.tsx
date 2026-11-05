@@ -36,6 +36,7 @@ import {
   RouteOff,
   Ruler,
   Scan,
+  Search,
   Trash2,
   Upload,
   Users,
@@ -591,6 +592,10 @@ export default function Observatory() {
   /** The last click on a vertex, and the origin it replaced. */
   const lastClick = useRef<{ vertex: number; at: number; origin: string } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  /** The find field, top left: a vertex typed is selected and framed. */
+  const [findOpen, setFindOpen] = useState(false);
+  const [findInput, setFindInput] = useState('');
+  const findRef = useRef<HTMLDivElement>(null);
   /** The lit component (1 = largest), 0 for none. */
   const [component, setComponent] = useState(0);
   /** The components browser, in place of the graph summary. */
@@ -2222,14 +2227,20 @@ export default function Observatory() {
   };
 
   useEffect(() => {
-    if (!helpOpen && !layoutOpen) return;
+    if (!helpOpen && !layoutOpen && !findOpen) return;
     const onDown = (event: PointerEvent) => {
       if (!helpRef.current?.contains(event.target as Node)) setHelpOpen(false);
       if (!layoutMenuRef.current?.contains(event.target as Node)) setLayoutOpen(false);
+      if (!findRef.current?.contains(event.target as Node)) setFindOpen(false);
     };
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
-  }, [helpOpen, layoutOpen]);
+  }, [helpOpen, layoutOpen, findOpen]);
+
+  // The find field takes the keyboard as it opens.
+  useEffect(() => {
+    if (findOpen) document.getElementById('find')?.focus();
+  }, [findOpen]);
 
   useEffect(() => {
     const onChange = () => setFullscreen(document.fullscreenElement !== null);
@@ -2438,6 +2449,17 @@ export default function Observatory() {
   );
   const root = useMemo(() => resolveVertex(rootInput), [resolveVertex, rootInput]);
   const rootValid = meta !== null && Number.isInteger(root) && root >= 1 && root <= meta.vertices;
+
+  /** The find field: the vertex typed is selected and its neighbourhood framed. */
+  const findVertex = useCallback(() => {
+    const v = resolveVertex(findInput);
+    if (!meta || !Number.isInteger(v) || v < 1 || v > meta.vertices) return;
+    setSelected(v);
+    rendererRef.current?.setSelected(v);
+    autoFit.current = false;
+    fitVertices((u) => u === v);
+    setFindOpen(false);
+  }, [resolveVertex, findInput, meta, fitVertices]);
   const target = useMemo(() => resolveVertex(targetInput), [resolveVertex, targetInput]);
   const targetValid =
     meta !== null && Number.isInteger(target) && target >= 1 && target <= meta.vertices;
@@ -3228,28 +3250,30 @@ export default function Observatory() {
 
           {meta && (
             <>
-              {/* Controls, top left */}
-              <div ref={helpRef} className={`${styles.floating} ${styles.floatingTopLeft}`}>
+              {/* Find a vertex, top left */}
+              <div ref={findRef} className={`${styles.floating} ${styles.floatingTopLeft}`}>
                 <div className={styles.cluster}>
                   <IconButton
-                    label={helpOpen ? t.hideControls : t.showControls}
-                    pressed={helpOpen}
-                    onClick={() => setHelpOpen((o) => !o)}
+                    label={t.find}
+                    pressed={findOpen}
+                    onClick={() => setFindOpen((o) => !o)}
                   >
-                    <CircleHelp size={15} />
+                    <Search size={15} />
                   </IconButton>
                 </div>
-                {helpOpen && (
-                  <div className={styles.help} role="dialog" aria-label={t.controlsTitle}>
-                    <span className={`label ${styles.helpTitle}`}>{t.controlsTitle}</span>
-                    <ul className={styles.keys}>
-                      {t.controls.map(([key, does]) => (
-                        <li key={key + does}>
-                          <kbd className="mono">{key}</kbd>
-                          <span>{does}</span>
-                        </li>
-                      ))}
-                    </ul>
+                {findOpen && (
+                  <div className={`${styles.help} ${styles.find}`} role="dialog" aria-label={t.find}>
+                    <VertexField
+                      id="find"
+                      label={t.find}
+                      value={findInput}
+                      onChange={setFindInput}
+                      onEnter={findVertex}
+                      placeholder={names ? t.namePlaceholder : t.findPlaceholder}
+                      named={names !== null}
+                      suggest={suggestNames}
+                      suggestionsLabel={t.names.suggestions}
+                    />
                   </div>
                 )}
               </div>
@@ -3520,9 +3544,16 @@ export default function Observatory() {
                 </div>
               )}
 
-              {/* View tools, bottom right */}
-              <div className={`${styles.floating} ${styles.floatingBottomRight}`}>
+              {/* View tools and the controls, bottom right */}
+              <div ref={helpRef} className={`${styles.floating} ${styles.floatingBottomRight}`}>
                 <div className={`${styles.cluster} ${styles.clusterVertical}`}>
+                  <IconButton
+                    label={helpOpen ? t.hideControls : t.showControls}
+                    pressed={helpOpen}
+                    onClick={() => setHelpOpen((o) => !o)}
+                  >
+                    <CircleHelp size={15} />
+                  </IconButton>
                   <IconButton label={t.zoomIn} onClick={() => zoomBy(1.4)}>
                     <Plus size={15} />
                   </IconButton>
@@ -3541,6 +3572,19 @@ export default function Observatory() {
                     </IconButton>
                   )}
                 </div>
+                {helpOpen && (
+                  <div className={`${styles.help} ${styles.helpBottom}`} role="dialog" aria-label={t.controlsTitle}>
+                    <span className={`label ${styles.helpTitle}`}>{t.controlsTitle}</span>
+                    <ul className={styles.keys}>
+                      {t.controls.map(([key, does]) => (
+                        <li key={key + does}>
+                          <kbd className="mono">{key}</kbd>
+                          <span>{does}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
 
               <div className={styles.legend}>

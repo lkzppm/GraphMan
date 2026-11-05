@@ -1600,18 +1600,66 @@ impl WasmNetworkBuilder {
     }
 
     /// Builds the network: a vertex per name given, an edge per pair summed,
-    /// weighted by the inverse of its strength. The table is freed as the
-    /// edges leave it, before the representation is built.
-    pub fn finish(self, representation: RepresentationKind) -> Result<WasmGraph, JsError> {
+    /// weighted by the inverse of its strength. `compact` leaves out the
+    /// vertices no pair touched (a span of years, where most researchers
+    /// named are idle) and renumbers the rest in order; otherwise the
+    /// numbering is the names file's, as the course format has it. The
+    /// table is freed as the edges leave it, before the representation is
+    /// built.
+    pub fn finish(
+        self,
+        representation: RepresentationKind,
+        compact: bool,
+    ) -> Result<WasmGraph, JsError> {
         let names = VertexNames::parse(&self.names).map_err(|e| JsError::new(&e.to_string()))?;
+        let n = names.len();
         let mut strengths = self.strengths;
-        let edges = EdgeList::from_weighted_edges(
-            names.len(),
-            strengths
-                .drain()
-                .map(|(key, strength)| ((key >> 32) as Vertex, key as Vertex, 1.0 / strength)),
-        )
-        .map_err(|e| JsError::new(&e.to_string()))?;
+        let (names, edges) = if compact {
+            let mut kept = vec![false; n + 1];
+            for &key in strengths.keys() {
+                let (u, v) = ((key >> 32) as usize, key as Vertex as usize);
+                if u > n || v > n {
+                    return Err(JsError::new(&format!("vertex {} is not named", u.max(v))));
+                }
+                kept[u] = true;
+                kept[v] = true;
+            }
+            let mut rank = vec![0 as Vertex; n + 1];
+            let mut text = Vec::new();
+            let mut next = 0;
+            for v in 1..=n {
+                if !kept[v] {
+                    continue;
+                }
+                next += 1;
+                rank[v] = next;
+                if let Some(name) = names.name(v as Vertex) {
+                    text.extend_from_slice(format!("{next},{name}\n").as_bytes());
+                }
+            }
+            let names = VertexNames::parse(&text).map_err(|e| JsError::new(&e.to_string()))?;
+            let edges = EdgeList::from_weighted_edges(
+                next as usize,
+                strengths.drain().map(|(key, strength)| {
+                    (
+                        rank[(key >> 32) as usize],
+                        rank[key as Vertex as usize],
+                        1.0 / strength,
+                    )
+                }),
+            )
+            .map_err(|e| JsError::new(&e.to_string()))?;
+            (names, edges)
+        } else {
+            let edges = EdgeList::from_weighted_edges(
+                n,
+                strengths
+                    .drain()
+                    .map(|(key, strength)| ((key >> 32) as Vertex, key as Vertex, 1.0 / strength)),
+            )
+            .map_err(|e| JsError::new(&e.to_string()))?;
+            (names, edges)
+        };
         drop(strengths);
         let mut graph = WasmGraph::of(edges, representation)?;
         graph.names = Some(names);
@@ -1822,7 +1870,7 @@ mod tests {
         builder.add_strengths(b"1 2 0.25\r\n2 4 1\n\n").unwrap();
         builder.add_names(b"4,Dora\n");
         assert_eq!(builder.edge_count(), 3);
-        let graph = builder.finish(RepresentationKind::Csr).unwrap();
+        let graph = builder.finish(RepresentationKind::Csr, false).unwrap();
         assert_eq!(graph.vertex_count(), 4);
         assert_eq!(graph.edge_count(), 3);
         assert_eq!(graph.name(4).as_deref(), Some("Dora"));
@@ -1832,6 +1880,17 @@ mod tests {
             graph.edges.weights(),
             Some([1.0 / (0.5 + 0.25), 1.0, 1.0].as_slice())
         );
+
+        // Compacted: only the second year, so Ana (1) and Caio (3) are idle
+        // and the rest are renumbered in order.
+        let mut span = WasmNetworkBuilder::new();
+        span.add_names(b"1,Ana\n2,Bia\n3,Caio\n4,Dora\n");
+        span.add_strengths(b"2 4 1\n").unwrap();
+        let graph = span.finish(RepresentationKind::Csr, true).unwrap();
+        assert_eq!(graph.vertex_count(), 2);
+        assert_eq!(graph.edges.edges(), [[1, 2]]);
+        assert_eq!(graph.name(1).as_deref(), Some("Bia"));
+        assert_eq!(graph.name(2).as_deref(), Some("Dora"));
 
         // A JsError cannot be made off wasm, so the parser is checked itself.
         assert_eq!(parse_strength(b"7  9 0.25"), Some((7, 9, 0.25)));

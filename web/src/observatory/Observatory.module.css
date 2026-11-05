@@ -1892,6 +1892,19 @@
   right: 14px;
 }
 
+/* The controls popover, beside the bottom-right cluster. */
+.helpBottom {
+  position: absolute;
+  bottom: 0;
+  right: calc(100% + 8px);
+}
+
+/* The find field's popover, under the top-left cluster. */
+.find {
+  width: 260px;
+  padding: 12px 14px;
+}
+
 /* The structure strip's toggle, at the bottom centre of the canvas. */
 .floatingBottomCenter {
   bottom: 14px;

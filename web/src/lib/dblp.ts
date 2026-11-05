@@ -81,10 +81,13 @@ export function yearsUpTo(manifest: DblpManifest, year: number): DblpYear[] {
   return manifest.years.filter((entry) => entry.year <= year);
 }
 
-/** The bytes to transfer for the network up to `year`. */
-export function transferBytes(manifest: DblpManifest, year: number): number {
-  return yearsUpTo(manifest, year).reduce(
-    (sum, entry) => sum + entry.strengths.bytes + entry.names.bytes,
+/** The bytes to transfer for the network of the years `from` to `to`: the
+    strengths of those years, and the names of every year up to `to` (a
+    pair's researchers may have been numbered long before). */
+export function transferBytes(manifest: DblpManifest, from: number, to: number): number {
+  return yearsUpTo(manifest, to).reduce(
+    (sum, entry) =>
+      sum + (entry.year >= from ? entry.strengths.bytes : 0) + entry.names.bytes,
     0,
   );
 }

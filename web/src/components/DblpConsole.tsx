@@ -5,7 +5,7 @@ import {
   ChevronDown,
   FileDown,
   FileText,
-  History,
+  Globe,
   LoaderCircle,
   Info,
   Network,
@@ -40,9 +40,14 @@ import { DBLP_SESSION, keepSession, takeSession } from '@/lib/session';
 import styles from './DblpConsole.module.css';
 
 /** How a cut picks its vertices (the wasm `SubgraphKind`). */
-type Rule = 'ball' | 'mostConnected' | 'earliest';
-const RULES: readonly Rule[] = ['ball', 'mostConnected', 'earliest'];
-const RULE_ICONS = { ball: UserRound, mostConnected: Network, earliest: History } as const;
+type Rule = 'ball' | 'mostConnected' | 'whole';
+const RULES: readonly Rule[] = ['ball', 'mostConnected', 'whole'];
+const RULE_ICONS = { ball: UserRound, mostConnected: Network, whole: Globe } as const;
+
+/** Which years make the network: everything up to the year, the year
+    alone, or a range ending in it. */
+type Span = 'until' | 'only' | 'range';
+const SPANS: readonly Span[] = ['until', 'only', 'range'];
 
 /** The smallest cut the slider offers, and what a fresh network opens at. */
 const MIN_SIZE = 10;
@@ -54,12 +59,26 @@ const STEPS = 1000;
 /** Past this many vertices the observatory draws, but slowly. */
 const HEAVY = 300_000;
 
-/** The network up to a year, summed and held in wasm for cutting. */
+/** A network summed and held in wasm for cutting: the years it is made
+    of (`key` tells one choice from another) and its size. */
 interface Base {
   graph: Graph;
+  key: string;
+  span: Span;
+  from: number;
   year: number;
   vertices: number;
   edges: number;
+}
+
+/** One choice of years, as the key a base is compared by. */
+function spanKey(span: Span, from: number, year: number): string {
+  return span === 'until' ? `until:${year}` : span === 'only' ? `only:${year}` : `${from}:${year}`;
+}
+
+/** The first year a choice sums strengths from. */
+function spanStart(manifest: DblpManifest, span: Span, from: number, year: number): number {
+  return span === 'until' ? manifest.years[0].year : span === 'only' ? year : from;
 }
 
 /** A download in flight. */
@@ -80,6 +99,11 @@ interface DblpSession {
   seedInput: string;
   rule: Rule;
   size: number;
+}
+
+/** A range opens five years long, or as long as the build allows. */
+function defaultFrom(manifest: DblpManifest, year: number): number {
+  return Math.max(manifest.years[0].year, year - 4);
 }
 
 interface Preview {
@@ -112,6 +136,8 @@ export default function DblpConsole() {
   const [manifest, setManifest] = useState<DblpManifest | null>(null);
   const [manifestError, setManifestError] = useState<string | null>(null);
   const [year, setYear] = useState(0);
+  const [span, setSpan] = useState<Span>('until');
+  const [from, setFrom] = useState(0);
   const [base, setBase] = useState<Base | null>(null);
   const baseRef = useRef<Base | null>(null);
   const [job, setJob] = useState<Job | null>(null);
@@ -147,12 +173,16 @@ export default function DblpConsole() {
           baseRef.current = saved.base;
           setBase(saved.base);
           setYear(saved.base.year);
+          setSpan(saved.base.span);
+          setFrom(saved.base.from);
           setSeedInput(saved.seedInput);
           setRule(saved.rule);
           setSize(saved.size);
         } else {
           saved?.base.graph.free();
-          setYear(initialYear(loaded));
+          const last = initialYear(loaded);
+          setYear(last);
+          setFrom(defaultFrom(loaded, last));
         }
         setManifest(loaded);
       })
@@ -185,19 +215,23 @@ export default function DblpConsole() {
   );
 
   const chosen = manifest?.years.find((entry) => entry.year === year) ?? null;
+  const key = spanKey(span, from, year);
 
-  /** Downloads the years up to the chosen one, unpacks them and sums them
-      in wasm into that year's network. A few years download ahead of the
-      one being summed, which takes them in order. */
+  /** Downloads the years chosen, unpacks them and sums them in wasm into
+      one network: every year up to the last gives its names (the
+      numbering), the years of the span their strengths. A few years
+      download ahead of the one being summed, which takes them in order. */
   const fetchNetwork = useCallback(async () => {
     if (!wasm || !manifest) return;
     const years = yearsUpTo(manifest, year);
     if (years.length === 0) return;
+    const start = spanStart(manifest, span, from, year);
+    const wanted = (entry: DblpYear) => entry.year >= start;
     jobRef.current?.abort();
     const controller = new AbortController();
     jobRef.current = controller;
     setNotice(null);
-    const total = transferBytes(manifest, year);
+    const total = transferBytes(manifest, start, year);
     const version = String(manifest.builtAt);
     const builder = new wasm.NetworkBuilder();
     let finished = false;
@@ -215,10 +249,12 @@ export default function DblpConsole() {
         setJob({ received: Math.min(sum, total), total, phase: 'fetching' });
       };
       setJob({ received: 0, total, phase: 'fetching' });
-      const queue: Promise<[Uint8Array, Uint8Array]>[] = [];
-      const start = (entry: DblpYear) => {
+      const queue: Promise<[Uint8Array | null, Uint8Array]>[] = [];
+      const begin = (entry: DblpYear) => {
         const pair = Promise.all([
-          fetchFile(entry.strengths, version, progress(entry.strengths), controller.signal),
+          wanted(entry)
+            ? fetchFile(entry.strengths, version, progress(entry.strengths), controller.signal)
+            : Promise.resolve(null),
           fetchFile(entry.names, version, progress(entry.names), controller.signal),
         ]);
         // Reported where it is awaited, not as an unhandled rejection.
@@ -226,12 +262,12 @@ export default function DblpConsole() {
         queue.push(pair);
       };
       let next = 0;
-      for (; next < Math.min(AHEAD, years.length); next++) start(years[next]);
+      for (; next < Math.min(AHEAD, years.length); next++) begin(years[next]);
       for (let i = 0; i < years.length; i++) {
         const [strengths, names] = await queue[i];
-        if (next < years.length) start(years[next++]);
+        if (next < years.length) begin(years[next++]);
         if (controller.signal.aborted) return;
-        builder.addStrengths(strengths);
+        if (strengths) builder.addStrengths(strengths);
         builder.addNames(names);
         // Let the progress paint between two years.
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -241,9 +277,17 @@ export default function DblpConsole() {
       await new Promise((resolve) => setTimeout(resolve, 30));
       if (controller.signal.aborted) return;
       finished = true;
-      const graph = builder.finish(wasm.RepresentationKind.Csr);
+      const graph = builder.finish(wasm.RepresentationKind.Csr, span !== 'until');
       baseRef.current?.graph.free();
-      const loaded: Base = { graph, year, vertices: graph.vertexCount, edges: graph.edgeCount };
+      const loaded: Base = {
+        graph,
+        key,
+        span,
+        from,
+        year,
+        vertices: graph.vertexCount,
+        edges: graph.edgeCount,
+      };
       baseRef.current = loaded;
       setBase(loaded);
       const seed = graph.vertexNamed(DEFAULT_SEED);
@@ -262,17 +306,22 @@ export default function DblpConsole() {
         setJob(null);
       }
     }
-  }, [wasm, manifest, year, t]);
+  }, [wasm, manifest, year, span, from, key, t]);
 
-  // A chosen year is fetched at once; choosing another cancels the first.
+  // A choice of years is fetched at once; another choice cancels the first.
   useEffect(() => {
-    if (!wasm || !manifest || !year || baseRef.current?.year === year) return;
+    if (!wasm || !manifest || !year || baseRef.current?.key === key) return;
     const timer = setTimeout(() => void fetchNetwork(), 0);
     return () => {
       clearTimeout(timer);
       jobRef.current?.abort();
     };
-  }, [wasm, manifest, year, fetchNetwork]);
+  }, [wasm, manifest, year, key, fetchNetwork]);
+
+  /** The years chosen, for file names: `2018`, `only_2018`, `2014_2018`. */
+  const spanStem = span === 'until' ? `${year}` : span === 'only' ? `only_${year}` : `${from}_${year}`;
+  /** The whole network needs no size: the cut is every vertex, in order. */
+  const cutSize = rule === 'whole' ? (base?.vertices ?? size) : size;
 
   /** The seed as a vertex of the loaded network, 0 when it is not one. */
   const seedVertex = useMemo(() => {
@@ -310,18 +359,18 @@ export default function DblpConsole() {
         setPreview(null);
         return;
       }
-      const cut = base.graph.subgraph(kindOf(wasm, rule), seedVertex || 1, size, false);
+      const cut = base.graph.subgraph(kindOf(wasm, rule), seedVertex || 1, cutSize, false);
       setPreview({ vertices: cut.vertices, edges: cut.edges, bytes: cut.bytes });
       cut.free();
     }, 120);
     return () => clearTimeout(timer);
-  }, [base, wasm, rule, seedVertex, size]);
+  }, [base, wasm, rule, seedVertex, cutSize]);
 
   /** The cut's two files, named after what made them. */
   const files = () => {
     if (!base || !wasm) return null;
-    const cut = base.graph.subgraph(kindOf(wasm, rule), seedVertex || 1, size, true);
-    const stem = `dblp_${base.year}_${rule.toLowerCase()}_${cut.vertices}`;
+    const cut = base.graph.subgraph(kindOf(wasm, rule), seedVertex || 1, cutSize, true);
+    const stem = `dblp_${spanStem}_${rule.toLowerCase()}_${cut.vertices}`;
     const names = cut.namesFile();
     const built = {
       name: `${stem}.txt`,
@@ -360,7 +409,7 @@ export default function DblpConsole() {
   const live = base !== null && job === null;
   const canCut = live && preview !== null && !opening;
   const stem = base
-    ? `dblp_${base.year}_${rule.toLowerCase()}_${preview?.vertices ?? size}`
+    ? `dblp_${spanStem}_${rule.toLowerCase()}_${preview?.vertices ?? cutSize}`
     : '';
 
   return (
@@ -391,41 +440,105 @@ export default function DblpConsole() {
             {/* ---- the year ---- */}
             <section className={styles.box} aria-label={t.year}>
               <div className={styles.field}>
-                <label htmlFor="dblp-year" className={styles.fieldLabel}>
+                <span className={styles.fieldLabel}>
                   <Calendar size={13} aria-hidden="true" />
-                  {t.year}
-                </label>
-                <span className={styles.select}>
-                  <select
-                    id="dblp-year"
-                    className={`mono ${styles.input}`}
-                    value={year}
-                    onChange={(event) => setYear(Number(event.target.value))}
-                  >
-                    {manifest.years
-                      .slice()
-                      .reverse()
-                      .map((entry) => (
-                        <option key={entry.year} value={entry.year}>
-                          {entry.year}
-                        </option>
-                      ))}
-                  </select>
-                  <ChevronDown size={14} className={styles.chevron} aria-hidden="true" />
+                  {t.span}
                 </span>
+                <div className={styles.segments} role="radiogroup" aria-label={t.span}>
+                  {SPANS.map((which) => (
+                    <button
+                      key={which}
+                      type="button"
+                      role="radio"
+                      aria-checked={span === which}
+                      className={styles.segment}
+                      title={t.spanHints[which]}
+                      onClick={() => setSpan(which)}
+                    >
+                      {t.spans[which]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className={styles.years} data-range={span === 'range' || undefined}>
+                <div className={`${styles.field} ${styles.fromSlot}`} aria-hidden={span !== 'range'}>
+                  <label htmlFor="dblp-from" className={styles.fieldLabel}>
+                    {t.from}
+                  </label>
+                  <span className={styles.select}>
+                    <select
+                      id="dblp-from"
+                      className={`mono ${styles.input}`}
+                      value={from}
+                      disabled={span !== 'range'}
+                      onChange={(event) => setFrom(Number(event.target.value))}
+                    >
+                      {manifest.years
+                        .filter((entry) => entry.year <= year)
+                        .reverse()
+                        .map((entry) => (
+                          <option key={entry.year} value={entry.year}>
+                            {entry.year}
+                          </option>
+                        ))}
+                    </select>
+                    <ChevronDown size={14} className={styles.chevron} aria-hidden="true" />
+                  </span>
+                </div>
+                <div className={styles.field}>
+                  <label htmlFor="dblp-year" className={styles.fieldLabel}>
+                    {span === 'range' ? t.to : t.year}
+                  </label>
+                  <span className={styles.select}>
+                    <select
+                      id="dblp-year"
+                      className={`mono ${styles.input}`}
+                      value={year}
+                      onChange={(event) => {
+                        const next = Number(event.target.value);
+                        setYear(next);
+                        setFrom((current) => Math.min(current, next));
+                      }}
+                    >
+                      {manifest.years
+                        .slice()
+                        .reverse()
+                        .map((entry) => (
+                          <option key={entry.year} value={entry.year}>
+                            {entry.year}
+                          </option>
+                        ))}
+                    </select>
+                    <ChevronDown size={14} className={styles.chevron} aria-hidden="true" />
+                  </span>
+                </div>
               </div>
               <dl className={styles.facts}>
                 <div>
                   <dt>{t.facts.vertices}</dt>
-                  <dd className="mono">{formatInt(chosen.vertices)}</dd>
+                  <dd className="mono">
+                    {base?.key === key
+                      ? formatInt(base.vertices)
+                      : span === 'until'
+                        ? formatInt(chosen.vertices)
+                        : '·'}
+                  </dd>
                 </div>
                 <div>
                   <dt>{t.facts.edges}</dt>
-                  <dd className="mono">{formatInt(chosen.edges)}</dd>
+                  <dd className="mono">
+                    {base?.key === key
+                      ? formatInt(base.edges)
+                      : span === 'until'
+                        ? formatInt(chosen.edges)
+                        : '·'}
+                  </dd>
                 </div>
                 <div>
                   <dt>{t.facts.transfer}</dt>
-                  <dd className="mono">{formatBytes(transferBytes(manifest, year))}</dd>
+                  <dd className="mono">
+                    {formatBytes(transferBytes(manifest, spanStart(manifest, span, from, year), year))}
+                  </dd>
                 </div>
               </dl>
               <div className={styles.status} data-open={job !== null || undefined}>
@@ -514,7 +627,11 @@ export default function DblpConsole() {
                   );
                 })}
               </div>
-              <div className={styles.controls} data-seed={rule === 'ball' || undefined}>
+              <div
+                className={styles.controls}
+                data-seed={rule === 'ball' || undefined}
+                data-hidden={rule === 'whole' || undefined}
+              >
                 <div className={styles.seedSlot} aria-hidden={rule !== 'ball'}>
                   <ResearcherField
                     label={t.seed}
