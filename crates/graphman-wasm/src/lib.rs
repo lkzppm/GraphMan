@@ -1923,15 +1923,18 @@ impl From<SubgraphKind> for graphman::algo::SubgraphRule {
     }
 }
 
-/// A cut of the loaded graph: how big it is, and when asked for, its two
-/// files in the course format.
+/// Lines in one piece of a cut's file: a few megabytes.
+const PIECE_LINES: usize = 256 * 1024;
+
+/// A cut of the loaded graph: how big it is, and its two files in the course
+/// format, a piece at a time. The whole network's edge file is larger than
+/// what is left of wasm's 4 GiB beside the network itself, so a file is
+/// never held here: each piece leaves for JavaScript as soon as it is written.
 #[wasm_bindgen]
 pub struct Subgraph {
-    vertices: u32,
-    edges: u32,
-    bytes: f64,
-    edge_file: Vec<u8>,
-    names_file: Vec<u8>,
+    induced: graphman::algo::Induced,
+    edge_line: usize,
+    name_line: usize,
 }
 
 #[wasm_bindgen]
@@ -1939,33 +1942,61 @@ impl Subgraph {
     /// How many vertices the cut keeps.
     #[wasm_bindgen(getter)]
     pub fn vertices(&self) -> u32 {
-        self.vertices
+        self.induced.vertex_count() as u32
     }
 
     /// How many edges run among them.
     #[wasm_bindgen(getter)]
     pub fn edges(&self) -> u32 {
-        self.edges
+        self.induced.edge_count() as u32
     }
 
-    /// The edge file's size: exact when the file was written or the cut is
-    /// small, otherwise an estimate from a sample of its lines.
+    /// The edge file's size: exact when the cut is small, otherwise an
+    /// estimate from a sample of its lines.
     #[wasm_bindgen(getter)]
     pub fn bytes(&self) -> f64 {
-        self.bytes
+        self.induced.file_bytes() as f64
     }
 
-    /// The edge file (`n`, then `u v weight` per line); empty unless asked for.
-    #[wasm_bindgen(js_name = edgeFile)]
-    pub fn edge_file(&self) -> Vec<u8> {
-        self.edge_file.clone()
+    /// How much of the two files has been written, from 0 to 1.
+    #[wasm_bindgen(getter)]
+    pub fn progress(&self) -> f64 {
+        let total = self.induced.edge_lines() + self.induced.vertex_count();
+        (self.edge_line + self.name_line) as f64 / total as f64
     }
 
-    /// The names file (`vertex,name` per line); empty without names or
-    /// unless asked for.
-    #[wasm_bindgen(js_name = namesFile)]
-    pub fn names_file(&self) -> Vec<u8> {
-        self.names_file.clone()
+    /// The next piece of the edge file (`n`, then `u v weight` per line);
+    /// empty once the file is done.
+    #[wasm_bindgen(js_name = nextEdges)]
+    pub fn next_edges(&mut self) -> Vec<u8> {
+        let end = (self.edge_line + PIECE_LINES).min(self.induced.edge_lines());
+        let mut piece = Vec::new();
+        self.induced
+            .write_edge_lines(self.edge_line..end, &mut piece)
+            .expect("writing to a Vec never fails");
+        self.edge_line = end;
+        piece
+    }
+
+    /// The next piece of the names file (`vertex,name` per line), read from
+    /// the graph the cut came from; empty once the file is done, or at once
+    /// when the graph has no names.
+    #[wasm_bindgen(js_name = nextNames)]
+    pub fn next_names(&mut self, graph: &WasmGraph) -> Vec<u8> {
+        let mut piece = Vec::new();
+        let Some(names) = &graph.names else {
+            self.name_line = self.induced.vertex_count();
+            return piece;
+        };
+        // A stretch of unnamed vertices writes nothing: only the end is empty.
+        while piece.is_empty() && self.name_line < self.induced.vertex_count() {
+            let end = (self.name_line + PIECE_LINES).min(self.induced.vertex_count());
+            self.induced
+                .write_name_lines(names, self.name_line..end, &mut piece)
+                .expect("writing to a Vec never fails");
+            self.name_line = end;
+        }
+        piece
     }
 }
 
@@ -1973,36 +2004,15 @@ impl Subgraph {
 impl WasmGraph {
     /// Cuts the graph to at most `max` vertices by `rule` (`seed` is the
     /// ball's centre) and renumbers them from 1: the ball's seed, the most
-    /// connected vertex or vertex 1 becomes vertex 1. With `files`, the edge
-    /// file and the names file are written too, else only the sizes are
-    /// counted (a preview).
-    pub fn subgraph(&self, rule: SubgraphKind, seed: u32, max: u32, files: bool) -> Subgraph {
+    /// connected vertex or vertex 1 becomes vertex 1.
+    pub fn subgraph(&self, rule: SubgraphKind, seed: u32, max: u32) -> Subgraph {
         let kept =
             dispatch!(&self.graph, g => graphman::algo::select(g, rule.into(), seed, max as usize));
         let induced = dispatch!(&self.graph, g => graphman::algo::induce(g, kept));
-        let mut edge_file = Vec::new();
-        let mut names_file = Vec::new();
-        if files {
-            induced
-                .write_edges(&mut edge_file)
-                .expect("writing to a Vec never fails");
-            if let Some(names) = &self.names {
-                induced
-                    .write_names(names, &mut names_file)
-                    .expect("writing to a Vec never fails");
-            }
-        }
-        let bytes = if files {
-            edge_file.len() as f64
-        } else {
-            induced.file_bytes() as f64
-        };
         Subgraph {
-            vertices: induced.vertex_count() as u32,
-            edges: induced.edge_count() as u32,
-            bytes,
-            edge_file,
-            names_file,
+            induced,
+            edge_line: 0,
+            name_line: 0,
         }
     }
 }

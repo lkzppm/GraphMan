@@ -445,9 +445,14 @@ compact)`), renumbering the rest in order. The cut box is local: a rule (a
 BFS ball around a researcher named in a field with the library's
 suggestions, the most connected, or the whole network, i.e. the earliest
 prefix at full size), a logarithmic size slider, and three live
-tiles (`Graph.subgraph(rule, seed, max, files=false)` → vertices, edges and
+tiles (`Graph.subgraph(rule, seed, max)` → vertices, edges and
 the edge file's size, exact up to 200k edges and sampled past that) a
-moment after each change. The result box asks for the files (`files=true`): the
+moment after each change. The result box writes the files a piece at a time
+(`Subgraph.nextEdges` / `nextNames`, gathered into a Blob by `collectFile`),
+because the whole network's 640 MB edge file does not fit in wasm's 4 GiB
+beside the network itself. A cut whose file passes the observatory's 512 MB
+limit (`OBSERVATORY_MAX_BYTES`) can only be exported: its warning turns red
+and the open button is off. The
 library's `algo::select` picks the vertices in the order that numbers them
 (the seed, the most connected or vertex 1 becomes 1), `algo::induce`
 renumbers the edges among them, and the two course-format files either go
