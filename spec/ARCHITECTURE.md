@@ -385,9 +385,11 @@ from the console supersedes a parked graph.
 Two more ways in: a search shown has a button at the left centre of the
 canvas that opens its tree as a graph of its own (the reached vertices
 renumbered in discovery order, the origin as 1, the tree edges with the
-graph's weights looked up in the sorted edge list, and a names file
-carrying the original names or numbers), through the picker like a
-dropped file. And the distribution chart's columns are buttons: a column
+graph's weights looked up in the sorted edge list, and names carrying the
+original names or numbers), in place and in the representation the graph
+has; the graph itself is parked whole (the same snapshot the session
+takes) and a return button beside it brings it back as it was, search
+included. And the distribution chart's columns are buttons: a column
 clicked lights its vertices on the canvas (a weight column its edges and
 their ends) and ghosts everything else through a marks buffer in the
 renderer (`setMarks`, `view.marked`); the axis ends light the lowest and
