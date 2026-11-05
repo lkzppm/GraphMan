@@ -10,6 +10,7 @@ use crate::io::collaboration::Fifteen;
 use crate::io::{EdgeList, ParseError, VertexNames};
 use std::cmp::Reverse;
 use std::io::{self, BufWriter, Write};
+use std::ops::Range;
 
 /// Which vertices a cut keeps.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -144,9 +145,23 @@ impl Induced {
     /// `u v` or `u v weight` per line (weights with fifteen significant
     /// digits, as the collaboration network's).
     pub fn write_edges<W: Write>(&self, out: W) -> io::Result<()> {
+        self.write_edge_lines(0..self.edge_lines(), out)
+    }
+
+    /// How many lines the edge file has: the vertex count, then one per edge.
+    pub fn edge_lines(&self) -> usize {
+        self.edges.len() + 1
+    }
+
+    /// Writes only these lines of the edge file (line 0 is the vertex
+    /// count), so a file too large to hold whole can be written in pieces.
+    pub fn write_edge_lines<W: Write>(&self, lines: Range<usize>, out: W) -> io::Result<()> {
         let mut out = BufWriter::new(out);
-        writeln!(out, "{}", self.kept.len())?;
-        for &(u, v, weight) in &self.edges {
+        if lines.start == 0 && lines.end > 0 {
+            writeln!(out, "{}", self.kept.len())?;
+        }
+        let edges = lines.start.saturating_sub(1)..lines.end.saturating_sub(1);
+        for &(u, v, weight) in &self.edges[edges] {
             if self.weighted {
                 writeln!(out, "{u} {v} {}", Fifteen(weight))?;
             } else {
@@ -183,11 +198,23 @@ impl Induced {
     /// Writes the names file (`vertex,name` per line) for the kept vertices
     /// that have a name, and returns how many that is.
     pub fn write_names<W: Write>(&self, names: &VertexNames, out: W) -> io::Result<usize> {
+        self.write_name_lines(names, 0..self.kept.len(), out)
+    }
+
+    /// Writes the names of only these kept vertices (by their place in
+    /// [`kept`](Self::kept)), and returns how many had one.
+    pub fn write_name_lines<W: Write>(
+        &self,
+        names: &VertexNames,
+        kept: Range<usize>,
+        out: W,
+    ) -> io::Result<usize> {
         let mut out = BufWriter::new(out);
         let mut count = 0;
-        for (index, &old) in self.kept.iter().enumerate() {
+        let start = kept.start;
+        for (index, &old) in self.kept[kept].iter().enumerate() {
             if let Some(name) = names.name(old) {
-                writeln!(out, "{},{name}", index + 1)?;
+                writeln!(out, "{},{name}", start + index + 1)?;
                 count += 1;
             }
         }
@@ -263,6 +290,35 @@ mod tests {
         assert_eq!(String::from_utf8(out).unwrap(), "1,Four\n2,Three\n");
         let list = cut.edge_list().unwrap();
         assert_eq!((list.vertex_count(), list.edge_count()), (3, 2));
+    }
+
+    #[test]
+    fn files_written_in_pieces_match_the_whole() {
+        let g = graph();
+        let cut = induce(&g, select(&g, SubgraphRule::Ball, 4, 3));
+        let mut whole = Vec::new();
+        cut.write_edges(&mut whole).unwrap();
+        for step in 1..=cut.edge_lines() {
+            let mut pieces = Vec::new();
+            let mut line = 0;
+            while line < cut.edge_lines() {
+                let end = (line + step).min(cut.edge_lines());
+                cut.write_edge_lines(line..end, &mut pieces).unwrap();
+                line = end;
+            }
+            assert_eq!(pieces, whole, "edge file in pieces of {step} lines");
+        }
+        let names = VertexNames::from_pairs([(3, "Three"), (4, "Four"), (5, "Five")]).unwrap();
+        let mut whole = Vec::new();
+        assert_eq!(cut.write_names(&names, &mut whole).unwrap(), 3);
+        let mut pieces = Vec::new();
+        for place in 0..cut.vertex_count() {
+            let wrote = cut
+                .write_name_lines(&names, place..place + 1, &mut pieces)
+                .unwrap();
+            assert_eq!(wrote, 1);
+        }
+        assert_eq!(pieces, whole);
     }
 
     #[test]

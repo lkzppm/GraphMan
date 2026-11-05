@@ -9,6 +9,7 @@ export type {
   Graph,
   MemoryReport,
   NetworkBuilder,
+  Subgraph,
   Parsed,
   SearchResult,
   ShortestPathResult,

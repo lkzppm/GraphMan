@@ -94,7 +94,7 @@ import { useT } from '@/i18n/LocaleProvider';
 import { onThemeFade } from '@/lib/theme';
 import type { Dictionary } from '@/i18n';
 import styles from './Observatory.module.css';
-import { takeGraph } from '@/lib/handoff';
+import { OBSERVATORY_MAX_BYTES, takeGraph } from '@/lib/handoff';
 import { OBSERVATORY_SESSION, keepSession, takeSession } from '@/lib/session';
 import Structures, {
   clampStrip,
@@ -348,8 +348,6 @@ interface DiameterInfo {
 const DIAMETER_METHODS = ['Sweep', 'IFub', 'Bounds', 'Exact'] as const;
 
 type DiameterMethod = (typeof DIAMETER_METHODS)[number];
-
-const MAX_FILE_BYTES = 512 * 1024 * 1024;
 
 type LayoutId = 'force' | 'radial' | 'layered' | 'degree';
 
@@ -1473,10 +1471,14 @@ export default function Observatory() {
    */
   const loadFiles = useCallback(
     async (files: File[]) => {
-      const large = files.find((file) => file.size > MAX_FILE_BYTES);
+      const large = files.find((file) => file.size > OBSERVATORY_MAX_BYTES);
       if (large) {
         setNotice(
-          tRef.current.tooLarge(large.name, formatBytes(large.size), formatBytes(MAX_FILE_BYTES)),
+          tRef.current.tooLarge(
+            large.name,
+            formatBytes(large.size),
+            formatBytes(OBSERVATORY_MAX_BYTES),
+          ),
         );
         return;
       }

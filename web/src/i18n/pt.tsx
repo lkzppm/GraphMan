@@ -276,7 +276,13 @@ export const pt: Dictionary = {
     open: 'Abrir no observatório',
     opening: 'Abrindo',
     export: 'Exportar os dois arquivos',
+    writing: (percent: number) => `Escrevendo os arquivos: ${percent}%`,
+    failedFiles: (reason: string) => `Não foi possível escrever os arquivos: ${reason}.`,
+    outOfMemory:
+      'O navegador ficou sem memória para este recorte. Recarregue a página e tente um menor.',
     filesCaption: 'no formato da disciplina, renumerados a partir de 1',
+    overLimit: (size: string, limit: string) =>
+      `O arquivo deste recorte tem ${size}, acima do limite de ${limit} do observatório, então ele não abre lá. Exporte os arquivos ou faça um recorte menor.`,
     heavy:
       'um recorte deste tamanho abre no observatório, devagar: conte com segundos e uns GB de memória',
   },

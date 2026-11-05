@@ -1045,9 +1045,9 @@
   width: 34px;
   height: 34px;
   border-radius: var(--radius);
-  border: 1px solid color-mix(in srgb, #d97706 45%, transparent);
-  background: color-mix(in srgb, #f5b301 16%, var(--bg));
-  color: #b45309;
+  border: 1px solid color-mix(in srgb, #ca8a04 45%, transparent);
+  background: color-mix(in srgb, #facc15 16%, var(--bg));
+  color: #a16207;
   transition:
     background 0.2s var(--ease),
     transform 0.3s var(--ease-spring);
@@ -1055,7 +1055,7 @@
 
 .warningButton:hover,
 .warningButton:focus-visible {
-  background: color-mix(in srgb, #f5b301 28%, var(--bg));
+  background: color-mix(in srgb, #facc15 28%, var(--bg));
   transform: scale(1.06);
   outline: none;
 }
@@ -1063,11 +1063,31 @@
 .tipWarning {
   width: 260px;
   text-align: left;
-  border-left-color: #d97706;
+  border-left-color: #ca8a04;
 }
 
 :global([data-theme='dark']) .warningButton {
-  color: #fbbf24;
+  color: #fde047;
+}
+
+/* Past what the observatory takes: the warning turns red. */
+.warning[data-limit] .warningButton {
+  border-color: color-mix(in srgb, #dc2626 50%, transparent);
+  background: color-mix(in srgb, #dc2626 12%, var(--bg));
+  color: #b91c1c;
+}
+
+.warning[data-limit] .warningButton:hover,
+.warning[data-limit] .warningButton:focus-visible {
+  background: color-mix(in srgb, #dc2626 22%, var(--bg));
+}
+
+.warning[data-limit] .tipWarning {
+  border-left-color: #dc2626;
+}
+
+:global([data-theme='dark']) .warning[data-limit] .warningButton {
+  color: #f87171;
 }
 
 /* The counters spin in place while a network downloads, keeping their row. */
