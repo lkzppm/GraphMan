@@ -531,6 +531,91 @@
   column-gap: 18px;
 }
 
+/* The whole network needs neither a seed nor a size: the row folds away. */
+.controls {
+  max-height: 200px;
+  transition:
+    grid-template-columns 0.45s var(--ease),
+    column-gap 0.45s var(--ease),
+    max-height 0.45s var(--ease),
+    opacity 0.3s var(--ease),
+    margin-bottom 0.45s var(--ease);
+}
+
+.controls[data-hidden] {
+  max-height: 0;
+  opacity: 0;
+  margin-bottom: -18px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* ---- the years: a segmented choice, and a second year for a range ------- */
+
+.segments {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+
+.segment {
+  appearance: none;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background 0.25s var(--ease),
+    color 0.25s var(--ease);
+}
+
+.segment:hover {
+  color: var(--fg);
+}
+
+.segment[aria-checked='true'] {
+  background: var(--bg);
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.years {
+  display: grid;
+  grid-template-rows: 0fr auto;
+  row-gap: 0;
+  transition:
+    grid-template-rows 0.45s var(--ease),
+    row-gap 0.45s var(--ease);
+}
+
+.years[data-range] {
+  grid-template-rows: 1fr auto;
+  row-gap: 14px;
+}
+
+.fromSlot {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    opacity 0.35s var(--ease),
+    transform 0.45s var(--ease);
+}
+
+.years[data-range] .fromSlot {
+  opacity: 1;
+  transform: none;
+}
+
 .seedSlot {
   min-width: 0;
   overflow: hidden;

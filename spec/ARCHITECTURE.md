@@ -424,9 +424,14 @@ visit, or a later year, reads the early years from disk; the wasm
 `NetworkBuilder` sums the strengths per pair (a hash table keyed by the
 pair) in year order, which makes the weights the CLI's bit for bit, and
 `finish(Csr)` builds the named graph.
-The cut box is local: a rule (a BFS ball around a researcher named in a field
-with the library's suggestions, the most connected, or the earliest, i.e.
-the file's own first vertices), a logarithmic size slider, and three live
+The year box also chooses which years make the network: everything up to
+the year (the course's prefix numbering), the year alone, or a range
+ending in it; the last two sum only those years' strengths and have the
+wasm builder leave out the researchers idle in them (`finish(repr,
+compact)`), renumbering the rest in order. The cut box is local: a rule (a
+BFS ball around a researcher named in a field with the library's
+suggestions, the most connected, or the whole network, i.e. the earliest
+prefix at full size), a logarithmic size slider, and three live
 tiles (`Graph.subgraph(rule, seed, max, files=false)` → vertices, edges and
 the edge file's size, exact up to 200k edges and sampled past that) a
 moment after each change. The result box asks for the files (`files=true`): the
