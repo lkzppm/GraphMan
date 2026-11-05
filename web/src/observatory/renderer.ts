@@ -239,9 +239,9 @@ export class Renderer {
   private pathVertices: Uint32Array | null = null;
   /** The extra edge segments ([a, b] pairs): the selected vertex's edges, then the path's. */
   private extras: StorageBuffer | null = null;
-  /** 1 per vertex, and per edge, that a distribution column lit. */
+  /** 1 per vertex, then per edge (from slot n + 1), that a distribution
+      column lit: one buffer, as the vertex stage binds eight at most. */
   private marks: StorageBuffer | null = null;
-  private edgeMarks: StorageBuffer | null = null;
   /** The CSR rows, kept to build the selected vertex's neighbourhood on the CPU. */
   private csrOffsets: Uint32Array = new Uint32Array(0);
   private csrTargets: Uint32Array = new Uint32Array(0);
@@ -423,10 +423,8 @@ export class Renderer {
     this.path.write(new Uint32Array(1));
     this.extras = storage(gpu, 8, 'read');
     this.extras.write(new Uint32Array(2));
-    this.marks = storage(gpu, slots * 4, 'read');
-    this.marks.write(new Uint32Array(slots));
-    this.edgeMarks = storage(gpu, Math.max(this.edgeCount * 4, 4), 'read');
-    this.edgeMarks.write(new Uint32Array(Math.max(this.edgeCount, 1)));
+    this.marks = storage(gpu, (slots + Math.max(this.edgeCount, 1)) * 4, 'read');
+    this.marks.write(new Uint32Array(slots + Math.max(this.edgeCount, 1)));
 
     this.mirror = new Float32Array(graph.positions);
     this.csrOffsets = graph.csrOffsets;
@@ -463,7 +461,6 @@ export class Renderer {
       labels: this.labels,
       extras: this.extras,
       marks: this.marks,
-      edgeMarks: this.edgeMarks,
     };
     this.edges.set(edgeBindings);
     this.treeEdges.set(edgeBindings);
@@ -599,7 +596,6 @@ export class Renderer {
     this.pathVertices = null;
     this.extras = null;
     this.marks = null;
-    this.edgeMarks = null;
     this.morphFrom = null;
     this.morphDest = null;
     this.morphTarget = null;
@@ -790,15 +786,18 @@ export class Renderer {
       given `edges` (one per edge, in the loaded order), only those edges;
       without them, the edges between two marked vertices. `null` clears. */
   setMarks(vertices: Uint32Array | null, edges: Uint32Array | null) {
-    if (!this.marks || !this.edgeMarks) return;
+    if (!this.marks) return;
     if (!vertices) {
       if (this.viewValues.marked === 0) return;
       this.viewValues.marked = 0;
       this.touch(true);
       return;
     }
-    this.marks.write(bytes(vertices));
-    if (edges) this.edgeMarks.write(bytes(edges));
+    const slots = this.n + 1;
+    const joined = new Uint32Array(slots + Math.max(this.edgeCount, 1));
+    joined.set(vertices.subarray(0, slots));
+    if (edges) joined.set(edges.subarray(0, this.edgeCount), slots);
+    this.marks.write(bytes(joined));
     this.viewValues.marked = edges ? 2 : 1;
     this.touch(true);
   }
