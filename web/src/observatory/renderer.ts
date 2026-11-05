@@ -820,9 +820,11 @@ export class Renderer {
     this.dirty = true;
   }
 
-  setSimulate(on: boolean) {
+  /** Turns the simulation on or off; on, it reheats unless told not to
+      (a restored picture stays where it was). */
+  setSimulate(on: boolean, reheat = true) {
     this.simulate = on;
-    if (on) this.reheat(0.6);
+    if (on && reheat) this.reheat(0.6);
   }
 
   /** Pins vertex `v` at a world position while the pointer drags it. */

@@ -224,6 +224,7 @@ src/lib/studies.ts                types of studies/results.json (synced into src
 src/lib/format.ts                 number formatting
 src/lib/dblp.ts                   the monthly build: manifest, part-aware cached fetch + gunzip, save
 src/lib/handoff.ts                a graph handed from the DBLP tab to the observatory in memory
+src/lib/session.ts                what a page parks on a client-side navigation and takes back on return
 src/observatory/Observatory.tsx   state, file loading, pointer interaction, panels
 src/observatory/renderer.ts       vgpu: buffers, compute step, node + edge draws
 src/observatory/shaders.ts        WGSL (plain strings, reflected by vgpu)
@@ -371,6 +372,15 @@ not have. The page's drawings are worked out on the same sample graph in
 `web/src/lib/sample.ts`, whose BFS, DFS, components and shortest path
 mirror the library's order (ascending neighbours, DFS over neighbour
 iterators), so what is drawn is what the examples' comments say.
+
+Leaving the observatory for another tab does not close the graph: on
+unmount it parks the wasm graph, the search's result, the positions as
+drawn, the camera and every panel's state in `lib/session.ts`, and takes
+them back on its next mount, reloading the renderer from the saved
+positions without reheating. The DBLP console parks its summed network the
+same way, keyed by the build it came from. The slots are memory, so a
+reload empties them, and closing the graph frees them; a cut handed over
+from the console supersedes a parked graph.
 
 ### The DBLP tab
 
