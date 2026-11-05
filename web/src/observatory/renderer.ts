@@ -56,6 +56,17 @@ export interface Theme {
   target: Rgba;
 }
 
+/** A graph needs a larger buffer than this GPU allows. */
+export class GpuLimitError extends Error {
+  constructor(
+    readonly needed: number,
+    readonly limit: number,
+  ) {
+    super(`needs a GPU buffer of ${needed} bytes, the limit is ${limit}`);
+    this.name = 'GpuLimitError';
+  }
+}
+
 /** What the renderer needs from a loaded graph (all indexed by vertex id). */
 export interface GraphBuffers {
   vertexCount: number;
@@ -84,6 +95,9 @@ export interface Camera {
   /** CSS pixels per world unit. */
   zoom: number;
 }
+
+/** WebGPU's default for the largest storage buffer a device may bind. */
+const DEFAULT_STORAGE_LIMIT = 128 * 1024 * 1024;
 
 /** Above this many vertices the O(n²) repulsion is skipped by default. */
 export const SIMULATION_LIMIT = 30_000;
@@ -192,6 +206,8 @@ export class UnsupportedError extends Error {
 
 export class Renderer {
   private gpu: Gpu;
+  /** The largest storage buffer this device can create and bind. */
+  private storageLimit: number;
   private surface: Surface;
   private view: SharedUniforms<ViewValues>;
   private viewValues: ViewValues = { ...EMPTY_VIEW };
@@ -286,8 +302,9 @@ export class Renderer {
   onSettled: (() => void) | null = null;
   onError: ((message: string) => void) | null = null;
 
-  private constructor(gpu: Gpu, canvas: HTMLCanvasElement, theme: Theme) {
+  private constructor(gpu: Gpu, canvas: HTMLCanvasElement, theme: Theme, storageLimit: number) {
     this.gpu = gpu;
+    this.storageLimit = storageLimit;
     this.theme = theme;
     this.surface = surface(gpu, canvas, {
       dpr: [1, 2],
@@ -341,12 +358,28 @@ export class Renderer {
       throw new UnsupportedError('This browser does not expose WebGPU.');
     }
     let gpu: Gpu;
+    let storageLimit: number;
     try {
-      gpu = await init({ powerPreference: 'high-performance', label: 'graphman' });
+      // A device gets WebGPU's default limits unless it asks for more, and
+      // those stop at 128 MiB a buffer: about 16.7M edges.
+      const powerPreference = 'high-performance';
+      const limits = (await navigator.gpu.requestAdapter({ powerPreference }))?.limits;
+      storageLimit = Math.min(
+        limits?.maxStorageBufferBindingSize ?? DEFAULT_STORAGE_LIMIT,
+        limits?.maxBufferSize ?? DEFAULT_STORAGE_LIMIT,
+      );
+      gpu = await init({
+        powerPreference,
+        label: 'graphman',
+        requiredLimits: limits && {
+          maxStorageBufferBindingSize: limits.maxStorageBufferBindingSize,
+          maxBufferSize: limits.maxBufferSize,
+        },
+      });
     } catch (error) {
       throw new UnsupportedError(error instanceof Error ? error.message : String(error));
     }
-    return new Renderer(gpu, canvas, theme);
+    return new Renderer(gpu, canvas, theme, storageLimit);
   }
 
   get hasGraph(): boolean {
@@ -387,6 +420,13 @@ export class Renderer {
 
   /** Uploads a graph and starts drawing it. */
   load(graph: GraphBuffers, linkLength: number) {
+    const needed = Math.max(
+      graph.edges.byteLength,
+      graph.csrTargets.byteLength,
+      // The marks hold a slot per vertex and per edge.
+      (graph.vertexCount + 1 + graph.edges.length / 2) * 4,
+    );
+    if (needed > this.storageLimit) throw new GpuLimitError(needed, this.storageLimit);
     this.unloadGraph();
     const n = graph.vertexCount;
     this.n = n;

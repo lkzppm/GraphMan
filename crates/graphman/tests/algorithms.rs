@@ -214,6 +214,38 @@ fn radial_layout_partitions_the_circle() {
 }
 
 #[test]
+fn one_radial_layout_serves_every_tree_of_a_forest() {
+    let g = Csr::build(&random_graph(13, 2000, 1500)).unwrap();
+    let mut shared = algo::RadialLayout::new(g.vertex_count());
+    let mut tree = algo::SearchTree::new(g.vertex_count());
+    let mut seen = vec![false; g.vertex_count() + 1];
+    let mut trees = 0;
+    for root in 1..=g.vertex_count() as u32 {
+        if seen[root as usize] {
+            continue;
+        }
+        trees += 1;
+        algo::bfs_into(&g, root, &mut tree, &mut ());
+        shared.fill(&tree);
+        let alone = algo::radial_layout(&tree);
+        for &v in tree.order() {
+            seen[v as usize] = true;
+            assert_eq!(shared.angle[v as usize], alone.angle[v as usize]);
+            assert_eq!(
+                shared.subtree_size[v as usize],
+                alone.subtree_size[v as usize]
+            );
+        }
+        // The same tree again gives the same layout, not one built on the last.
+        shared.fill(&tree);
+        for &v in tree.order() {
+            assert_eq!(shared.angle[v as usize], alone.angle[v as usize]);
+        }
+    }
+    assert!(trees > 1, "the graph should have several components");
+}
+
+#[test]
 fn tree_layout_gives_every_leaf_its_slot_and_centres_parents() {
     // 1 -> {2, 3}, 2 -> {4, 5}, and a second tree 6 -> 7.
     let parents = [0, 0, 1, 1, 2, 2, 0, 6];

@@ -16,50 +16,67 @@ pub struct RadialLayout {
     pub angle: Vec<f32>,
     /// Vertices in the subtree rooted at each vertex, itself included.
     pub subtree_size: Vec<u32>,
+    /// Where the next child of each vertex starts.
+    cursor: Vec<f64>,
+    /// The width of each vertex's wedge.
+    span: Vec<f64>,
 }
 
-/// Assigns each vertex a wedge proportional to its subtree size, nested
-/// inside its parent's wedge, in discovery order.
+impl RadialLayout {
+    /// A blank layout for a graph of `n` vertices, to [`fill`](Self::fill).
+    pub fn new(n: usize) -> Self {
+        Self {
+            angle: vec![0.0; n + 1],
+            subtree_size: vec![0; n + 1],
+            cursor: vec![0.0; n + 1],
+            span: vec![0.0; n + 1],
+        }
+    }
+
+    /// Assigns each vertex of `tree` a wedge proportional to its subtree
+    /// size, nested inside its parent's wedge, in discovery order. Costs
+    /// `O(reached)` and leaves every other vertex as it was, so one layout
+    /// serves all the trees of a forest: a network of DBLP's size has tens of
+    /// thousands of components, and arrays of `n` for each would dwarf the
+    /// layout itself.
+    pub fn fill(&mut self, tree: &SearchTree) {
+        let parents = tree.parents_raw();
+        let order = tree.order();
+        for &v in order {
+            let v = v as usize;
+            self.subtree_size[v] = 1;
+            self.cursor[v] = 0.0;
+            self.span[v] = 0.0;
+        }
+        for &v in order.iter().rev() {
+            let p = parents[v as usize];
+            if p != NO_VERTEX {
+                self.subtree_size[p as usize] += self.subtree_size[v as usize];
+            }
+        }
+        if let Some(&root) = order.first() {
+            self.span[root as usize] = TAU;
+        }
+        for &v in order {
+            let p = parents[v as usize];
+            if p != NO_VERTEX {
+                let children = (self.subtree_size[p as usize] - 1) as f64;
+                let width = self.span[p as usize] * self.subtree_size[v as usize] as f64 / children;
+                let start = self.cursor[p as usize];
+                self.cursor[p as usize] = start + width;
+                self.cursor[v as usize] = start;
+                self.span[v as usize] = width;
+            }
+            self.angle[v as usize] = (self.cursor[v as usize] + self.span[v as usize] / 2.0) as f32;
+        }
+    }
+}
+
+/// The layout of one search tree; see [`RadialLayout::fill`].
 pub fn radial_layout(tree: &SearchTree) -> RadialLayout {
-    let n = tree.vertex_count();
-    let parents = tree.parents_raw();
-    let order = tree.order();
-
-    let mut subtree_size = vec![0u32; n + 1];
-    for &v in order {
-        subtree_size[v as usize] = 1;
-    }
-    for &v in order.iter().rev() {
-        let p = parents[v as usize];
-        if p != NO_VERTEX {
-            subtree_size[p as usize] += subtree_size[v as usize];
-        }
-    }
-
-    // `cursor[p]` is where the next child of `p` starts; `span[v]` is the
-    // width of `v`'s wedge.
-    let mut cursor = vec![0f64; n + 1];
-    let mut span = vec![0f64; n + 1];
-    let mut angle = vec![0f32; n + 1];
-    if let Some(&root) = order.first() {
-        span[root as usize] = TAU;
-    }
-    for &v in order {
-        let p = parents[v as usize];
-        if p != NO_VERTEX {
-            let children = (subtree_size[p as usize] - 1) as f64;
-            let width = span[p as usize] * subtree_size[v as usize] as f64 / children;
-            let start = cursor[p as usize];
-            cursor[p as usize] = start + width;
-            cursor[v as usize] = start;
-            span[v as usize] = width;
-        }
-        angle[v as usize] = (cursor[v as usize] + span[v as usize] / 2.0) as f32;
-    }
-    RadialLayout {
-        angle,
-        subtree_size,
-    }
+    let mut layout = RadialLayout::new(tree.vertex_count());
+    layout.fill(tree);
+    layout
 }
 
 /// A layered drawing of a rooted forest: how far each vertex is from its root
