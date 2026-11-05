@@ -77,11 +77,9 @@ interface Preview {
   bytes: number;
 }
 
-/** The year a fresh page offers: the course file's, 2009, when the build
-    reaches it, else the last. */
+/** The year a fresh page offers: the last one, the whole network. */
 function initialYear(manifest: DblpManifest): number {
-  const last = manifest.years[manifest.years.length - 1].year;
-  return manifest.years.some((entry) => entry.year === 2009) ? 2009 : last;
+  return manifest.years[manifest.years.length - 1].year;
 }
 
 /**
