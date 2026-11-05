@@ -748,6 +748,10 @@ export const en = {
       `${name} is ${size}; the observatory accepts files up to ${limit}.`,
     distribution: 'Distribution',
     distributions: { degree: 'Degrees', weight: 'Weights' },
+    openTree: 'Open the search tree as a graph',
+    axisMin: { degree: 'Light the vertices of the lowest degree', weight: 'Light the lightest edges' },
+    axisMax: { degree: 'Light the vertices of the highest degree', weight: 'Light the heaviest edges' },
+    columnHint: 'click a column to light its vertices; click again to clear',
     distributionUnit: { degree: 'vertices per degree', weight: 'edges per weight' },
     distributionBucket: {
       degree: (range: string, count: string) => `${count} of degree ${range}`,

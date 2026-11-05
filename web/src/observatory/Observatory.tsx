@@ -14,6 +14,7 @@ import {
   Download,
   Expand,
   FlaskConical,
+  GitFork,
   Info,
   Focus,
   Hash,
@@ -2450,6 +2451,61 @@ export default function Observatory() {
   const root = useMemo(() => resolveVertex(rootInput), [resolveVertex, rootInput]);
   const rootValid = meta !== null && Number.isInteger(root) && root >= 1 && root <= meta.vertices;
 
+  /** The search's tree as a graph of its own: the reached vertices
+      renumbered in discovery order (the origin is 1), the tree edges with
+      the graph's weights, and a names file carrying the original names, or
+      the original numbers when the graph had none. It goes through the
+      picker like a dropped file. */
+  const openTree = useCallback(() => {
+    const shown = searchRef.current;
+    const current = metaRef.current;
+    const graph = graphRef.current;
+    if (!shown || !current || !graph) return;
+    const reached = shown.reached;
+    const rank = shown.ranks;
+    const pairs = current.edgeList;
+    const weights = current.edgeWeights;
+    /** The weight of the edge `u v` (`u < v`): a binary search of the
+        sorted pairs, which the names of a tree edge are not. */
+    const weightOf = (u: number, v: number): number => {
+      if (!weights) return 1;
+      const [a, b] = u < v ? [u, v] : [v, u];
+      let lo = 0;
+      let hi = pairs.length / 2;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        const pu = pairs[2 * mid];
+        const pv = pairs[2 * mid + 1];
+        if (pu === a && pv === b) return weights[mid];
+        if (pu < a || (pu === a && pv < b)) lo = mid + 1;
+        else hi = mid;
+      }
+      return 1;
+    };
+    const lines: string[] = [String(reached)];
+    const names: string[] = [];
+    for (let r = 0; r < reached; r++) {
+      const v = shown.order[r];
+      const id = r + 1;
+      names.push(`${id},${graph.name(v) ?? String(v)}`);
+      if (r === 0) continue;
+      const parent = shown.parents[v];
+      const parentId = rank[parent] + 1;
+      lines.push(weights ? `${parentId} ${id} ${weightOf(parent, v)}` : `${parentId} ${id}`);
+    }
+    const stem = `${current.name.replace(/\.[^.]+$/, '')}_${shown.kind}_${shown.root}`;
+    const encoder = new TextEncoder();
+    void parseRef.current(`${stem}.txt`, encoder.encode(lines.join('\n') + '\n'), {
+      name: `${stem}_vertices.txt`,
+      bytes: encoder.encode(names.join('\n') + '\n'),
+    });
+  }, []);
+
+  /** A distribution column lit: the renderer dims everything else. */
+  const markVertices = useCallback((vertices: Uint32Array | null, edges: Uint32Array | null) => {
+    rendererRef.current?.setMarks(vertices, edges);
+  }, []);
+
   /** The find field: the vertex typed is selected and its neighbourhood framed. */
   const findVertex = useCallback(() => {
     const v = resolveVertex(findInput);
@@ -2757,7 +2813,12 @@ export default function Observatory() {
                       />
                       <Tile label={t.meanDegree} value={meta.degree.mean.toFixed(2)} />
                     </div>
-                    <Distribution t={t} meta={meta} />
+                    <Distribution
+                      key={`${meta.name}:${meta.vertices}:${meta.edges}:${meta.parseMs}`}
+                      t={t}
+                      meta={meta}
+                      onMark={markVertices}
+                    />
                   </>
                 )}
               </Swap>
@@ -3539,6 +3600,17 @@ export default function Observatory() {
                       ) : (
                         <Network size={15} />
                       )}
+                    </IconButton>
+                  </div>
+                </div>
+              )}
+
+              {/* The search's tree as a graph, left centre */}
+              {search && (
+                <div className={`${styles.floating} ${styles.floatingLeftCenter}`}>
+                  <div className={styles.cluster}>
+                    <IconButton label={t.openTree} onClick={openTree}>
+                      <GitFork size={15} />
                     </IconButton>
                   </div>
                 </div>
@@ -4368,12 +4440,74 @@ function Tile({
     graph, how many edges fall in each weight range (a switch picks which).
     Both charts stay mounted: switching grows the new bars from the axis as
     the old ones sink into it. */
-function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
+/** A column lit on the canvas: a bar of one layer, or an end of its axis. */
+type Lit = { which: 'degree' | 'weight'; bar: number | 'min' | 'max' };
+
+function Distribution({
+  t,
+  meta,
+  onMark,
+}: {
+  t: Strings;
+  meta: GraphMeta;
+  onMark: (vertices: Uint32Array | null, edges: Uint32Array | null) => void;
+}) {
   const [of, setOf] = useState<'degree' | 'weight'>('degree');
   /** The column under the pointer: its value replaces the unit above. */
   const [hot, setHot] = useState<number | null>(null);
+  /** The column clicked: its vertices stay lit on the canvas, the rest ghostly. */
+  const [lit, setLit] = useState<Lit | null>(null);
   const weights = meta.edgeWeights;
   const showing = weights ? of : 'degree';
+  const onMarkRef = useRef(onMark);
+  useEffect(() => {
+    onMarkRef.current = onMark;
+  });
+  // Leaving the panel, or the graph, clears the canvas.
+  useEffect(() => () => onMarkRef.current(null, null), []);
+  /** Lights `next` on the canvas (a click on the lit column clears it). */
+  const light = (next: Lit | null, bars: Bar[]) => {
+    const same = next && lit && next.which === lit.which && next.bar === lit.bar;
+    const chosen = same ? null : next;
+    setLit(chosen);
+    if (!chosen) {
+      onMarkRef.current(null, null);
+      return;
+    }
+    const n = meta.vertices;
+    const marks = new Uint32Array(n + 1);
+    if (chosen.which === 'degree') {
+      const [lo, hi] =
+        chosen.bar === 'min'
+          ? [meta.degree.min, meta.degree.min]
+          : chosen.bar === 'max'
+            ? [meta.degree.max, meta.degree.max]
+            : [bars[chosen.bar].lo, bars[chosen.bar].hi];
+      for (let v = 1; v <= n; v++) {
+        const d = meta.degrees[v];
+        if (d >= lo && d <= hi) marks[v] = 1;
+      }
+      onMarkRef.current(marks, null);
+      return;
+    }
+    if (!weights || !meta.weights) return;
+    const last = bars.length - 1;
+    const [lo, hi, closed] =
+      chosen.bar === 'min'
+        ? [meta.weights.min, meta.weights.min, true]
+        : chosen.bar === 'max'
+          ? [meta.weights.max, meta.weights.max, true]
+          : [bars[chosen.bar].lo, bars[chosen.bar].hi, chosen.bar === last];
+    const edgeMarks = new Uint32Array(Math.max(weights.length, 1));
+    for (let e = 0; e < weights.length; e++) {
+      const w = weights[e];
+      if (w < lo || (closed ? w > hi : w >= hi)) continue;
+      edgeMarks[e] = 1;
+      marks[meta.edgeList[2 * e]] = 1;
+      marks[meta.edgeList[2 * e + 1]] = 1;
+    }
+    onMarkRef.current(marks, edgeMarks);
+  };
   const degreeBars = useMemo(() => degreeHistogram(meta.degrees, meta.degree.max), [meta]);
   const weightBars = useMemo(
     () => (weights && meta.weights ? weightHistogram(weights, meta.weights) : null),
@@ -4383,7 +4517,7 @@ function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
     {
       which: 'degree' as const,
       bars: degreeBars,
-      axis: ['0', String(meta.degree.max)],
+      axis: [String(meta.degree.min), String(meta.degree.max)],
     },
     ...(weightBars && meta.weights
       ? [
@@ -4457,6 +4591,13 @@ function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
                 setHot(Math.min(n - 1, Math.max(0, Math.floor(share * n))));
               }}
               onPointerLeave={() => setHot(null)}
+              // The column clicked lights its vertices on the canvas.
+              onClick={() => {
+                if (layer.which !== showing || hot === null) return;
+                light({ which: layer.which, bar: hot }, layer.bars);
+              }}
+              title={t.columnHint}
+              data-lit={(lit?.which === layer.which && typeof lit.bar === 'number') || undefined}
             >
               {layer.bars.map((b, i) => (
                 <span
@@ -4466,6 +4607,7 @@ function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
                     transitionDelay: `${(i * 160) / layer.bars.length}ms`,
                   }}
                   data-hot={(layer.which === showing && hot === i) || undefined}
+                  data-marked={(lit?.which === layer.which && lit.bar === i) || undefined}
                 />
               ))}
             </div>
@@ -4480,8 +4622,26 @@ function Distribution({ t, meta }: { t: Strings; meta: GraphMeta }) {
             data-active={layer.which === showing || undefined}
             aria-hidden={layer.which !== showing}
           >
-            <span>{layer.axis[0]}</span>
-            <span>{layer.axis[1]}</span>
+            <button
+              type="button"
+              className={styles.axisEnd}
+              aria-pressed={lit?.which === layer.which && lit.bar === 'min'}
+              aria-label={t.axisMin[layer.which]}
+              title={t.axisMin[layer.which]}
+              onClick={() => light({ which: layer.which, bar: 'min' }, layer.bars)}
+            >
+              {layer.axis[0]}
+            </button>
+            <button
+              type="button"
+              className={styles.axisEnd}
+              aria-pressed={lit?.which === layer.which && lit.bar === 'max'}
+              aria-label={t.axisMax[layer.which]}
+              title={t.axisMax[layer.which]}
+              onClick={() => light({ which: layer.which, bar: 'max' }, layer.bars)}
+            >
+              {layer.axis[1]}
+            </button>
           </div>
         ))}
       </div>
@@ -4533,6 +4693,10 @@ function Swap({ view, children }: { view: string; children: ReactNode }) {
 interface Bar {
   range: string;
   count: number;
+  /** The values the bar covers: degrees `lo..=hi`, weights `lo..hi` (the
+      last weight bar closed at `hi`). */
+  lo: number;
+  hi: number;
 }
 
 /** Vertices per degree, wide ranges bucketed to at most 48 bars. */
@@ -4547,7 +4711,7 @@ function degreeHistogram(degrees: Uint32Array, max: number): Bar[] {
     const to = Math.max(from, Math.floor((b + 1) * per) - 1);
     let count = 0;
     for (let d = from; d <= to; d++) count += counts[d];
-    out.push({ range: from === to ? String(from) : `${from}–${to}`, count });
+    out.push({ range: from === to ? String(from) : `${from}–${to}`, count, lo: from, hi: to });
   }
   return out;
 }
@@ -4567,6 +4731,8 @@ function weightHistogram(weights: Float64Array, { min, max }: { min: number; max
         ? formatWeight(min)
         : `${formatWeight(min + b * width)}–${formatWeight(min + (b + 1) * width)}`,
     count,
+    lo: buckets === 1 ? min : min + b * width,
+    hi: buckets === 1 ? max : min + (b + 1) * width,
   }));
 }
 
