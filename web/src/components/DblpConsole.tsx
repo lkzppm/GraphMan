@@ -36,6 +36,7 @@ import {
 import { formatBytes, formatInt } from '@/lib/format';
 import { loadGraphman, type Graph, type GraphmanModule } from '@/lib/graphman';
 import { offerGraph } from '@/lib/handoff';
+import { DBLP_SESSION, keepSession, takeSession } from '@/lib/session';
 import styles from './DblpConsole.module.css';
 
 /** How a cut picks its vertices (the wasm `SubgraphKind`). */
@@ -70,6 +71,16 @@ interface Job {
 
 /** How many years download ahead of the one being summed. */
 const AHEAD = 4;
+
+/** What the console parks when it unmounts with a network summed, and
+    takes back on its next mount if the build is still the same. */
+interface DblpSession {
+  base: Base;
+  builtAt: number;
+  seedInput: string;
+  rule: Rule;
+  size: number;
+}
 
 interface Preview {
   vertices: number;
@@ -125,7 +136,24 @@ export default function DblpConsole() {
     const controller = new AbortController();
     fetchManifest(controller.signal)
       .then((loaded) => {
-        setYear(initialYear(loaded));
+        // A network left here on the way out comes back, if it is of this build.
+        const saved = takeSession<DblpSession>(DBLP_SESSION);
+        if (cancelled) {
+          // Gone again before the manifest came: left for the next visit.
+          if (saved) keepSession(DBLP_SESSION, saved);
+          return;
+        }
+        if (saved && saved.builtAt === loaded.builtAt) {
+          baseRef.current = saved.base;
+          setBase(saved.base);
+          setYear(saved.base.year);
+          setSeedInput(saved.seedInput);
+          setRule(saved.rule);
+          setSize(saved.size);
+        } else {
+          saved?.base.graph.free();
+          setYear(initialYear(loaded));
+        }
         setManifest(loaded);
       })
       .catch((error: unknown) => {
@@ -138,11 +166,19 @@ export default function DblpConsole() {
     };
   }, []);
 
-  // Leaving the page stops a download and frees the network held in wasm.
+  /** The inputs as of the last render, for the snapshot taken on unmount. */
+  const latestRef = useRef({ seedInput, rule, size, builtAt: manifest?.builtAt ?? 0 });
+  useEffect(() => {
+    latestRef.current = { seedInput, rule, size, builtAt: manifest?.builtAt ?? 0 };
+  });
+
+  // Leaving the page stops a download; a network summed is parked for the
+  // next visit, not freed.
   useEffect(
     () => () => {
       jobRef.current?.abort();
-      baseRef.current?.graph.free();
+      const base = baseRef.current;
+      if (base) keepSession<DblpSession>(DBLP_SESSION, { base, ...latestRef.current });
       baseRef.current = null;
     },
     [],

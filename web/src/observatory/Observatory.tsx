@@ -92,6 +92,7 @@ import { onThemeFade } from '@/lib/theme';
 import type { Dictionary } from '@/i18n';
 import styles from './Observatory.module.css';
 import { takeGraph } from '@/lib/handoff';
+import { OBSERVATORY_SESSION, keepSession, takeSession } from '@/lib/session';
 import Structures, {
   clampStrip,
   storedStripHeight,
@@ -375,6 +376,41 @@ const SPACING_SLIDERS: Record<LayoutId, SpacingId[]> = {
 
 const DEFAULT_SPACING: Spacing = { link: 1, ring: 1, level: 1, across: 1, circle: 1 };
 
+/** What the observatory parks when it unmounts with a graph open, and
+    takes back on its next mount: the graph itself (and the search's wasm
+    result) stay allocated, the picture is the positions as they were, and
+    the rest is the panel state the visitor was looking at. */
+interface ObservatorySession {
+  graph: Graph;
+  meta: GraphMeta;
+  names: NamesInfo | null;
+  positions: Float32Array;
+  camera: Camera;
+  layout: LayoutId;
+  treeDirection: TreeDirection;
+  spacing: Spacing;
+  stretched: [number, number];
+  simulate: boolean;
+  kind: SearchKindName;
+  frontier: FrontierName;
+  dfsWay: DfsName;
+  mode: SearchMode;
+  rootInput: string;
+  targetInput: string;
+  pathOnly: boolean;
+  search: Search | null;
+  reveal: number;
+  walk: number;
+  selected: number;
+  component: number;
+  diameterMethod: DiameterMethod;
+  diameterBudget: string;
+  diameterResults: Partial<Record<DiameterMethod, DiameterInfo>>;
+  showNames: boolean;
+  showLabels: boolean;
+  showWeights: boolean;
+}
+
 /** A slider reaches this many doublings either way (a factor of 1/4 to 4). */
 const SPACING_DOUBLINGS = 2;
 
@@ -649,6 +685,39 @@ export default function Observatory() {
   /** Keep the whole graph in view while the layout settles, until the user takes over. */
   const autoFit = useRef(false);
 
+  /** The panel state as of the last render, for the snapshot taken on unmount. */
+  const latestRef = useRef<Omit<
+    ObservatorySession,
+    'graph' | 'meta' | 'positions' | 'camera' | 'search' | 'stretched'
+  > | null>(null);
+  useEffect(() => {
+    latestRef.current = {
+      names,
+      layout,
+      treeDirection,
+      spacing,
+      simulate,
+      kind,
+      frontier,
+      dfsWay,
+      mode,
+      rootInput,
+      targetInput,
+      pathOnly,
+      reveal,
+      walk,
+      selected,
+      component,
+      diameterMethod,
+      diameterBudget,
+      diameterResults,
+      showNames,
+      showLabels,
+      showWeights,
+    };
+  });
+  const restoreRef = useRef<(saved: ObservatorySession) => void>(() => {});
+
   // ---- boot: wasm + WebGPU -------------------------------------------------
 
   useEffect(() => {
@@ -668,7 +737,10 @@ export default function Observatory() {
           if (autoFit.current) fitRef.current();
         };
         setStatus({ kind: 'ready' });
-        // A network built on the DBLP tab and opened here.
+        // The graph left here on the way out, if any, comes back as it was...
+        const saved = takeSession<ObservatorySession>(OBSERVATORY_SESSION);
+        if (saved) restoreRef.current(saved);
+        // ...unless a network built on the DBLP tab was opened here since.
         const handoff = takeGraph();
         if (handoff) void parseRef.current(handoff.name, handoff.bytes, handoff.names);
       } catch (error) {
@@ -683,6 +755,24 @@ export default function Observatory() {
     })();
     return () => {
       cancelled = true;
+      // Leaving with a graph open parks it, picture and panels included,
+      // for the next visit; it is not freed.
+      const graph = graphRef.current;
+      const renderer = rendererRef.current;
+      const latest = latestRef.current;
+      const meta = metaRef.current;
+      if (graph && renderer && latest && meta) {
+        keepSession<ObservatorySession>(OBSERVATORY_SESSION, {
+          ...latest,
+          graph,
+          meta,
+          positions: renderer.positionsMirror.slice(),
+          camera: { ...cameraRef.current },
+          search: searchRef.current,
+          stretched: stretchedRef.current,
+        });
+        graphRef.current = null;
+      }
       rendererRef.current = null;
       lease.release();
     };
@@ -1233,6 +1323,98 @@ export default function Observatory() {
   );
 
   parseRef.current = parseBytes;
+
+  /** Shows a parked graph again: the renderer gets the positions as they
+      were, every panel its state, and nothing is recomputed or reheated. */
+  const restoreSession = useCallback(
+    (saved: ObservatorySession) => {
+      const wasm = wasmRef.current;
+      const renderer = rendererRef.current;
+      if (!wasm || !renderer) {
+        saved.search?.result.free();
+        saved.graph.free();
+        return;
+      }
+      graphRef.current = saved.graph;
+      nameCache.current.clear();
+      renderer.load(
+        {
+          vertexCount: saved.meta.vertices,
+          edges: saved.meta.edgeList,
+          csrOffsets: saved.graph.adjacencyOffsets(),
+          csrTargets: saved.graph.adjacencyTargets(),
+          positions: saved.positions,
+          componentLabels: saved.meta.componentLabels,
+        },
+        wasm.edgeLength(),
+      );
+      setMeta(saved.meta);
+      metaRef.current = saved.meta;
+      setNames(saved.names);
+      setLayout(saved.layout);
+      layoutRef.current = saved.layout;
+      setTreeDirection(saved.treeDirection);
+      treeDirectionRef.current = saved.treeDirection;
+      spacingRef.current = saved.spacing;
+      setSpacing(saved.spacing);
+      renderer.setForceSpacing(saved.spacing.link);
+      stretchedRef.current = saved.stretched;
+      setKind(saved.kind);
+      setFrontier(saved.frontier);
+      setDfsWay(saved.dfsWay);
+      setMode(saved.mode);
+      setRootInput(saved.rootInput);
+      setTargetInput(saved.targetInput);
+      setPathOnly(saved.pathOnly);
+      setDiameterMethod(saved.diameterMethod);
+      setDiameterBudget(saved.diameterBudget);
+      setDiameterResults(saved.diameterResults);
+      setComponent(saved.component);
+      renderer.setComponent(saved.component);
+      keysTarget.current = saved.component ? 'components' : 'search';
+      const shown = saved.search;
+      // The refs follow at once: a handoff may clear the graph before a render.
+      setSearch(shown);
+      searchRef.current = shown;
+      if (shown) {
+        renderer.setSearch({
+          kind: shown.kind,
+          levels: shown.levels,
+          ranks: shown.ranks,
+          parents: shown.parents,
+          depth: shown.depth,
+        });
+        renderer.setPath(shown.target, shown.path);
+        renderer.setPathOnly(saved.pathOnly);
+        renderer.setReveal(rankOf(shown, saved.reveal));
+        renderer.setWalk(shown.path ? saved.walk : -1);
+      } else {
+        renderer.setSearch(null);
+      }
+      revealRef.current = saved.reveal;
+      setReveal(saved.reveal);
+      walkRef.current = saved.walk;
+      setWalk(saved.walk);
+      setPlaying(false);
+      setSelected(saved.selected);
+      selectedRef.current = saved.selected;
+      renderer.setSelected(saved.selected);
+      setHovered(0);
+      renderer.setHovered(0);
+      setSimulate(saved.simulate);
+      renderer.setSimulate(saved.simulate, false);
+      setShowNames(saved.showNames);
+      setShowLabels(saved.showLabels);
+      setShowWeights(saved.showWeights);
+      applyCamera(saved.camera);
+      autoFit.current = false;
+      setNotice(null);
+      setStatus({ kind: 'ready' });
+    },
+    [applyCamera],
+  );
+
+  restoreRef.current = restoreSession;
 
   /** A names file on its own: into the open graph, or the one waiting. */
   const addNames = useCallback(
