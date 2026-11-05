@@ -82,6 +82,7 @@ import {
 import {
   acquireRenderer,
   SIMULATION_LIMIT,
+  GpuLimitError,
   UnsupportedError,
   readTheme,
   type Camera,
@@ -794,7 +795,15 @@ export default function Observatory() {
       // for the next visit; it is not freed.
       const parked = snapshot();
       if (parked) {
-        keepSession<ObservatorySession>(OBSERVATORY_SESSION, parked);
+        keepSession<ObservatorySession>(OBSERVATORY_SESSION, parked, {
+          bytes: parked.graph.heapBytes,
+          release: () => {
+            for (let held: ObservatorySession | null = parked; held; held = held.parent ?? null) {
+              held.search?.result.free();
+              held.graph.free();
+            }
+          },
+        });
         graphRef.current = null;
         parentRef.current = null;
       }
@@ -1295,7 +1304,12 @@ export default function Observatory() {
         autoFit.current = true;
         requestAnimationFrame(() => fit(false));
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message =
+          error instanceof GpuLimitError
+            ? tRef.current.gpuLimit(formatBytes(error.needed), formatBytes(error.limit))
+            : error instanceof Error
+              ? error.message
+              : String(error);
         setPending(null);
         setNotice(tRef.current.couldNotLoad(name, message));
         setStatus({ kind: 'ready' });

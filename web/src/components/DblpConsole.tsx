@@ -1,5 +1,6 @@
 'use client';
 
+import { flushSync } from 'react-dom';
 import {
   Calendar,
   ChevronDown,
@@ -35,9 +36,22 @@ import {
   type DblpYear,
 } from '@/lib/dblp';
 import { formatBytes, formatInt } from '@/lib/format';
-import { loadGraphman, type Graph, type GraphmanModule, type Subgraph } from '@/lib/graphman';
+import {
+  loadGraphman,
+  type Graph,
+  type GraphmanModule,
+  type NetworkBuilder,
+  type Subgraph,
+} from '@/lib/graphman';
 import { OBSERVATORY_MAX_BYTES, offerGraph } from '@/lib/handoff';
-import { DBLP_SESSION, keepSession, takeSession } from '@/lib/session';
+import {
+  DBLP_SESSION,
+  OBSERVATORY_SESSION,
+  keepSession,
+  releaseSession,
+  sessionBytes,
+  takeSession,
+} from '@/lib/session';
 import styles from './DblpConsole.module.css';
 
 /** How a cut picks its vertices (the wasm `SubgraphKind`). */
@@ -93,6 +107,29 @@ interface Job {
 interface Writing {
   action: 'open' | 'export';
   percent: number;
+}
+
+/** A cut's file above this opens with the network freed, not parked: both
+    would share wasm's 4 GiB, and the whole network leaves 141 MiB beside its
+    own copy. Coming back to the tab downloads the years again. */
+const FREE_NETWORK_ABOVE = 256 * 1024 * 1024;
+
+/** What summing and building a network takes from wasm's 4 GiB at its peak,
+    per edge (measured on the whole network: 2310 MiB for 33.2M edges). */
+const WASM_BYTES_PER_EDGE = 73;
+/** How much a network and a graph parked beside it may add up to: wasm's
+    memory fragments, so far less than 4 GiB is usable in one piece. */
+const WASM_ROOM = 2304 * 1024 * 1024;
+
+/** Frees a wasm object. One a trap left borrowed cannot be freed: it stays
+    until the reload the out-of-memory notice asks for, and must not hide that
+    notice by throwing here. */
+function release(object: { free(): void }) {
+  try {
+    object.free();
+  } catch {
+    // Left borrowed by a trap.
+  }
 }
 
 /** How many years download ahead of the one being summed. */
@@ -156,6 +193,8 @@ export default function DblpConsole() {
   const [opening, setOpening] = useState(false);
   const [writing, setWriting] = useState<Writing | null>(null);
   const writeRef = useRef<AbortController | null>(null);
+  /** Leaving for the observatory with a cut too large to keep the network beside. */
+  const freeOnLeaveRef = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -188,7 +227,7 @@ export default function DblpConsole() {
           setRule(saved.rule);
           setSize(saved.size);
         } else {
-          saved?.base.graph.free();
+          if (saved) release(saved.base.graph);
           const last = initialYear(loaded);
           setYear(last);
           setFrom(defaultFrom(loaded, last));
@@ -218,7 +257,8 @@ export default function DblpConsole() {
       jobRef.current?.abort();
       writeRef.current?.abort();
       const base = baseRef.current;
-      if (base) keepSession<DblpSession>(DBLP_SESSION, { base, ...latestRef.current });
+      if (base && freeOnLeaveRef.current) release(base.graph);
+      else if (base) keepSession<DblpSession>(DBLP_SESSION, { base, ...latestRef.current });
       baseRef.current = null;
     },
     [],
@@ -245,7 +285,10 @@ export default function DblpConsole() {
     setNotice(null);
     const total = transferBytes(manifest, start, year);
     const version = String(manifest.builtAt);
-    const builder = new wasm.NetworkBuilder();
+    // At most this many pairs: the span's lines, and the whole network's.
+    const pairs = years.reduce((sum, entry) => sum + (wanted(entry) ? entry.pairs : 0), 0);
+    const capacity = Math.min(pairs, years[years.length - 1].edges);
+    let builder: NetworkBuilder | null = null;
     let finished = false;
     try {
       // Every file's compressed bytes so far, for the one progress bar.
@@ -279,6 +322,25 @@ export default function DblpConsole() {
         const [strengths, names] = await queue[i];
         if (next < years.length) begin(years[next++]);
         if (controller.signal.aborted) return;
+        if (!builder) {
+          // Summing needs the room the old network holds. It is off the page
+          // first: nothing rendered or waiting on a timer may reach it freed.
+          const old = baseRef.current;
+          if (old) {
+            baseRef.current = null;
+            flushSync(() => {
+              setBase(null);
+              setPreview(null);
+            });
+            release(old.graph);
+          }
+          const parked = sessionBytes(OBSERVATORY_SESSION);
+          if (parked > 0 && capacity * WASM_BYTES_PER_EDGE + parked > WASM_ROOM) {
+            releaseSession(OBSERVATORY_SESSION);
+            setNotice(t.observatoryClosed);
+          }
+          builder = new wasm.NetworkBuilder(capacity);
+        }
         if (strengths) builder.addStrengths(strengths);
         builder.addNames(names);
         // Let the progress paint between two years.
@@ -287,10 +349,9 @@ export default function DblpConsole() {
       setJob({ received: total, total, phase: 'parsing' });
       // Let the status paint before the (synchronous) build.
       await new Promise((resolve) => setTimeout(resolve, 30));
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || !builder) return;
       finished = true;
       const graph = builder.finish(wasm.RepresentationKind.Csr, span !== 'until');
-      baseRef.current?.graph.free();
       const loaded: Base = {
         graph,
         key,
@@ -308,11 +369,11 @@ export default function DblpConsole() {
     } catch (error) {
       if (!controller.signal.aborted) {
         const message = error instanceof Error ? error.message : String(error);
-        setNotice(t.failedFetch(message));
+        setNotice(error instanceof WebAssembly.RuntimeError ? t.outOfMemory : t.failedFetch(message));
       }
     } finally {
       // `finish` consumed the builder; otherwise its table is freed here.
-      if (!finished) builder.free();
+      if (builder && !finished) release(builder);
       if (jobRef.current === controller) {
         jobRef.current = null;
         setJob(null);
@@ -364,6 +425,15 @@ export default function DblpConsole() {
         ? module.SubgraphKind.MostConnected
         : module.SubgraphKind.Earliest;
 
+  /** What a failed write says: wasm traps when its memory runs out. */
+  const writeFailure = useCallback(
+    (error: unknown) =>
+      error instanceof WebAssembly.RuntimeError
+        ? t.outOfMemory
+        : t.failedFiles(error instanceof Error ? error.message : String(error)),
+    [t],
+  );
+
   // What the cut would be, counted a moment after the last change.
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -371,18 +441,17 @@ export default function DblpConsole() {
         setPreview(null);
         return;
       }
-      const cut = base.graph.subgraph(kindOf(wasm, rule), seedVertex || 1, cutSize);
-      setPreview({ vertices: cut.vertices, edges: cut.edges, bytes: cut.bytes });
-      cut.free();
+      try {
+        const cut = base.graph.subgraph(kindOf(wasm, rule), seedVertex || 1, cutSize);
+        setPreview({ vertices: cut.vertices, edges: cut.edges, bytes: cut.bytes });
+        cut.free();
+      } catch (error) {
+        setPreview(null);
+        setNotice(writeFailure(error));
+      }
     }, 120);
     return () => clearTimeout(timer);
-  }, [base, wasm, rule, seedVertex, cutSize]);
-
-  /** What a failed write says: wasm traps when its memory runs out. */
-  const writeFailure = (error: unknown) =>
-    error instanceof WebAssembly.RuntimeError
-      ? t.outOfMemory
-      : t.failedFiles(error instanceof Error ? error.message : String(error));
+  }, [base, wasm, rule, seedVertex, cutSize, writeFailure]);
 
   /** The cut's two files, named after what made them; `null` when cancelled
       or failed, which the notice then says. */
@@ -414,7 +483,7 @@ export default function DblpConsole() {
       setNotice(writeFailure(error));
       return null;
     } finally {
-      cut?.free();
+      if (cut) release(cut);
       if (writeRef.current === controller) {
         writeRef.current = null;
         setWriting(null);
@@ -433,6 +502,7 @@ export default function DblpConsole() {
         bytes: await bytesOf(built.file),
         names: built.names && { name: built.names.name, bytes: await bytesOf(built.names.file) },
       });
+      freeOnLeaveRef.current = built.file.size > FREE_NETWORK_ABOVE;
       router.push('/observatory');
     } catch (error) {
       setOpening(false);

@@ -450,9 +450,16 @@ the edge file's size, exact up to 200k edges and sampled past that) a
 moment after each change. The result box writes the files a piece at a time
 (`Subgraph.nextEdges` / `nextNames`, gathered into a Blob by `collectFile`),
 because the whole network's 640 MB edge file does not fit in wasm's 4 GiB
-beside the network itself. A cut whose file passes the observatory's 512 MB
+beside the network itself. A cut whose file passes the observatory's 1 GiB
 limit (`OBSERVATORY_MAX_BYTES`) can only be exported: its warning turns red
-and the open button is off. The
+and the open button is off. Opening a cut above 256 MiB frees the network
+instead of parking it, so the two copies do not share wasm's 4 GiB. Summing
+frees the previous network first and reserves the pair table from the manifest
+(a growing table must double to over 1 GiB beside itself), and when the
+network and a graph parked in the observatory would not fit together, the
+parked graph is closed and the page says so. The
+renderer asks the adapter for its real buffer limits (WebGPU's defaults stop
+at about 16.7M edges) and names the limit when a graph still passes it. The
 library's `algo::select` picks the vertices in the order that numbers them
 (the seed, the most connected or vertex 1 becomes 1), `algo::induce`
 renumbers the edges among them, and the two course-format files either go
