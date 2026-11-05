@@ -274,9 +274,16 @@ export const en = {
     open: 'Open in the observatory',
     opening: 'Opening',
     export: 'Export the two files',
+    writing: (percent: number) => `Writing the files: ${percent}%`,
+    failedFiles: (reason: string) => `Could not write the files: ${reason}.`,
+    outOfMemory:
+      'The browser ran out of memory for this graph. Reload the page and try a smaller one.',
+    observatoryClosed: 'To fit in memory, the graph open in the observatory was closed.',
     filesCaption: 'in the course format, renumbered from 1',
+    overLimit: (size: string, limit: string) =>
+      `This cut's file is ${size}, over the observatory's ${limit} limit, so it cannot open there. Export the files or make a smaller cut.`,
     heavy:
-      'a cut this large opens in the observatory, slowly: count on seconds and a couple of GB of memory',
+      'a cut this large opens in the observatory, slowly: count on seconds and several GB of memory',
   },
 
   footer: {
@@ -733,6 +740,8 @@ export const en = {
     parent: (p: number) => ` · parent ${p}`,
     dismiss: 'Dismiss',
     couldNotLoad: (name: string, message: string) => `Could not load ${name}: ${message}`,
+    gpuLimit: (needed: string, limit: string) =>
+      `it needs a GPU buffer of ${needed}, and this GPU allows ${limit}. Try a smaller graph.`,
     names: {
       add: 'Add a names file',
       remove: 'Remove the names',

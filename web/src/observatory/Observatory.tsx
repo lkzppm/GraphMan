@@ -82,6 +82,7 @@ import {
 import {
   acquireRenderer,
   SIMULATION_LIMIT,
+  GpuLimitError,
   UnsupportedError,
   readTheme,
   type Camera,
@@ -94,7 +95,7 @@ import { useT } from '@/i18n/LocaleProvider';
 import { onThemeFade } from '@/lib/theme';
 import type { Dictionary } from '@/i18n';
 import styles from './Observatory.module.css';
-import { takeGraph } from '@/lib/handoff';
+import { OBSERVATORY_MAX_BYTES, takeGraph } from '@/lib/handoff';
 import { OBSERVATORY_SESSION, keepSession, takeSession } from '@/lib/session';
 import Structures, {
   clampStrip,
@@ -348,8 +349,6 @@ interface DiameterInfo {
 const DIAMETER_METHODS = ['Sweep', 'IFub', 'Bounds', 'Exact'] as const;
 
 type DiameterMethod = (typeof DIAMETER_METHODS)[number];
-
-const MAX_FILE_BYTES = 512 * 1024 * 1024;
 
 type LayoutId = 'force' | 'radial' | 'layered' | 'degree';
 
@@ -796,7 +795,15 @@ export default function Observatory() {
       // for the next visit; it is not freed.
       const parked = snapshot();
       if (parked) {
-        keepSession<ObservatorySession>(OBSERVATORY_SESSION, parked);
+        keepSession<ObservatorySession>(OBSERVATORY_SESSION, parked, {
+          bytes: parked.graph.heapBytes,
+          release: () => {
+            for (let held: ObservatorySession | null = parked; held; held = held.parent ?? null) {
+              held.search?.result.free();
+              held.graph.free();
+            }
+          },
+        });
         graphRef.current = null;
         parentRef.current = null;
       }
@@ -1297,7 +1304,12 @@ export default function Observatory() {
         autoFit.current = true;
         requestAnimationFrame(() => fit(false));
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message =
+          error instanceof GpuLimitError
+            ? tRef.current.gpuLimit(formatBytes(error.needed), formatBytes(error.limit))
+            : error instanceof Error
+              ? error.message
+              : String(error);
         setPending(null);
         setNotice(tRef.current.couldNotLoad(name, message));
         setStatus({ kind: 'ready' });
@@ -1473,10 +1485,14 @@ export default function Observatory() {
    */
   const loadFiles = useCallback(
     async (files: File[]) => {
-      const large = files.find((file) => file.size > MAX_FILE_BYTES);
+      const large = files.find((file) => file.size > OBSERVATORY_MAX_BYTES);
       if (large) {
         setNotice(
-          tRef.current.tooLarge(large.name, formatBytes(large.size), formatBytes(MAX_FILE_BYTES)),
+          tRef.current.tooLarge(
+            large.name,
+            formatBytes(large.size),
+            formatBytes(OBSERVATORY_MAX_BYTES),
+          ),
         );
         return;
       }

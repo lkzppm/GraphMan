@@ -15,9 +15,9 @@
 
 use graphman::algo::{
     self, Components, Control, DegreeStats, DiameterMethod, Frontier, FrontierEntry, FrontierKind,
-    HeapFrontier, LazyHeapFrontier, PairingHeapFrontier, QuadHeapFrontier, RadixHeapFrontier,
-    SearchTree, ShortestPathTree, UNREACHED, VectorFrontier, Visitor, WeightStats, bfs_into,
-    dfs_into, dfs_recursive_into, dijkstra_into, radial_layout, tree_layout,
+    HeapFrontier, LazyHeapFrontier, PairingHeapFrontier, QuadHeapFrontier, RadialLayout,
+    RadixHeapFrontier, SearchTree, ShortestPathTree, UNREACHED, VectorFrontier, Visitor,
+    WeightStats, bfs_into, dfs_into, dfs_recursive_into, dijkstra_into, tree_layout,
 };
 use graphman::io::write_summary;
 use graphman::{
@@ -1171,7 +1171,7 @@ impl WasmGraph {
     /// edge is roughly [`EDGE_LENGTH`] long.
     ///
     /// Each component is laid out radially from its smallest vertex with the
-    /// library's [`radial_layout`]: BFS levels become rings whose area is
+    /// library's [`RadialLayout`]: BFS levels become rings whose area is
     /// proportional to the number of vertices on them, so density is uniform.
     /// Components are packed largest-first, the largest in the middle and the
     /// rest on concentric rings around it. `O(n + m)`; graphs too large to
@@ -1264,9 +1264,17 @@ fn initial_layout_of<G: Graph>(
     let mut positions = vec![0f32; 2 * (n + 1)];
     let radii: Vec<f64> = components.sizes().map(disc_radius).collect();
     let centres = pack_discs(&radii, 0);
+    let mut layout = RadialLayout::new(n);
     for (index, members) in components.iter().enumerate() {
-        let (cx, cy) = centres[index];
-        disc_layout(graph, tree, members, cx, cy, radii[index], &mut positions);
+        disc_layout(
+            graph,
+            tree,
+            &mut layout,
+            members,
+            centres[index],
+            radii[index],
+            &mut positions,
+        );
     }
     positions
 }
@@ -1301,11 +1309,12 @@ fn layout_of<G: Graph>(
         .chain((0..components.count()).filter(|&c| c != home))
         .collect();
     let mut extent = vec![0f64; components.count()];
+    let mut layout = RadialLayout::new(n);
     for &c in &order {
         let members = components.members(c as u32 + 1);
         let start = if c == home { root } else { members[0] };
         bfs_into(graph, start, tree, &mut ());
-        let layout = radial_layout(tree);
+        layout.fill(tree);
         let depth = tree.depth() as usize;
         let mut counts = vec![0f64; depth + 1];
         for &v in tree.order() {
@@ -1419,14 +1428,14 @@ fn layered_layout_of<G: Graph>(
 fn disc_layout<G: Graph>(
     graph: &G,
     tree: &mut SearchTree,
+    layout: &mut RadialLayout,
     members: &[Vertex],
-    cx: f64,
-    cy: f64,
+    (cx, cy): (f64, f64),
     radius: f64,
     positions: &mut [f32],
 ) {
     bfs_into(graph, members[0], tree, &mut ());
-    let layout = radial_layout(tree);
+    layout.fill(tree);
 
     // `before[l]` counts the vertices on levels below `l`. A vertex on
     // level `l` sits at the radius where the fraction of the component
@@ -1550,7 +1559,6 @@ type PairStrengths = std::collections::HashMap<u64, f64, std::hash::BuildHasherD
 ///
 /// [`finish`]: Self::finish
 #[wasm_bindgen(js_name = NetworkBuilder)]
-#[derive(Default)]
 pub struct WasmNetworkBuilder {
     strengths: PairStrengths,
     names: Vec<u8>,
@@ -1558,10 +1566,16 @@ pub struct WasmNetworkBuilder {
 
 #[wasm_bindgen(js_class = NetworkBuilder)]
 impl WasmNetworkBuilder {
-    /// No years yet.
+    /// No years yet, with room for `pairs` pairs. A table growing on the way
+    /// to the whole network must double to over 1 GiB beside its old self,
+    /// which wasm's 4 GiB cannot spare once another graph is held, so the
+    /// count the manifest knows is reserved at the start.
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(pairs: u32) -> Self {
+        Self {
+            strengths: PairStrengths::with_capacity_and_hasher(pairs as usize, Default::default()),
+            names: Vec::new(),
+        }
     }
 
     /// Adds a year's strengths (`u v strength` per line); the years must
@@ -1604,8 +1618,8 @@ impl WasmNetworkBuilder {
     /// vertices no pair touched (a span of years, where most researchers
     /// named are idle) and renumbers the rest in order; otherwise the
     /// numbering is the names file's, as the course format has it. The
-    /// table is freed as the edges leave it, before the representation is
-    /// built.
+    /// table is freed once the edges have left it, before they are sorted
+    /// and the representation is built: it is the largest thing here.
     pub fn finish(
         self,
         representation: RepresentationKind,
@@ -1613,7 +1627,7 @@ impl WasmNetworkBuilder {
     ) -> Result<WasmGraph, JsError> {
         let names = VertexNames::parse(&self.names).map_err(|e| JsError::new(&e.to_string()))?;
         let n = names.len();
-        let mut strengths = self.strengths;
+        let strengths = self.strengths;
         let (names, edges) = if compact {
             let mut kept = vec![false; n + 1];
             for &key in strengths.keys() {
@@ -1638,29 +1652,28 @@ impl WasmNetworkBuilder {
                 }
             }
             let names = VertexNames::parse(&text).map_err(|e| JsError::new(&e.to_string()))?;
-            let edges = EdgeList::from_weighted_edges(
-                next as usize,
-                strengths.drain().map(|(key, strength)| {
+            let triples: Vec<_> = strengths
+                .into_iter()
+                .map(|(key, strength)| {
                     (
                         rank[(key >> 32) as usize],
                         rank[key as Vertex as usize],
                         1.0 / strength,
                     )
-                }),
-            )
-            .map_err(|e| JsError::new(&e.to_string()))?;
+                })
+                .collect();
+            let edges = EdgeList::from_weighted_edges(next as usize, triples)
+                .map_err(|e| JsError::new(&e.to_string()))?;
             (names, edges)
         } else {
-            let edges = EdgeList::from_weighted_edges(
-                n,
-                strengths
-                    .drain()
-                    .map(|(key, strength)| ((key >> 32) as Vertex, key as Vertex, 1.0 / strength)),
-            )
-            .map_err(|e| JsError::new(&e.to_string()))?;
+            let triples: Vec<_> = strengths
+                .into_iter()
+                .map(|(key, strength)| ((key >> 32) as Vertex, key as Vertex, 1.0 / strength))
+                .collect();
+            let edges = EdgeList::from_weighted_edges(n, triples)
+                .map_err(|e| JsError::new(&e.to_string()))?;
             (names, edges)
         };
-        drop(strengths);
         let mut graph = WasmGraph::of(edges, representation)?;
         graph.names = Some(names);
         Ok(graph)
@@ -1864,7 +1877,7 @@ mod tests {
 
     #[test]
     fn network_builder_sums_the_years_in_order() {
-        let mut builder = WasmNetworkBuilder::new();
+        let mut builder = WasmNetworkBuilder::new(4);
         builder.add_strengths(b"1 2 0.5\n1 3 1\n").unwrap();
         builder.add_names(b"1,Ana\n2,Bia\n3,Caio");
         builder.add_strengths(b"1 2 0.25\r\n2 4 1\n\n").unwrap();
@@ -1883,7 +1896,7 @@ mod tests {
 
         // Compacted: only the second year, so Ana (1) and Caio (3) are idle
         // and the rest are renumbered in order.
-        let mut span = WasmNetworkBuilder::new();
+        let mut span = WasmNetworkBuilder::new(4);
         span.add_names(b"1,Ana\n2,Bia\n3,Caio\n4,Dora\n");
         span.add_strengths(b"2 4 1\n").unwrap();
         let graph = span.finish(RepresentationKind::Csr, true).unwrap();
@@ -1923,15 +1936,18 @@ impl From<SubgraphKind> for graphman::algo::SubgraphRule {
     }
 }
 
-/// A cut of the loaded graph: how big it is, and when asked for, its two
-/// files in the course format.
+/// Lines in one piece of a cut's file: a few megabytes.
+const PIECE_LINES: usize = 256 * 1024;
+
+/// A cut of the loaded graph: how big it is, and its two files in the course
+/// format, a piece at a time. The whole network's edge file is larger than
+/// what is left of wasm's 4 GiB beside the network itself, so a file is
+/// never held here: each piece leaves for JavaScript as soon as it is written.
 #[wasm_bindgen]
 pub struct Subgraph {
-    vertices: u32,
-    edges: u32,
-    bytes: f64,
-    edge_file: Vec<u8>,
-    names_file: Vec<u8>,
+    induced: graphman::algo::Induced,
+    edge_line: usize,
+    name_line: usize,
 }
 
 #[wasm_bindgen]
@@ -1939,33 +1955,61 @@ impl Subgraph {
     /// How many vertices the cut keeps.
     #[wasm_bindgen(getter)]
     pub fn vertices(&self) -> u32 {
-        self.vertices
+        self.induced.vertex_count() as u32
     }
 
     /// How many edges run among them.
     #[wasm_bindgen(getter)]
     pub fn edges(&self) -> u32 {
-        self.edges
+        self.induced.edge_count() as u32
     }
 
-    /// The edge file's size: exact when the file was written or the cut is
-    /// small, otherwise an estimate from a sample of its lines.
+    /// The edge file's size: exact when the cut is small, otherwise an
+    /// estimate from a sample of its lines.
     #[wasm_bindgen(getter)]
     pub fn bytes(&self) -> f64 {
-        self.bytes
+        self.induced.file_bytes() as f64
     }
 
-    /// The edge file (`n`, then `u v weight` per line); empty unless asked for.
-    #[wasm_bindgen(js_name = edgeFile)]
-    pub fn edge_file(&self) -> Vec<u8> {
-        self.edge_file.clone()
+    /// How much of the two files has been written, from 0 to 1.
+    #[wasm_bindgen(getter)]
+    pub fn progress(&self) -> f64 {
+        let total = self.induced.edge_lines() + self.induced.vertex_count();
+        (self.edge_line + self.name_line) as f64 / total as f64
     }
 
-    /// The names file (`vertex,name` per line); empty without names or
-    /// unless asked for.
-    #[wasm_bindgen(js_name = namesFile)]
-    pub fn names_file(&self) -> Vec<u8> {
-        self.names_file.clone()
+    /// The next piece of the edge file (`n`, then `u v weight` per line);
+    /// empty once the file is done.
+    #[wasm_bindgen(js_name = nextEdges)]
+    pub fn next_edges(&mut self) -> Vec<u8> {
+        let end = (self.edge_line + PIECE_LINES).min(self.induced.edge_lines());
+        let mut piece = Vec::new();
+        self.induced
+            .write_edge_lines(self.edge_line..end, &mut piece)
+            .expect("writing to a Vec never fails");
+        self.edge_line = end;
+        piece
+    }
+
+    /// The next piece of the names file (`vertex,name` per line), read from
+    /// the graph the cut came from; empty once the file is done, or at once
+    /// when the graph has no names.
+    #[wasm_bindgen(js_name = nextNames)]
+    pub fn next_names(&mut self, graph: &WasmGraph) -> Vec<u8> {
+        let mut piece = Vec::new();
+        let Some(names) = &graph.names else {
+            self.name_line = self.induced.vertex_count();
+            return piece;
+        };
+        // A stretch of unnamed vertices writes nothing: only the end is empty.
+        while piece.is_empty() && self.name_line < self.induced.vertex_count() {
+            let end = (self.name_line + PIECE_LINES).min(self.induced.vertex_count());
+            self.induced
+                .write_name_lines(names, self.name_line..end, &mut piece)
+                .expect("writing to a Vec never fails");
+            self.name_line = end;
+        }
+        piece
     }
 }
 
@@ -1973,36 +2017,15 @@ impl Subgraph {
 impl WasmGraph {
     /// Cuts the graph to at most `max` vertices by `rule` (`seed` is the
     /// ball's centre) and renumbers them from 1: the ball's seed, the most
-    /// connected vertex or vertex 1 becomes vertex 1. With `files`, the edge
-    /// file and the names file are written too, else only the sizes are
-    /// counted (a preview).
-    pub fn subgraph(&self, rule: SubgraphKind, seed: u32, max: u32, files: bool) -> Subgraph {
+    /// connected vertex or vertex 1 becomes vertex 1.
+    pub fn subgraph(&self, rule: SubgraphKind, seed: u32, max: u32) -> Subgraph {
         let kept =
             dispatch!(&self.graph, g => graphman::algo::select(g, rule.into(), seed, max as usize));
         let induced = dispatch!(&self.graph, g => graphman::algo::induce(g, kept));
-        let mut edge_file = Vec::new();
-        let mut names_file = Vec::new();
-        if files {
-            induced
-                .write_edges(&mut edge_file)
-                .expect("writing to a Vec never fails");
-            if let Some(names) = &self.names {
-                induced
-                    .write_names(names, &mut names_file)
-                    .expect("writing to a Vec never fails");
-            }
-        }
-        let bytes = if files {
-            edge_file.len() as f64
-        } else {
-            induced.file_bytes() as f64
-        };
         Subgraph {
-            vertices: induced.vertex_count() as u32,
-            edges: induced.edge_count() as u32,
-            bytes,
-            edge_file,
-            names_file,
+            induced,
+            edge_line: 0,
+            name_line: 0,
         }
     }
 }

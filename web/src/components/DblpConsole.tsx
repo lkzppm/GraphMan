@@ -1,5 +1,6 @@
 'use client';
 
+import { flushSync } from 'react-dom';
 import {
   Calendar,
   ChevronDown,
@@ -26,6 +27,7 @@ import {
   DBLP_RELEASES,
   fetchFile,
   fetchManifest,
+  collectFile,
   saveFile,
   transferBytes,
   yearsUpTo,
@@ -34,9 +36,22 @@ import {
   type DblpYear,
 } from '@/lib/dblp';
 import { formatBytes, formatInt } from '@/lib/format';
-import { loadGraphman, type Graph, type GraphmanModule } from '@/lib/graphman';
-import { offerGraph } from '@/lib/handoff';
-import { DBLP_SESSION, keepSession, takeSession } from '@/lib/session';
+import {
+  loadGraphman,
+  type Graph,
+  type GraphmanModule,
+  type NetworkBuilder,
+  type Subgraph,
+} from '@/lib/graphman';
+import { OBSERVATORY_MAX_BYTES, offerGraph } from '@/lib/handoff';
+import {
+  DBLP_SESSION,
+  OBSERVATORY_SESSION,
+  keepSession,
+  releaseSession,
+  sessionBytes,
+  takeSession,
+} from '@/lib/session';
 import styles from './DblpConsole.module.css';
 
 /** How a cut picks its vertices (the wasm `SubgraphKind`). */
@@ -86,6 +101,35 @@ interface Job {
   received: number;
   total: number;
   phase: 'fetching' | 'parsing';
+}
+
+/** A cut's files being written, for one of the two buttons. */
+interface Writing {
+  action: 'open' | 'export';
+  percent: number;
+}
+
+/** A cut's file above this opens with the network freed, not parked: both
+    would share wasm's 4 GiB, and the whole network leaves 141 MiB beside its
+    own copy. Coming back to the tab downloads the years again. */
+const FREE_NETWORK_ABOVE = 256 * 1024 * 1024;
+
+/** What summing and building a network takes from wasm's 4 GiB at its peak,
+    per edge (measured on the whole network: 2310 MiB for 33.2M edges). */
+const WASM_BYTES_PER_EDGE = 73;
+/** How much a network and a graph parked beside it may add up to: wasm's
+    memory fragments, so far less than 4 GiB is usable in one piece. */
+const WASM_ROOM = 2304 * 1024 * 1024;
+
+/** Frees a wasm object. One a trap left borrowed cannot be freed: it stays
+    until the reload the out-of-memory notice asks for, and must not hide that
+    notice by throwing here. */
+function release(object: { free(): void }) {
+  try {
+    object.free();
+  } catch {
+    // Left borrowed by a trap.
+  }
 }
 
 /** How many years download ahead of the one being summed. */
@@ -147,6 +191,10 @@ export default function DblpConsole() {
   const [size, setSize] = useState(DEFAULT_SIZE);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [opening, setOpening] = useState(false);
+  const [writing, setWriting] = useState<Writing | null>(null);
+  const writeRef = useRef<AbortController | null>(null);
+  /** Leaving for the observatory with a cut too large to keep the network beside. */
+  const freeOnLeaveRef = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -179,7 +227,7 @@ export default function DblpConsole() {
           setRule(saved.rule);
           setSize(saved.size);
         } else {
-          saved?.base.graph.free();
+          if (saved) release(saved.base.graph);
           const last = initialYear(loaded);
           setYear(last);
           setFrom(defaultFrom(loaded, last));
@@ -207,8 +255,10 @@ export default function DblpConsole() {
   useEffect(
     () => () => {
       jobRef.current?.abort();
+      writeRef.current?.abort();
       const base = baseRef.current;
-      if (base) keepSession<DblpSession>(DBLP_SESSION, { base, ...latestRef.current });
+      if (base && freeOnLeaveRef.current) release(base.graph);
+      else if (base) keepSession<DblpSession>(DBLP_SESSION, { base, ...latestRef.current });
       baseRef.current = null;
     },
     [],
@@ -228,12 +278,17 @@ export default function DblpConsole() {
     const start = spanStart(manifest, span, from, year);
     const wanted = (entry: DblpYear) => entry.year >= start;
     jobRef.current?.abort();
+    // The network being cut is about to be replaced.
+    writeRef.current?.abort();
     const controller = new AbortController();
     jobRef.current = controller;
     setNotice(null);
     const total = transferBytes(manifest, start, year);
     const version = String(manifest.builtAt);
-    const builder = new wasm.NetworkBuilder();
+    // At most this many pairs: the span's lines, and the whole network's.
+    const pairs = years.reduce((sum, entry) => sum + (wanted(entry) ? entry.pairs : 0), 0);
+    const capacity = Math.min(pairs, years[years.length - 1].edges);
+    let builder: NetworkBuilder | null = null;
     let finished = false;
     try {
       // Every file's compressed bytes so far, for the one progress bar.
@@ -267,6 +322,25 @@ export default function DblpConsole() {
         const [strengths, names] = await queue[i];
         if (next < years.length) begin(years[next++]);
         if (controller.signal.aborted) return;
+        if (!builder) {
+          // Summing needs the room the old network holds. It is off the page
+          // first: nothing rendered or waiting on a timer may reach it freed.
+          const old = baseRef.current;
+          if (old) {
+            baseRef.current = null;
+            flushSync(() => {
+              setBase(null);
+              setPreview(null);
+            });
+            release(old.graph);
+          }
+          const parked = sessionBytes(OBSERVATORY_SESSION);
+          if (parked > 0 && capacity * WASM_BYTES_PER_EDGE + parked > WASM_ROOM) {
+            releaseSession(OBSERVATORY_SESSION);
+            setNotice(t.observatoryClosed);
+          }
+          builder = new wasm.NetworkBuilder(capacity);
+        }
         if (strengths) builder.addStrengths(strengths);
         builder.addNames(names);
         // Let the progress paint between two years.
@@ -275,10 +349,9 @@ export default function DblpConsole() {
       setJob({ received: total, total, phase: 'parsing' });
       // Let the status paint before the (synchronous) build.
       await new Promise((resolve) => setTimeout(resolve, 30));
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || !builder) return;
       finished = true;
       const graph = builder.finish(wasm.RepresentationKind.Csr, span !== 'until');
-      baseRef.current?.graph.free();
       const loaded: Base = {
         graph,
         key,
@@ -296,11 +369,11 @@ export default function DblpConsole() {
     } catch (error) {
       if (!controller.signal.aborted) {
         const message = error instanceof Error ? error.message : String(error);
-        setNotice(t.failedFetch(message));
+        setNotice(error instanceof WebAssembly.RuntimeError ? t.outOfMemory : t.failedFetch(message));
       }
     } finally {
       // `finish` consumed the builder; otherwise its table is freed here.
-      if (!finished) builder.free();
+      if (builder && !finished) release(builder);
       if (jobRef.current === controller) {
         jobRef.current = null;
         setJob(null);
@@ -352,6 +425,15 @@ export default function DblpConsole() {
         ? module.SubgraphKind.MostConnected
         : module.SubgraphKind.Earliest;
 
+  /** What a failed write says: wasm traps when its memory runs out. */
+  const writeFailure = useCallback(
+    (error: unknown) =>
+      error instanceof WebAssembly.RuntimeError
+        ? t.outOfMemory
+        : t.failedFiles(error instanceof Error ? error.message : String(error)),
+    [t],
+  );
+
   // What the cut would be, counted a moment after the last change.
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -359,42 +441,81 @@ export default function DblpConsole() {
         setPreview(null);
         return;
       }
-      const cut = base.graph.subgraph(kindOf(wasm, rule), seedVertex || 1, cutSize, false);
-      setPreview({ vertices: cut.vertices, edges: cut.edges, bytes: cut.bytes });
-      cut.free();
+      try {
+        const cut = base.graph.subgraph(kindOf(wasm, rule), seedVertex || 1, cutSize);
+        setPreview({ vertices: cut.vertices, edges: cut.edges, bytes: cut.bytes });
+        cut.free();
+      } catch (error) {
+        setPreview(null);
+        setNotice(writeFailure(error));
+      }
     }, 120);
     return () => clearTimeout(timer);
-  }, [base, wasm, rule, seedVertex, cutSize]);
+  }, [base, wasm, rule, seedVertex, cutSize, writeFailure]);
 
-  /** The cut's two files, named after what made them. */
-  const files = () => {
+  /** The cut's two files, named after what made them; `null` when cancelled
+      or failed, which the notice then says. */
+  const writeFiles = async (action: Writing['action']) => {
     if (!base || !wasm) return null;
-    const cut = base.graph.subgraph(kindOf(wasm, rule), seedVertex || 1, cutSize, true);
-    const stem = `dblp_${spanStem}_${rule.toLowerCase()}_${cut.vertices}`;
-    const names = cut.namesFile();
-    const built = {
-      name: `${stem}.txt`,
-      bytes: cut.edgeFile(),
-      names: names.length ? { name: `${stem}_vertices.txt`, bytes: names } : null,
-    };
-    cut.free();
-    return built;
+    const { graph } = base;
+    const controller = new AbortController();
+    writeRef.current = controller;
+    setNotice(null);
+    setWriting({ action, percent: 0 });
+    let cut: Subgraph | null = null;
+    try {
+      // Let the button paint before the (synchronous) cut.
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      if (controller.signal.aborted) return null;
+      const made = graph.subgraph(kindOf(wasm, rule), seedVertex || 1, cutSize);
+      cut = made;
+      const stem = `dblp_${spanStem}_${rule.toLowerCase()}_${made.vertices}`;
+      const report = () => setWriting({ action, percent: Math.floor(made.progress * 100) });
+      const edges = await collectFile(() => made.nextEdges(), controller.signal, report);
+      const names = await collectFile(() => made.nextNames(graph), controller.signal, report);
+      if (!edges || !names) return null;
+      return {
+        name: `${stem}.txt`,
+        file: edges,
+        names: names.size > 0 ? { name: `${stem}_vertices.txt`, file: names } : null,
+      };
+    } catch (error) {
+      setNotice(writeFailure(error));
+      return null;
+    } finally {
+      if (cut) release(cut);
+      if (writeRef.current === controller) {
+        writeRef.current = null;
+        setWriting(null);
+      }
+    }
   };
 
-  const open = () => {
-    const built = files();
+  const open = async () => {
+    const built = await writeFiles('open');
     if (!built) return;
     setOpening(true);
-    offerGraph(built);
-    router.push('/observatory');
+    try {
+      const bytesOf = async (file: Blob) => new Uint8Array(await file.arrayBuffer());
+      offerGraph({
+        name: built.name,
+        bytes: await bytesOf(built.file),
+        names: built.names && { name: built.names.name, bytes: await bytesOf(built.names.file) },
+      });
+      freeOnLeaveRef.current = built.file.size > FREE_NETWORK_ABOVE;
+      router.push('/observatory');
+    } catch (error) {
+      setOpening(false);
+      setNotice(writeFailure(error));
+    }
   };
 
-  const exportFiles = () => {
-    const built = files();
+  const exportFiles = async () => {
+    const built = await writeFiles('export');
     if (!built) return;
-    saveFile(built.name, built.bytes);
+    saveFile(built.name, built.file);
     const names = built.names;
-    if (names) setTimeout(() => saveFile(names.name, names.bytes), 300);
+    if (names) setTimeout(() => saveFile(names.name, names.file), 300);
   };
 
   // The slider is logarithmic: as many steps from 10 to 100 as from 100k to 1M.
@@ -407,7 +528,12 @@ export default function DblpConsole() {
   const sizeOf = (step: number) => clampSize(Math.exp(low + (step / STEPS) * (high - low)));
 
   const live = base !== null && job === null;
-  const canCut = live && preview !== null && !opening;
+  const canCut = live && preview !== null && !opening && writing === null;
+  /** The cut's file is more than the observatory takes: it can only be exported. */
+  const overLimit = preview !== null && preview.bytes > OBSERVATORY_MAX_BYTES;
+  const warning = overLimit
+    ? t.overLimit(formatBytes(preview.bytes), formatBytes(OBSERVATORY_MAX_BYTES))
+    : t.heavy;
   const stem = base
     ? `dblp_${spanStem}_${rule.toLowerCase()}_${preview?.vertices ?? cutSize}`
     : '';
@@ -708,37 +834,48 @@ export default function DblpConsole() {
                   a warning that floats in above the box, its text on hover. */}
               <span
                 className={`${styles.info} ${styles.warning}`}
-                data-on={(preview && preview.vertices > HEAVY) || undefined}
+                data-on={(preview && (preview.vertices > HEAVY || overLimit)) || undefined}
+                data-limit={overLimit || undefined}
               >
-                <button type="button" className={styles.warningButton} aria-label={t.heavy}>
+                <button type="button" className={styles.warningButton} aria-label={warning}>
                   <TriangleAlert size={15} strokeWidth={1.75} aria-hidden="true" />
                 </button>
                 <span className={`${styles.tip} ${styles.tipWarning}`} role="tooltip">
-                  {t.heavy}
+                  {warning}
                 </span>
               </span>
               <section className={styles.box} data-off={!canCut || undefined} aria-label={t.open}>
                 <button
                   type="button"
                   className={`${styles.action} ${styles.actionPrimary}`}
-                  disabled={!canCut}
-                  onClick={open}
+                  disabled={!canCut || overLimit}
+                  onClick={() => void open()}
                 >
-                  {opening ? (
+                  {opening || writing?.action === 'open' ? (
                     <LoaderCircle size={20} className={styles.spinner} aria-hidden="true" />
                   ) : (
                     <Telescope size={20} strokeWidth={1.75} aria-hidden="true" />
                   )}
-                  <span>{opening ? t.opening : t.open}</span>
+                  <span>
+                    {writing?.action === 'open'
+                      ? t.writing(writing.percent)
+                      : opening
+                        ? t.opening
+                        : t.open}
+                  </span>
                 </button>
                 <button
                   type="button"
                   className={styles.action}
                   disabled={!canCut}
-                  onClick={exportFiles}
+                  onClick={() => void exportFiles()}
                 >
-                  <FileDown size={20} strokeWidth={1.75} aria-hidden="true" />
-                  <span>{t.export}</span>
+                  {writing?.action === 'export' ? (
+                    <LoaderCircle size={20} className={styles.spinner} aria-hidden="true" />
+                  ) : (
+                    <FileDown size={20} strokeWidth={1.75} aria-hidden="true" />
+                  )}
+                  <span>{writing?.action === 'export' ? t.writing(writing.percent) : t.export}</span>
                 </button>
               </section>
             </div>

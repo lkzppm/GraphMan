@@ -4,6 +4,9 @@
 // lives for one client-side navigation; a reload of the observatory finds
 // it empty, which is the empty stage as usual.
 
+/** The largest file the observatory takes, dropped or handed over. */
+export const OBSERVATORY_MAX_BYTES = 1024 * 1024 * 1024;
+
 /** A graph file and, when there is one, its names file. */
 export interface Handoff {
   name: string;

@@ -335,8 +335,10 @@ impl EdgeList {
         vertex_count: usize,
         edges: impl IntoIterator<Item = (Vertex, Vertex, Weight)>,
     ) -> Result<Self, ParseError> {
-        let mut raw = EdgeStore::Heap(Vec::new());
-        for (index, (u, v, weight)) in edges.into_iter().enumerate() {
+        let edges = edges.into_iter();
+        // Sized at once: doubling on the way holds half as much again beside it.
+        let mut raw = EdgeStore::Heap(Vec::with_capacity(edges.size_hint().0));
+        for (index, (u, v, weight)) in edges.enumerate() {
             let line = index + 2;
             check_vertices(line, [u as u64, v as u64], vertex_count)?;
             if !weight.is_finite() {

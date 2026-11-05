@@ -156,9 +156,30 @@ export async function fetchFile(
   return new Uint8Array(await unpacked);
 }
 
+/**
+ * Gathers a file written a piece at a time (`next` gives an empty piece at
+ * the end) into a Blob, which the browser may keep on disk, yielding between
+ * pieces so the page can paint. `null` when cancelled.
+ */
+export async function collectFile(
+  next: () => Uint8Array,
+  signal: AbortSignal,
+  onPiece: () => void,
+): Promise<Blob | null> {
+  const pieces: Blob[] = [];
+  for (;;) {
+    if (signal.aborted) return null;
+    const piece = next();
+    if (piece.length === 0) return new Blob(pieces, { type: 'text/plain' });
+    pieces.push(new Blob([piece as BlobPart]));
+    onPiece();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 /** Hands the visitor a file to save. */
-export function saveFile(name: string, bytes: Uint8Array): void {
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'text/plain' }));
+export function saveFile(name: string, file: Blob): void {
+  const url = URL.createObjectURL(file);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = name;

@@ -276,9 +276,16 @@ export const pt: Dictionary = {
     open: 'Abrir no observatório',
     opening: 'Abrindo',
     export: 'Exportar os dois arquivos',
+    writing: (percent: number) => `Escrevendo os arquivos: ${percent}%`,
+    failedFiles: (reason: string) => `Não foi possível escrever os arquivos: ${reason}.`,
+    outOfMemory:
+      'O navegador ficou sem memória para este grafo. Recarregue a página e tente um menor.',
+    observatoryClosed: 'Para caber na memória, o grafo aberto no observatório foi fechado.',
     filesCaption: 'no formato da disciplina, renumerados a partir de 1',
+    overLimit: (size: string, limit: string) =>
+      `O arquivo deste recorte tem ${size}, acima do limite de ${limit} do observatório, então ele não abre lá. Exporte os arquivos ou faça um recorte menor.`,
     heavy:
-      'um recorte deste tamanho abre no observatório, devagar: conte com segundos e uns GB de memória',
+      'um recorte deste tamanho abre no observatório, devagar: conte com segundos e vários GB de memória',
   },
 
   footer: {
@@ -736,6 +743,8 @@ export const pt: Dictionary = {
     dismiss: 'Fechar',
     couldNotLoad: (name: string, message: string) =>
       `Não foi possível carregar ${name}: ${message}`,
+    gpuLimit: (needed: string, limit: string) =>
+      `ele precisa de um buffer de ${needed} na GPU, e esta GPU permite ${limit}. Tente um grafo menor.`,
     names: {
       add: 'Adicionar um arquivo de nomes',
       remove: 'Remover os nomes',
