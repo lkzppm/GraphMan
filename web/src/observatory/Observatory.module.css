@@ -1129,6 +1129,40 @@
   opacity: 1;
 }
 
+/* A column lit on the canvas keeps full colour; its siblings step back. */
+.bars[data-lit] span {
+  opacity: 0.3;
+}
+
+.bars[data-lit] span[data-marked],
+.bars[data-hover][data-lit] span[data-marked] {
+  opacity: 1;
+  background: var(--level-0);
+}
+
+.axisEnd {
+  appearance: none;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    color 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+.axisEnd:hover {
+  color: var(--accent);
+}
+
+.axisEnd[aria-pressed='true'] {
+  color: var(--bg);
+  background: var(--accent);
+}
+
 .hintValue {
   color: var(--accent);
 }
@@ -1903,6 +1937,13 @@
 .find {
   width: 260px;
   padding: 12px 14px;
+}
+
+/* The search tree's button, at the left centre of the canvas. */
+.floatingLeftCenter {
+  left: 14px;
+  top: 50%;
+  translate: 0 -50%;
 }
 
 /* The structure strip's toggle, at the bottom centre of the canvas. */

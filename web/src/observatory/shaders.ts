@@ -29,6 +29,7 @@ struct View {
   dest: u32,          // a distance query's destination (0 = none): the picture is the path; "target" is a reserved word
   mute: u32,          // 1: only the path keeps its colours, the rest of the search goes grey
   walk: f32,          // >= 0: the path is walked to this step (vertex index along it, fractional while moving); < 0: it follows the wave
+  marked: u32,        // 1: only the marked vertices (and the edges between them) keep their colour; 2: the marked edges and their ends; the rest goes ghostly
   base: vec4f,        // node colour without a search
   dim: vec4f,         // node not (yet) reached
   colorA: vec4f,      // level 0
@@ -77,6 +78,8 @@ ${VIEW}
 @group(0) @binding(5) var<storage, read> offsets: array<u32>;
 @group(0) @binding(6) var<storage, read> targets: array<u32>;
 @group(0) @binding(7) var<storage, read> path: array<u32>;
+// 1 per vertex a distribution column lit (see view.marked).
+@group(0) @binding(8) var<storage, read> marks: array<u32>;
 
 struct VOut {
   @builtin(position) pos: vec4f,
@@ -88,6 +91,7 @@ struct VOut {
 }
 
 fn nodeColor(v: u32) -> vec4f {
+  if (view.marked != 0u && marks[v] == 0u) { return view.dim * 0.18; }
   if (view.component != 0u && labels[v] != view.component) { return view.dim; }
   if (view.mode == 0u) { return view.base; }
   let rank = ranks[v];
@@ -280,6 +284,9 @@ struct Kind { tree: u32 }
 @group(0) @binding(7) var<storage, read> labels: array<u32>;
 // The edges at the selected vertex as [a, b] pairs (view.incident of them).
 @group(0) @binding(8) var<storage, read> extras: array<u32>;
+// 1 per vertex and per edge a distribution column lit (see view.marked).
+@group(0) @binding(9) var<storage, read> marks: array<u32>;
+@group(0) @binding(10) var<storage, read> edgeMarks: array<u32>;
 
 struct VOut {
   @builtin(position) pos: vec4f,
@@ -304,12 +311,13 @@ fn cull() -> VOut {
   // CPU fills the extras buffer), so no stride can drop one and they sit
   // on top; the samples skip them.
   let incident = kind.tree == 2u;
+  var e = 0u;
   if (incident) {
     if (segment >= view.incident) { return cull(); }
     a = extras[2u * segment];
     b = extras[2u * segment + 1u];
   } else {
-    let e = segment * stride;
+    e = segment * stride;
     if (e >= count) { return cull(); }
     a = edges[2u * e];
     b = edges[2u * e + 1u];
@@ -342,6 +350,11 @@ fn cull() -> VOut {
   }
   if (view.component != 0u && (labels[a] != view.component || labels[b] != view.component)) {
     color = view.edgeDim;
+  }
+  if (view.marked != 0u) {
+    var lit = marks[a] != 0u && marks[b] != 0u;
+    if (view.marked == 2u && !incident) { lit = edgeMarks[e] != 0u; }
+    if (!lit) { color = color * 0.12; }
   }
   if (view.mute != 0u && view.dest != 0u && !incident) { color = view.edgeDim; }
   if (incident) {
