@@ -373,7 +373,7 @@ export default function DblpConsole() {
                       .reverse()
                       .map((entry) => (
                         <option key={entry.year} value={entry.year}>
-                          {t.upTo(String(entry.year))}
+                          {entry.year}
                         </option>
                       ))}
                   </select>
