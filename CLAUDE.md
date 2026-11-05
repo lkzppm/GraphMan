@@ -97,7 +97,7 @@ cd web && pnpm run typecheck && pnpm run lint # must be green (CI enforces)
   year by year too). Files above 95 MB are split into parts by
   `.github/scripts/dblp-site.mjs` and the manifest says so; the page
   stitches them back. The year's network is held in wasm and cut with
-  `algo::select` + `algo::induce` (ball, most connected, earliest); the cut
+  `algo::select` + `algo::induce` (ball, most connected, or whole); the cut
   goes to the observatory in memory (`lib/handoff.ts`) or is exported.
 - The collaboration builder (`graphman::io::collaboration`) takes papers
   (year, author names) from any source; DBLP's XML and gzip stay in the CLI.
