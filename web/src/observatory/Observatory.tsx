@@ -39,6 +39,7 @@ import {
   Scan,
   Search,
   Trash2,
+  Undo2,
   Upload,
   Users,
   Waypoints,
@@ -411,6 +412,8 @@ interface ObservatorySession {
   showNames: boolean;
   showLabels: boolean;
   showWeights: boolean;
+  /** The graph a search's tree was opened from, parked until the return. */
+  parent?: ObservatorySession | null;
 }
 
 /** A slider reaches this many doublings either way (a factor of 1/4 to 4). */
@@ -517,6 +520,9 @@ export default function Observatory() {
   const cameraRef = useRef<Camera>({ x: 0, y: 0, zoom: 1 });
   const fitRef = useRef<() => void>(() => {});
   /** `parseBytes`, for the boot effect, which runs before it is defined. */
+  const openPendingRef = useRef<(waiting: Pending, choice: Repr) => Promise<void>>(
+    async () => {},
+  );
   const parseRef = useRef<
     (name: string, bytes: Uint8Array, names: NamesFile | null) => Promise<Pending | null>
   >(async () => null);
@@ -723,6 +729,31 @@ export default function Observatory() {
     };
   });
   const restoreRef = useRef<(saved: ObservatorySession) => void>(() => {});
+  /** The graph a search's tree was opened from, kept whole for the return. */
+  const parentRef = useRef<ObservatorySession | null>(null);
+  const [treeOpen, setTreeOpen] = useState(false);
+
+  /** Everything the open graph is, to come back to it: the wasm graph (and
+      the search's result), the picture as drawn, the camera and the
+      panels. `null` without a graph. Only refs are read, so it is safe
+      anywhere. */
+  const snapshot = useCallback((): ObservatorySession | null => {
+    const graph = graphRef.current;
+    const renderer = rendererRef.current;
+    const latest = latestRef.current;
+    const meta = metaRef.current;
+    if (!graph || !renderer || !latest || !meta) return null;
+    return {
+      ...latest,
+      graph,
+      meta,
+      positions: renderer.positionsMirror.slice(),
+      camera: { ...cameraRef.current },
+      search: searchRef.current,
+      stretched: stretchedRef.current,
+      parent: parentRef.current,
+    };
+  }, []);
 
   // ---- boot: wasm + WebGPU -------------------------------------------------
 
@@ -763,26 +794,16 @@ export default function Observatory() {
       cancelled = true;
       // Leaving with a graph open parks it, picture and panels included,
       // for the next visit; it is not freed.
-      const graph = graphRef.current;
-      const renderer = rendererRef.current;
-      const latest = latestRef.current;
-      const meta = metaRef.current;
-      if (graph && renderer && latest && meta) {
-        keepSession<ObservatorySession>(OBSERVATORY_SESSION, {
-          ...latest,
-          graph,
-          meta,
-          positions: renderer.positionsMirror.slice(),
-          camera: { ...cameraRef.current },
-          search: searchRef.current,
-          stretched: stretchedRef.current,
-        });
+      const parked = snapshot();
+      if (parked) {
+        keepSession<ObservatorySession>(OBSERVATORY_SESSION, parked);
         graphRef.current = null;
+        parentRef.current = null;
       }
       rendererRef.current = null;
       lease.release();
     };
-  }, []);
+  }, [snapshot]);
 
   // The canvas takes its colours from the CSS variables: while a theme
   // switch eases them, the renderer is handed them every frame (the label
@@ -1117,6 +1138,13 @@ export default function Observatory() {
     setSearch(null);
     graphRef.current?.free();
     graphRef.current = null;
+    // A tree's parent goes with it: there is nothing to return to.
+    for (let parked = parentRef.current; parked; parked = parked.parent ?? null) {
+      parked.search?.result.free();
+      parked.graph.free();
+    }
+    parentRef.current = null;
+    setTreeOpen(false);
     rendererRef.current?.unload();
     setMeta(null);
     setDiameterResults({});
@@ -1329,6 +1357,7 @@ export default function Observatory() {
   );
 
   parseRef.current = parseBytes;
+  openPendingRef.current = openPending;
 
   /** Shows a parked graph again: the renderer gets the positions as they
       were, every panel its state, and nothing is recomputed or reheated. */
@@ -1414,6 +1443,8 @@ export default function Observatory() {
       setShowWeights(saved.showWeights);
       applyCamera(saved.camera);
       autoFit.current = false;
+      parentRef.current = saved.parent ?? null;
+      setTreeOpen(parentRef.current !== null);
       setNotice(null);
       setStatus({ kind: 'ready' });
     },
@@ -2453,14 +2484,16 @@ export default function Observatory() {
 
   /** The search's tree as a graph of its own: the reached vertices
       renumbered in discovery order (the origin is 1), the tree edges with
-      the graph's weights, and a names file carrying the original names, or
-      the original numbers when the graph had none. It goes through the
-      picker like a dropped file. */
+      the graph's weights, and names carrying the original names, or the
+      original numbers when the graph had none. It opens in place, in the
+      representation the graph has, and the graph is parked whole for the
+      return. */
   const openTree = useCallback(() => {
     const shown = searchRef.current;
     const current = metaRef.current;
     const graph = graphRef.current;
-    if (!shown || !current || !graph) return;
+    const wasm = wasmRef.current;
+    if (!shown || !current || !graph || !wasm) return;
     const reached = shown.reached;
     const rank = shown.ranks;
     const pairs = current.edgeList;
@@ -2495,10 +2528,48 @@ export default function Observatory() {
     }
     const stem = `${current.name.replace(/\.[^.]+$/, '')}_${shown.kind}_${shown.root}`;
     const encoder = new TextEncoder();
-    void parseRef.current(`${stem}.txt`, encoder.encode(lines.join('\n') + '\n'), {
-      name: `${stem}_vertices.txt`,
-      bytes: encoder.encode(names.join('\n') + '\n'),
-    });
+    const bytes = encoder.encode(lines.join('\n') + '\n');
+    let parsed: Parsed;
+    try {
+      parsed = new wasm.Parsed(bytes);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    // The graph is parked, not freed: `openPending` frees what the ref holds.
+    const parked = snapshot();
+    if (!parked) {
+      parsed.free();
+      return;
+    }
+    parentRef.current = parked;
+    graphRef.current = null;
+    setTreeOpen(true);
+    void openPendingRef.current(
+      {
+        name: `${stem}.txt`,
+        bytes: bytes.byteLength,
+        vertices: parsed.vertexCount,
+        edges: parsed.edgeCount,
+        parseMs: 0,
+        memory: readMemory(parsed.memoryReport()),
+        parsed,
+        names: { name: `${stem}_vertices.txt`, bytes: encoder.encode(names.join('\n') + '\n') },
+      },
+      current.representation,
+    );
+  }, [snapshot]);
+
+  /** Back from a search's tree to the graph it was cut from, as it was. */
+  const closeTree = useCallback(() => {
+    const parked = parentRef.current;
+    if (!parked) return;
+    parentRef.current = parked.parent ?? null;
+    searchRef.current?.result.free();
+    setSearch(null);
+    graphRef.current?.free();
+    graphRef.current = null;
+    restoreRef.current(parked);
   }, []);
 
   /** Brings `v` to the centre, close: the vertex and its nearest
@@ -3647,13 +3718,20 @@ export default function Observatory() {
                 </div>
               )}
 
-              {/* The search's tree as a graph, left centre */}
-              {search && (
+              {/* The search's tree as a graph, left centre; the way back once open */}
+              {(search || treeOpen) && (
                 <div className={`${styles.floating} ${styles.floatingLeftCenter}`}>
-                  <div className={styles.cluster}>
-                    <IconButton label={t.openTree} onClick={openTree}>
-                      <GitFork size={15} />
-                    </IconButton>
+                  <div className={`${styles.cluster} ${styles.clusterVertical}`}>
+                    {treeOpen && (
+                      <IconButton label={t.closeTree} onClick={closeTree}>
+                        <Undo2 size={15} />
+                      </IconButton>
+                    )}
+                    {search && (
+                      <IconButton label={t.openTree} onClick={openTree}>
+                        <GitFork size={15} />
+                      </IconButton>
+                    )}
                   </div>
                 </div>
               )}

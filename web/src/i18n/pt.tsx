@@ -752,6 +752,7 @@ export const pt: Dictionary = {
     distribution: 'Distribuição',
     distributions: { degree: 'Graus', weight: 'Pesos' },
     openTree: 'Abrir a árvore da busca como grafo',
+    closeTree: 'Voltar ao grafo em que a busca correu',
     axisMin: { degree: 'Acender os vértices de menor grau', weight: 'Acender as arestas mais leves' },
     axisMax: { degree: 'Acender os vértices de maior grau', weight: 'Acender as arestas mais pesadas' },
     columnHint: 'clique numa coluna para acender seus vértices; clique de novo para apagar',
