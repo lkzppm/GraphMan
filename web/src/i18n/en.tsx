@@ -232,7 +232,6 @@ export const en = {
     failed: (reason: string) => `The latest build could not be fetched (${reason}). See`,
     releases: 'every monthly build',
     year: 'Year',
-    upTo: (year: string) => `up to ${year}`,
     facts: {
       vertices: 'researchers',
       edges: 'collaborations',
