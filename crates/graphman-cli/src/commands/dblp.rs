@@ -48,8 +48,8 @@ pub struct Args {
     name: String,
 
     /// Also write the network as it stood at the end of these years
-    /// (comma-separated, e.g. `2009,2020`); the course's file is the
-    /// network up to 2009.
+    /// (comma-separated, e.g. `2009,2020`); the course's file covers the
+    /// network up to 2009, under an older weight rule.
     #[arg(long, value_delimiter = ',')]
     years: Vec<u16>,
 
@@ -72,7 +72,7 @@ pub struct Args {
     date: Option<String>,
 
     /// Also lay the network out by year in this directory, for the site:
-    /// per year, the strength every pair gained that year and the
+    /// per year, the papers every pair shared that year and the
     /// researchers first seen that year, plus a manifest. The page sums the
     /// years up to the one chosen, so any year can be picked.
     #[arg(long)]
@@ -80,7 +80,7 @@ pub struct Args {
 }
 
 /// The rule the weights follow, spelled out once for the manifest.
-const WEIGHT_RULE: &str = "1 / sum over shared papers of 1 / (authors - 1)";
+const WEIGHT_RULE: &str = "1 / number of shared papers";
 
 const MB: u64 = 1_000_000;
 
@@ -900,9 +900,9 @@ fn readme(manifest: &Manifest, args: &Args) -> String {
     text.push_str(&format!(
         "Built from `{}`{} on {} by `{}`: a vertex per researcher with at least one \
          co-authored record in DBLP, an edge per pair of researchers with a record in \
-         common, and on each edge the inverse of their collaboration strength, where a \
-         record with k + 1 authors adds 1 / k to each of its pairs (the course's 2009 \
-         file follows the same rule).{}\n\n",
+         common, and on each edge 1 / the number of records they share, so no weight \
+         passes 1 (the course's 2009 file follows an older rule, with weights up to \
+         113).{}\n\n",
         manifest.dump,
         manifest
             .source
@@ -1009,7 +1009,7 @@ mod tests {
             ["Ana Lima", "João Cláudio", "Éva Tardos", "Bia Souza"]
         );
         let edges: Vec<_> = network.edges(None).collect();
-        assert_eq!(edges, [(1, 2, 2.0), (1, 3, 2.0), (1, 4, 1.0), (2, 3, 2.0)]);
+        assert_eq!(edges, [(1, 2, 1.0), (1, 3, 1.0), (1, 4, 1.0), (2, 3, 1.0)]);
         assert_eq!(network.edge_count(Some(2001)), 3);
     }
 

@@ -118,13 +118,14 @@ Design decisions worth presenting:
    pair, so the network up to year `y` is the prefix `1..=n_y` of the
    numbering (its names file is the head of the whole one) and its edges
    are read off the same sorted terms in one pass, each weight being
-   `1 / Σ 1/k` over the papers up to `y` (the course file's rule: one
-   two-author paper is distance 1, one four-author paper 3, frequent
-   co-authors close). An author who never wrote with anyone is not a
-   vertex. `strengths` gives the same terms grouped by pair and year, and
-   `edges` sums them year by year in that order, so a network published as
-   one file per year and summed back (the site, `NetworkBuilder` in the
-   wasm crate) has the CLI's weights bit for bit. The DBLP XML, its gzip
+   `1 / p` over the `p` papers the pair shares up to `y` (the professor's
+   definition: one paper is distance 1, four papers 0.25, no weight above
+   1, whatever the number of authors; the course's 2009 file follows an
+   older rule, with weights up to 113, and the studies read that file as
+   it is). An author who never wrote with anyone is not a
+   vertex. `strengths` gives the same terms grouped by pair and year, so a
+   network published as one file per year and summed back (the site,
+   `NetworkBuilder` in the wasm crate) has the CLI's weights. The DBLP XML, its gzip
    and its Latin-1 entities belong to the
    CLI (`commands/dblp.rs`), which streams the 4 GB dump in under a minute
    per gigabyte keeping only names and pairs.
@@ -420,8 +421,8 @@ them in `manifest.json`.
 
 The site layout is one pair of files per year, from the first year in
 DBLP to the dump's: `strengths_<year>.txt.gz` holds `u v strength` lines,
-the strength every pair gained that year (`Σ 1/k` over that year's shared
-papers), and `names_<year>.txt.gz` the researchers whose first
+the strength every pair gained that year (the papers it shared that year),
+and `names_<year>.txt.gz` the researchers whose first
 collaboration was that year, so the network up to a year is the sum of the
 files up to it (undated papers count in the last year, which is the whole
 network). The manifest (schema 2) lists every year with the size of the
@@ -435,7 +436,7 @@ browser's `DecompressionStream`, parts in order into one gunzip, the
 responses kept in the Cache API under the build's version so a second
 visit, or a later year, reads the early years from disk; the wasm
 `NetworkBuilder` sums the strengths per pair (a hash table keyed by the
-pair) in year order, which makes the weights the CLI's bit for bit, and
+pair), which makes the weights the CLI's, and
 `finish(Csr)` builds the named graph.
 The year box also chooses which years make the network: everything up to
 the year (the course's prefix numbering), the year alone, or a range
@@ -447,7 +448,24 @@ suggestions, the most connected, or the whole network, i.e. the earliest
 prefix at full size), a logarithmic size slider, and three live
 tiles (`Graph.subgraph(rule, seed, max)` → vertices, edges and
 the edge file's size, exact up to 200k edges and sampled past that) a
-moment after each change. The result box writes the files a piece at a time
+moment after each change. Around a researcher, a toggle trades the size for
+a radius: `Graph.egonet(seed, k)` is `algo::egonet`, one BFS that collects
+the edges as it goes (each vertex keeps those to vertices numbered after it,
+and from the last level an undiscovered vertex is simply outside). The last
+mode, the shortest path, has no cut: two researcher fields, and in the
+tiles' place the `Observatory` component itself, with its `embed` prop (fetched
+only when the mode is chosen). Embedded it is a simpler stage: no sidebar, no
+structure strip, no layout tools or legend, nothing parked for or taken from the
+observatory's own page.
+The path is handed over as an edge file and a names file, numbered along it,
+and goes the way of any file into a distance query from vertex 1 to vertex n,
+so everything on the canvas is the observatory's; only its seed differs, a line
+from left to right, so that the first researcher stays on the left under the
+force simulation. The distance and the edges sit in the upper corners. `Graph.shortestPath` is
+`algo::shortest_path`, a Dijkstra that stops at the target; it runs on the
+page's thread a moment after the last change. The right box stays: the file
+handed to the canvas is also what opens in the observatory, and what is
+exported, as `dblp_<years>_path_<from>_<to>.txt` and its names. The result box writes the files a piece at a time
 (`Subgraph.nextEdges` / `nextNames`, gathered into a Blob by `collectFile`),
 because the whole network's 640 MB edge file does not fit in wasm's 4 GiB
 beside the network itself. A cut whose file passes the observatory's 1 GiB

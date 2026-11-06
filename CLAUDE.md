@@ -90,18 +90,23 @@ cd web && pnpm run typecheck && pnpm run lint # must be green (CI enforces)
   GitHub Pages (`web/src/lib/dblp.ts`), never from dblp.org or from release
   assets (neither sends CORS headers; DBLP's live API sits behind an
   anti-bot challenge). The build is laid out one file per year
-  (`graphman dblp --site`: the strength each pair gained that year, the
+  (`graphman dblp --site`: the papers each pair shared that year, the
   researchers first seen that year); the page fetches the years up to the
   chosen one and sums them in wasm (`NetworkBuilder`), so any year is
-  selectable and the weights match the CLI's bit for bit (the CLI sums
-  year by year too). Files above 95 MB are split into parts by
-  `.github/scripts/dblp-site.mjs` and the manifest says so; the page
-  stitches them back. The year's network is held in wasm and cut with
-  `algo::select` + `algo::induce` (ball, most connected, or whole); the cut
-  goes to the observatory in memory (`lib/handoff.ts`) or is exported.
+  selectable and the weights match the CLI's. Files above 95 MB are split
+  into parts by `.github/scripts/dblp-site.mjs` and the manifest says so; the
+  page stitches them back. The year's network is held in wasm and cut with
+  `algo::select` + `algo::induce` (ball, most connected, or whole) or
+  `algo::egonet` (radius k around a researcher); the cut goes to the
+  observatory in memory (`lib/handoff.ts`) or is exported. A last mode
+  replaces the cut with the shortest path between two researchers
+  (`Graph.shortestPath`), shown by the `Observatory` component itself through
+  its `embed` prop, never a second canvas; the right box opens or exports it.
 - The collaboration builder (`graphman::io::collaboration`) takes papers
   (year, author names) from any source; DBLP's XML and gzip stay in the CLI.
-  Weights follow the course file: `1 / Σ 1/(authors − 1)` over shared papers.
+  An edge weighs `1 / shared papers`, as the professor defines it (so at most
+  1); the course's 2009 file follows an older rule and the studies read that
+  file as it is.
 - The library page's code examples live in `crates/graphman/tests/wiki.rs`
   (blocks between `// wiki:start <id>` and `// wiki:end`, extracted by
   `web/scripts/sync-data.mjs`); change them there, never in the web code,

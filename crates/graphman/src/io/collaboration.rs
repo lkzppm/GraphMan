@@ -10,13 +10,13 @@
 //!
 //! # Weights
 //!
-//! A paper with `k + 1` authors adds `1 / k` of collaboration strength to
-//! every pair of its authors (Newman's rule: a paper shared with one other
-//! person counts more than one shared with a crowd). The edge weight is
-//! the inverse of the sum, so two people with one two-author paper are at
-//! distance 1, one four-author paper puts each of its pairs at distance 3,
-//! and prolific co-authors end up close. This is what the course's 2009
-//! file holds (weights from 0.0037 to 113, most of them small integers).
+//! An edge weighs `1 / p`, where `p` is how many papers the two researchers
+//! share, as the course's professor defines it: one paper is distance 1,
+//! four papers are distance 0.25, so no weight passes 1 and frequent
+//! co-authors end up close. A paper counts the same for all of its pairs,
+//! however many authors it has. The course's 2009 file follows an older
+//! rule (weights from 0.0037 to 113), so a network built here has that
+//! file's vertices and edges but not its weights.
 //!
 //! # Numbering
 //!
@@ -29,11 +29,10 @@
 //!
 //! # One file per year
 //!
-//! [`Network::strengths`] gives every pair's strength year by year, so a
-//! network can be published as one small file per year and any year's
-//! weights recovered by summing the files up to it: the sum is made in the
-//! same order here and there (year by year, ascending), so the weights are
-//! bit for bit the ones [`Network::edges`] gives.
+//! [`Network::strengths`] gives every pair's strength year by year (the
+//! papers it shared that year), so a network can be published as one small
+//! file per year and any year's weights recovered by summing the files up
+//! to it and inverting the sums: exactly what [`Network::edges`] gives.
 //!
 //! ```
 //! use graphman::io::Papers;
@@ -48,11 +47,11 @@
 //! assert_eq!(network.vertex_count(None), 4);
 //! assert_eq!(network.vertex_count(Some(1984)), 2); // Frank and Tardos, by name
 //! assert_eq!(network.name(1), Some("András Frank"));
-//! // Tardos and Goldberg: a three-author paper (1/2) and a two-author one (1).
+//! // Tardos and Goldberg share two papers, so they are at distance 1/2.
 //! let edges: Vec<_> = network.edges(None).collect();
-//! assert!(edges.contains(&(2, 3, 1.0 / 1.5)));
-//! // Up to 1990 only the three-author paper counts, so they are at distance 2.
-//! assert!(network.edges(Some(1990)).any(|e| e == (2, 3, 2.0)));
+//! assert!(edges.contains(&(2, 3, 0.5)));
+//! // Up to 1990 they share only the first, so they are at distance 1.
+//! assert!(network.edges(Some(1990)).any(|e| e == (2, 3, 1.0)));
 //! ```
 
 use crate::{EdgeList, ParseError, Vertex, Weight};
@@ -65,15 +64,12 @@ use std::io::{self, BufWriter, Write};
 /// after everyone else.
 pub const YEAR_UNKNOWN: u16 = u16::MAX;
 
-/// One paper's contribution to one pair: the year it counts from and the
-/// number of co-authors each of the two had on it (the strength is `1 /
-/// coauthors`).
+/// One paper of one pair, and the year it counts from.
 #[derive(Clone, Copy, Debug)]
 struct Term {
     u: u32,
     v: u32,
     year: u16,
-    coauthors: u16,
 }
 
 /// Papers being collected; `finish` turns them into a [`Network`].
@@ -117,17 +113,11 @@ impl Papers {
             return false;
         }
         let year = year.unwrap_or(YEAR_UNKNOWN);
-        let coauthors = (names.len() - 1).min(usize::from(u16::MAX)) as u16;
         let ids: Vec<u32> = names.iter().map(|name| self.intern(name, year)).collect();
         for (i, &a) in ids.iter().enumerate() {
             for &b in &ids[i + 1..] {
                 let (u, v) = if a < b { (a, b) } else { (b, a) };
-                self.terms.push(Term {
-                    u,
-                    v,
-                    year,
-                    coauthors,
-                });
+                self.terms.push(Term { u, v, year });
             }
         }
         self.papers += 1;
@@ -257,10 +247,10 @@ impl Network {
     }
 
     /// Every pair's strength in every year it collaborated, sorted by
-    /// `(u, v, year)`: the sum of `1 / coauthors` over the pair's papers of
-    /// that year. Added up year by year, ascending, the strengths of the
-    /// years up to `until` invert to exactly the weight [`edges`] gives,
-    /// which is how a network is rebuilt from one file per year.
+    /// `(u, v, year)`: how many papers the pair shared that year. Added up,
+    /// the strengths of the years up to `until` invert to exactly the weight
+    /// [`edges`] gives, which is how a network is rebuilt from one file per
+    /// year.
     ///
     /// [`edges`]: Self::edges
     pub fn strengths(&self) -> Strengths<'_> {
@@ -316,7 +306,7 @@ impl Network {
 }
 
 /// The edges of a [`Network`] up to a year: one per pair with at least one
-/// paper by then, weighted by the inverse of their summed strength.
+/// paper by then, weighing the inverse of how many papers they share.
 pub struct Edges<'a> {
     terms: &'a [Term],
     at: usize,
@@ -327,33 +317,17 @@ impl Iterator for Edges<'_> {
     type Item = (Vertex, Vertex, Weight);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.at < self.terms.len() {
-            let first = self.terms[self.at];
-            // Summed a year at a time, in the order `Strengths` gives them,
-            // so a network rebuilt from per-year strengths has these weights.
-            let mut strength = 0.0;
-            let mut year = first.year;
-            let mut partial = 0.0;
-            let mut end = self.at;
-            while end < self.terms.len() {
-                let term = self.terms[end];
+        while let Some(&first) = self.terms.get(self.at) {
+            let mut shared = 0u32;
+            while let Some(term) = self.terms.get(self.at) {
                 if (term.u, term.v) != (first.u, first.v) {
                     break;
                 }
-                if term.year != year {
-                    strength += partial;
-                    partial = 0.0;
-                    year = term.year;
-                }
-                if term.year <= self.until {
-                    partial += 1.0 / f64::from(term.coauthors);
-                }
-                end += 1;
+                shared += u32::from(term.year <= self.until);
+                self.at += 1;
             }
-            strength += partial;
-            self.at = end;
-            if strength > 0.0 {
-                return Some((first.u, first.v, 1.0 / strength));
+            if shared > 0 {
+                return Some((first.u, first.v, 1.0 / f64::from(shared)));
             }
         }
         None
@@ -361,27 +335,27 @@ impl Iterator for Edges<'_> {
 }
 
 /// Every pair's strength in every year it collaborated, from
-/// [`Network::strengths`]: `(u, v, year, strength)` sorted by `(u, v,
-/// year)`, the year being [`YEAR_UNKNOWN`] for undated papers.
+/// [`Network::strengths`]: `(u, v, year, papers)` sorted by `(u, v, year)`,
+/// the year being [`YEAR_UNKNOWN`] for undated papers.
 pub struct Strengths<'a> {
     terms: &'a [Term],
     at: usize,
 }
 
 impl Iterator for Strengths<'_> {
-    type Item = (Vertex, Vertex, u16, Weight);
+    type Item = (Vertex, Vertex, u16, u32);
 
     fn next(&mut self) -> Option<Self::Item> {
         let first = *self.terms.get(self.at)?;
-        let mut strength = 0.0;
+        let mut papers = 0;
         while let Some(term) = self.terms.get(self.at) {
             if (term.u, term.v, term.year) != (first.u, first.v, first.year) {
                 break;
             }
-            strength += 1.0 / f64::from(term.coauthors);
+            papers += 1;
             self.at += 1;
         }
-        Some((first.u, first.v, first.year, strength))
+        Some((first.u, first.v, first.year, papers))
     }
 }
 
@@ -409,9 +383,8 @@ mod tests {
 
     fn network() -> Network {
         let mut papers = Papers::new();
-        // Two authors: strength 1 each.
         papers.paper(Some(2000), ["Bia", "Ana"]);
-        // Four authors: strength 1/3 per pair.
+        // Four authors: one paper for each of the six pairs, Ana and Bia's second.
         papers.paper(Some(2005), ["Ana", "Bia", "Caio", "Dora"]);
         // A name twice and a blank one: still two authors.
         papers.paper(Some(2010), ["Caio", "  ", "Eli", "Caio"]);
@@ -458,16 +431,17 @@ mod tests {
         assert_eq!(
             full,
             [
-                (1, 2, 1.0 / (1.0 + 1.0 / 3.0)),
-                (1, 3, 3.0),
-                (1, 4, 3.0),
-                (2, 3, 3.0),
-                (2, 4, 3.0),
-                (3, 4, 3.0),
+                (1, 2, 0.5),
+                (1, 3, 1.0),
+                (1, 4, 1.0),
+                (2, 3, 1.0),
+                (2, 4, 1.0),
+                (3, 4, 1.0),
                 (3, 5, 1.0),
                 (5, 6, 1.0),
             ]
         );
+        assert!(full.iter().all(|&(_, _, weight)| weight <= 1.0));
         let early: Vec<_> = network.edges(Some(2000)).collect();
         assert_eq!(early, [(1, 2, 1.0)]);
         assert_eq!(network.edge_count(Some(2005)), 6);
@@ -478,7 +452,7 @@ mod tests {
     #[test]
     fn strengths_rebuild_every_year_exactly() {
         let mut papers = Papers::new();
-        // Three papers of a pair in three years with awkward fractions.
+        // A pair with two papers in one year and more in others.
         papers.paper(Some(2001), ["A", "B", "C"]);
         papers.paper(Some(2001), ["A", "B", "C", "D", "E", "F", "G"]);
         papers.paper(Some(2003), ["A", "B", "C", "D"]);
@@ -494,18 +468,18 @@ mod tests {
                 .windows(2)
                 .all(|w| (w[0].0, w[0].1, w[0].2) < (w[1].0, w[1].1, w[1].2))
         );
-        assert_eq!(strengths[0], (1, 2, 2001, 0.5 + 1.0 / 6.0));
+        assert_eq!(strengths[0], (1, 2, 2001, 2));
         for until in [Some(2000), Some(2001), Some(2003), Some(2007), None] {
             let mut rebuilt = std::collections::BTreeMap::new();
             for &(u, v, year, strength) in &strengths {
                 if until.is_none_or(|limit| year <= limit) {
-                    *rebuilt.entry((u, v)).or_insert(0.0) += strength;
+                    *rebuilt.entry((u, v)).or_insert(0) += strength;
                 }
             }
             let expected: Vec<_> = network.edges(until).collect();
             let got: Vec<_> = rebuilt
                 .into_iter()
-                .map(|((u, v), s)| (u, v, 1.0 / s))
+                .map(|((u, v), s)| (u, v, 1.0 / f64::from(s)))
                 .collect();
             assert_eq!(got, expected, "up to {until:?}");
         }
@@ -518,7 +492,7 @@ mod tests {
         assert_eq!(network.write_edges(Some(2005), &mut edges).unwrap(), 6);
         assert_eq!(
             String::from_utf8(edges).unwrap(),
-            "4\n1 2 0.75\n1 3 3\n1 4 3\n2 3 3\n2 4 3\n3 4 3\n"
+            "4\n1 2 0.5\n1 3 1\n1 4 1\n2 3 1\n2 4 1\n3 4 1\n"
         );
         let mut names = Vec::new();
         assert_eq!(network.write_names(Some(2000), &mut names).unwrap(), 2);

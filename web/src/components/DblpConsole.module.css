@@ -25,11 +25,56 @@
   gap: 22px;
 }
 
+/* Above the boxes, for the title's tooltip to pass over them. */
 .heading {
+  position: relative;
+  z-index: 5;
   display: grid;
   gap: 10px;
   justify-items: center;
   text-align: center;
+}
+
+/* The title stays dead centre: its (i) hangs off its right side, and the
+   tooltip, opened by hovering either, hangs under the middle of both. */
+.titleRow {
+  position: relative;
+}
+
+.infoTitle {
+  position: static;
+}
+
+.infoTitle .infoButton {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  translate: 6px -50%;
+}
+
+.tipBuilt {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  left: 50%;
+  right: auto;
+  top: calc(100% + 10px);
+  translate: -50% 0;
+  width: min(390px, 84vw);
+  text-align: left;
+}
+
+.tipHead {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.titleRow:hover .tip {
+  opacity: 1;
+  transform: none;
 }
 
 .dated {
@@ -348,7 +393,7 @@
 
 .rules {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 10px;
 }
 
@@ -359,12 +404,12 @@
 
 .ruleButton {
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
   flex: 1 1 0;
   min-width: 0;
-  padding: 12px 36px 12px 12px;
+  padding: 12px;
   text-align: left;
   border: 1px solid var(--border);
   border-left: 2px solid var(--border-2);
@@ -529,6 +574,37 @@
 .controls[data-seed] {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   column-gap: 18px;
+}
+
+/* A field's label line, the height of the toggle that may sit on it, so the
+   inputs of the two columns line up. */
+.fieldHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+  min-height: 26px;
+}
+
+.toggle {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+
+.toggle .segment {
+  padding: 2px 10px;
+  font-size: 11px;
+}
+
+.toggle .segment:disabled {
+  cursor: default;
 }
 
 /* The whole network needs neither a seed nor a size: the row folds away. */
@@ -758,6 +834,17 @@
   -moz-appearance: textfield;
 }
 
+.numberShort {
+  width: 72px;
+}
+
+.radiusName {
+  flex: 0 0 auto;
+  margin-right: -4px;
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
 .number::-webkit-outer-spin-button,
 .number::-webkit-inner-spin-button {
   -webkit-appearance: none;
@@ -875,6 +962,94 @@
   transition: width 0.5s var(--ease);
 }
 
+/* ---- the path: the observatory in the tiles' place, the results in its corners */
+
+.route {
+  position: relative;
+  height: min(560px, 64dvh);
+  min-height: 340px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+/* The counters and the canvas swap by folding, one closing as the other opens,
+   so the box's height, and with it the console's centre, moves smoothly. */
+.fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.45s var(--ease);
+}
+
+.fold[data-open] {
+  grid-template-rows: 1fr;
+}
+
+.foldInner {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.35s var(--ease);
+}
+
+/* Clipped only while it moves: the counters' tooltips hang out of it. */
+.fold[data-open] .foldInner {
+  opacity: 1;
+  animation: unclip 0s linear 0.45s forwards;
+}
+
+@keyframes unclip {
+  to {
+    overflow: visible;
+  }
+}
+
+/* The canvas is mounted open: this is where it unfolds from. */
+@starting-style {
+  .fold[data-open] {
+    grid-template-rows: 0fr;
+  }
+
+  .fold[data-open] .foldInner {
+    opacity: 0;
+  }
+}
+
+.swapIn {
+  min-width: 0;
+  animation: rise 0.4s var(--ease) both;
+}
+
+.routeFact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  color: var(--accent);
+}
+
+.routeFact[data-side='right'] {
+  align-items: flex-end;
+}
+
+.routeFact[data-empty] .fileSizeValue {
+  color: var(--fg-3);
+}
+
+.routeNote {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
 /* ---- the result box ------------------------------------------------------ */
 
 .action {
@@ -970,6 +1145,26 @@
     grid-template-columns: 1fr;
   }
 
+  .ruleButton {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding-right: 36px;
+  }
+
+  .titleRow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+  }
+
+  .infoTitle .infoButton {
+    position: static;
+    translate: none;
+    flex: 0 0 auto;
+  }
+
   .tiles {
     grid-template-columns: 1fr 1fr;
   }
@@ -989,9 +1184,19 @@
 @media (prefers-reduced-motion: reduce) {
   .title,
   .box,
+  .swapIn,
   .suggestions,
   .spinner {
     animation: none;
+  }
+
+  .fold,
+  .foldInner {
+    transition: none;
+  }
+
+  .fold[data-open] .foldInner {
+    animation-delay: 0s;
   }
 
   .box,

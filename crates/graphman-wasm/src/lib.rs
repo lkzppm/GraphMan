@@ -1550,12 +1550,13 @@ type PairStrengths = std::collections::HashMap<u64, f64, std::hash::BuildHasherD
 /// The DBLP site's network up to a year, summed from one file per year.
 ///
 /// `graphman dblp --site` publishes, per year, the strength every pair
-/// gained that year (`u v strength` lines) and the researchers whose first
-/// collaboration was that year (`vertex,name` lines). Adding the years up
-/// to the one wanted, ascending, and inverting the sums gives that year's
-/// weights, bit for bit the ones the CLI writes (the sums are made in the
-/// same order, see `graphman::io::Network::strengths`). [`finish`] builds
-/// the graph, named.
+/// gained that year (`u v strength` lines: how many papers it shared) and
+/// the researchers whose first collaboration was that year (`vertex,name`
+/// lines). Adding the years up to the one wanted and inverting the sums
+/// gives that year's weights, the ones the CLI writes (see
+/// `graphman::io::Network::strengths`). A strength may be any positive
+/// real, as in builds made before the weights became `1 / papers`.
+/// [`finish`] builds the graph, named.
 ///
 /// [`finish`]: Self::finish
 #[wasm_bindgen(js_name = NetworkBuilder)]
@@ -1578,9 +1579,8 @@ impl WasmNetworkBuilder {
         }
     }
 
-    /// Adds a year's strengths (`u v strength` per line); the years must
-    /// come in ascending order for the sums to match the CLI's. Returns
-    /// how many lines it read. Throws on a malformed line.
+    /// Adds a year's strengths (`u v strength` per line). Returns how many
+    /// lines it read. Throws on a malformed line.
     #[wasm_bindgen(js_name = addStrengths)]
     pub fn add_strengths(&mut self, bytes: &[u8]) -> Result<u32, JsError> {
         let mut lines = 0u32;
@@ -1878,9 +1878,9 @@ mod tests {
     #[test]
     fn network_builder_sums_the_years_in_order() {
         let mut builder = WasmNetworkBuilder::new(4);
-        builder.add_strengths(b"1 2 0.5\n1 3 1\n").unwrap();
+        builder.add_strengths(b"1 2 1\n1 3 1\n").unwrap();
         builder.add_names(b"1,Ana\n2,Bia\n3,Caio");
-        builder.add_strengths(b"1 2 0.25\r\n2 4 1\n\n").unwrap();
+        builder.add_strengths(b"1 2 3\r\n2 4 1\n\n").unwrap();
         builder.add_names(b"4,Dora\n");
         assert_eq!(builder.edge_count(), 3);
         let graph = builder.finish(RepresentationKind::Csr, false).unwrap();
@@ -1888,11 +1888,8 @@ mod tests {
         assert_eq!(graph.edge_count(), 3);
         assert_eq!(graph.name(4).as_deref(), Some("Dora"));
         assert_eq!(graph.edges.edges(), [[1, 2], [1, 3], [2, 4]]);
-        // 1 and 2: 0.5 in the first year, then 0.25, summed in that order.
-        assert_eq!(
-            graph.edges.weights(),
-            Some([1.0 / (0.5 + 0.25), 1.0, 1.0].as_slice())
-        );
+        // 1 and 2: one paper in the first year, three in the second.
+        assert_eq!(graph.edges.weights(), Some([0.25, 1.0, 1.0].as_slice()));
 
         // Compacted: only the second year, so Ana (1) and Caio (3) are idle
         // and the rest are renumbered in order.
@@ -1911,6 +1908,29 @@ mod tests {
         assert_eq!(parse_strength(b"1 2 0"), None);
         assert_eq!(parse_strength(b"1 x 1"), None);
         assert_eq!(parse_strength(b"1 2 1 4"), None);
+    }
+
+    #[test]
+    fn egonet_and_shortest_path_answer_from_the_named_network() {
+        let mut builder = WasmNetworkBuilder::new(4);
+        builder.add_names(b"1,Ana\n2,Bia\n3,Caio\n4,Dora\n5,Eli\n");
+        builder
+            .add_strengths(b"1 2 2\n2 3 4\n1 3 1\n3 4 1\n")
+            .unwrap();
+        let graph = builder.finish(RepresentationKind::Csr, false).unwrap();
+
+        let cut = graph.egonet(1, 1);
+        assert_eq!((cut.vertices(), cut.edges()), (3, 3));
+
+        // The two-step way (0.5 + 0.25) beats the direct edge (1).
+        let path = graph.shortest_path(1, 3).unwrap().unwrap();
+        assert_eq!(path.vertices(), [1, 2, 3]);
+        assert_eq!(path.weights(), [0.5, 0.25]);
+        assert_eq!((path.distance(), path.edges()), (0.75, 2));
+        let same = graph.shortest_path(4, 4).unwrap().unwrap();
+        assert_eq!((same.vertices(), same.edges()), (vec![4], 0));
+        // Eli wrote with no one here: another component.
+        assert!(graph.shortest_path(1, 5).unwrap().is_none());
     }
 }
 
@@ -2027,5 +2047,71 @@ impl WasmGraph {
             edge_line: 0,
             name_line: 0,
         }
+    }
+
+    /// The egonet of radius `radius` around `seed`: everyone at most `radius`
+    /// edges away, ignoring the weights, and every edge among them, with
+    /// `seed` as vertex 1.
+    pub fn egonet(&self, seed: u32, radius: u32) -> Subgraph {
+        let induced = dispatch!(&self.graph, g => graphman::algo::egonet(g, seed, radius));
+        Subgraph {
+            induced,
+            edge_line: 0,
+            name_line: 0,
+        }
+    }
+
+    /// The shortest path between two vertices by weight, read off a Dijkstra
+    /// that stops at `to`; `undefined` across components. Throws when a vertex
+    /// is outside the graph, or on a negative weight.
+    #[wasm_bindgen(js_name = shortestPath)]
+    pub fn shortest_path(&self, from: u32, to: u32) -> Result<Option<PathBetween>, JsError> {
+        self.check(from)?;
+        self.check(to)?;
+        dispatch!(&self.graph, g => {
+            let Some(path) = graphman::algo::shortest_path(g, from, to)
+                .map_err(|e| JsError::new(&e.to_string()))?
+            else {
+                return Ok(None);
+            };
+            let weights = path
+                .vertices
+                .windows(2)
+                .map(|hop| g.weight(hop[0], hop[1]).expect("a path follows edges"))
+                .collect();
+            Ok(Some(PathBetween { path, weights }))
+        })
+    }
+}
+
+/// A shortest path between two vertices (see [`WasmGraph::shortest_path`]).
+#[wasm_bindgen]
+pub struct PathBetween {
+    path: graphman::algo::Path,
+    weights: Vec<f64>,
+}
+
+#[wasm_bindgen]
+impl PathBetween {
+    /// The sum of the weights along the path.
+    #[wasm_bindgen(getter)]
+    pub fn distance(&self) -> f64 {
+        self.path.distance
+    }
+
+    /// How many edges the path has.
+    #[wasm_bindgen(getter)]
+    pub fn edges(&self) -> u32 {
+        self.path.hops() as u32
+    }
+
+    /// The vertices from one end to the other, both included.
+    pub fn vertices(&self) -> Vec<u32> {
+        self.path.vertices.clone()
+    }
+
+    /// The weight of each edge, in the order walked.
+    pub fn weights(&self) -> Vec<f64> {
+        self.weights.clone()
     }
 }
