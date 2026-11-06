@@ -148,7 +148,7 @@ export const en = {
       },
       dijkstra: {
         title: 'Dijkstra',
-        body: 'dijkstra returns a ShortestPathTree: the distance and parent of every reached vertex, the settle order (by distance) and path_to. It is written once, as dijkstra_into over a Frontier, the structure that keeps the distance estimates, chosen at runtime like the representation. Relaxation is strict and every frontier breaks ties on the smaller vertex, so all of them build the same tree. A graph with a negative edge is refused with NegativeWeight, whose message ends "shortest paths with negative weights are not implemented yet": in an undirected graph, walking one negative edge back and forth makes a path as short as one likes, so there is no answer to give.',
+        body: 'dijkstra returns a ShortestPathTree: the distance and parent of every reached vertex, the settle order (by distance) and path_to; shortest_path answers one pair, stopping as soon as the target is settled, with a Path that holds the distance, the vertices and hops(), its number of edges. It is written once, as dijkstra_into over a Frontier, the structure that keeps the distance estimates, chosen at runtime like the representation. Relaxation is strict and every frontier breaks ties on the smaller vertex, so all of them build the same tree. A graph with a negative edge is refused with NegativeWeight, whose message ends "shortest paths with negative weights are not implemented yet": in an undirected graph, walking one negative edge back and forth makes a path as short as one likes, so there is no answer to give.',
         bfs: 'BFS from 1: the fewest edges, 1 → 3 → 5 weighs 3',
         dijkstra: 'Dijkstra from 1: the lightest path, 1 → 2 → 3 → 5 weighs 2.5',
       },
@@ -209,6 +209,12 @@ export const en = {
         file: 'the names file',
         answers: 'what it answers',
       },
+      subgraphs: {
+        title: 'Cuts and egonets',
+        body: 'A graph too large to look at is cut down: select says which vertices stay (a ball around a seed, stopped at a size, the most connected or the earliest) and induce builds the graph among them, renumbered from 1 and written back in the course format. egonet cuts by radius instead: every vertex at most k edges from the seed, ignoring the weights, and every edge among them. It is one BFS that collects the edges as it goes, so no neighbour row is read twice, and it always keeps the last level whole, where a cut by size may stop halfway through it.',
+        size: 'select(Ball, 1, 2) and induce: stopped at the size, 3 is left out',
+        egonet: 'egonet(1, 1): 1, its neighbours 2 and 3, and the edge between them',
+      },
       cli: {
         title: 'The command line',
         body: "The graphman binary wraps the library: every command takes a graph file, a --repr (list, matrix or csr) and writes the assignment's output files. dijkstra writes the shortest-path tree and prints the paths to the targets. study runs the whole case study, both parts, and writes JSON plus RESULTS.md.",
@@ -228,6 +234,15 @@ export const en = {
   // The DBLP tab: one console, three steps (the network, the cut, the result).
   dblp: {
     title: 'DBLP collaboration network',
+    built: {
+      title: 'How the graph is built',
+      lines: [
+        'Every researcher with at least one co-authored publication is a vertex.',
+        'Two researchers share an edge when they published together in the years chosen.',
+        'The edge weighs 1 / p, where p is how many publications they share: one weighs 1, four weigh 0.25. The more they publish together, the closer they are, and no weight passes 1.',
+        'A publication counts the same for each pair of its authors, however many authors it has.',
+      ],
+    },
     loading: 'fetching the latest build',
     failed: (reason: string) => `The latest build could not be fetched (${reason}). See`,
     releases: 'every monthly build',
@@ -260,12 +275,25 @@ export const en = {
       ball: 'Around one researcher',
       mostConnected: 'The most connected',
       whole: 'The whole network',
+      path: 'Shortest path',
     },
     ruleHints: {
-      ball: 'A BFS from the researcher, stopped at the size: one connected piece, the researcher as vertex 1.',
+      ball: 'A BFS from the researcher, stopped at a size or at a radius (the egonet): one connected piece, the researcher as vertex 1.',
       mostConnected: 'The researchers with the most co-authors; the first of them is vertex 1.',
       whole: 'Every researcher and collaboration of the years chosen, as they are.',
+      path: 'The lightest way between two researchers, by Dijkstra on the weights, and only that way.',
     },
+    cutBy: 'Stop at',
+    cuts: {
+      size: 'Size',
+      radius: 'Egonet',
+    },
+    cutHints: {
+      size: 'A BFS stopped when it reaches this many researchers.',
+      radius:
+        'Every researcher at most k edges away, ignoring the weights, and every collaboration among them.',
+    },
+    radius: 'Radius k, in edges',
     seed: 'Researcher',
     seedPlaceholder: 'a name, or a vertex number',
     invalidSeed: 'Not a researcher of this network.',
@@ -284,6 +312,15 @@ export const en = {
       `This cut's file is ${size}, over the observatory's ${limit} limit, so it cannot open there. Export the files or make a smaller cut.`,
     heavy:
       'a cut this large opens in the observatory, slowly: count on seconds and several GB of memory',
+    path: {
+      from: 'From',
+      to: 'To',
+      distance: 'distance',
+      edges: 'edges',
+      needBoth: 'name two researchers to find the way between them',
+      searching: 'looking for the shortest path',
+      none: 'no path: the two are in different components',
+    },
   },
 
   footer: {
@@ -759,8 +796,14 @@ export const en = {
     distributions: { degree: 'Degrees', weight: 'Weights' },
     openTree: 'Open the search tree as a graph',
     closeTree: 'Back to the graph the search ran on',
-    axisMin: { degree: 'Light the vertices of the lowest degree', weight: 'Light the lightest edges' },
-    axisMax: { degree: 'Light the vertices of the highest degree', weight: 'Light the heaviest edges' },
+    axisMin: {
+      degree: 'Light the vertices of the lowest degree',
+      weight: 'Light the lightest edges',
+    },
+    axisMax: {
+      degree: 'Light the vertices of the highest degree',
+      weight: 'Light the heaviest edges',
+    },
     columnHint: 'click a column to light its vertices; click again to clear',
     distributionUnit: { degree: 'vertices per degree', weight: 'edges per weight' },
     distributionBucket: {

@@ -3037,3 +3037,59 @@
     transition: none;
   }
 }
+
+/* ---- embedded in another page (the DBLP tab's shortest path) --------------- */
+
+/* The stage alone, the size of whatever holds it. */
+.app.embedded {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.app.embedded:not(.fullscreen) {
+  height: 100%;
+}
+
+/* A simpler stage: no sidebar, and of the controls on the canvas only finding a
+   vertex and the view tools. The toggles stay at their defaults, all on. */
+.embedded .sidebar,
+.embedded .sidebarHandle,
+.embedded .floatingTopRight,
+.embedded .floatingTopCenter > .cluster,
+.embedded .legend {
+  display: none;
+}
+
+/* The page's two results in the very corners and the path between them. */
+.cornerLeft,
+.cornerRight {
+  top: 12px;
+  pointer-events: none;
+}
+
+.cornerLeft {
+  left: 14px;
+}
+
+.cornerRight {
+  right: 14px;
+}
+
+/* Finding a vertex, bottom left: its field and suggestions open upwards, where
+   there is room. */
+.embedded .floatingTopLeft {
+  top: auto;
+  bottom: 14px;
+  flex-direction: column-reverse;
+}
+
+.embedded .floatingTopLeft .suggestions {
+  top: auto;
+  bottom: 100%;
+  margin: 0 0 4px;
+}
+
+.embedded .floatingTopCenter {
+  left: 130px;
+  right: 130px;
+}

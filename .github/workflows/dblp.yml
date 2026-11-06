@@ -2,7 +2,7 @@ name: DBLP
 
 # Rebuilds the course's collaboration network from the newest DBLP dump.
 # `graphman dblp` turns the XML into the course format (the whole network
-# and the network up to 2009, the course file's twin), which goes to a
+# and the network up to 2009, the course file's year), which goes to a
 # release tagged with the dump's date, and into the site layout (one file
 # per year, summed by the page into any year's network), which goes to
 # GitHub Pages, the host the site can fetch from (release assets send no

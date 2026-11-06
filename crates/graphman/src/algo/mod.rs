@@ -11,6 +11,7 @@
 //! * [`degree_stats`] / [`weight_stats`] — min, max, mean (and median) degree and weight.
 //! * [`radial_layout`], [`tree_layout`] — free `O(n)` layouts derived from a search tree, used by the observatory.
 //! * [`select`] / [`induce`] — a graph cut down to size by a [`SubgraphRule`], renumbered and written back out.
+//! * [`egonet`] — the cut of everything within `k` edges of a vertex, collected during one BFS.
 
 mod components;
 mod diameter;
@@ -36,7 +37,7 @@ pub use shortest_path::{
     shortest_path_into,
 };
 pub use stats::{DegreeStats, WeightStats, degree_stats, weight_stats};
-pub use subgraph::{Induced, SubgraphRule, induce, select};
+pub use subgraph::{Induced, SubgraphRule, egonet, induce, select};
 pub use traversal::{
     Control, DfsKind, RecursionLimit, SearchTree, UNREACHED, Visitor, bfs, bfs_into, bfs_with, dfs,
     dfs_into, dfs_recursive, dfs_recursive_into, dfs_recursive_with, dfs_with,

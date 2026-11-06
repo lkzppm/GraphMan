@@ -95,7 +95,7 @@ import { useT } from '@/i18n/LocaleProvider';
 import { onThemeFade } from '@/lib/theme';
 import type { Dictionary } from '@/i18n';
 import styles from './Observatory.module.css';
-import { OBSERVATORY_MAX_BYTES, takeGraph } from '@/lib/handoff';
+import { OBSERVATORY_MAX_BYTES, takeGraph, type Handoff } from '@/lib/handoff';
 import { OBSERVATORY_SESSION, keepSession, takeSession } from '@/lib/session';
 import Structures, {
   clampStrip,
@@ -506,7 +506,33 @@ type FormatSlide = (typeof FORMAT_SLIDES)[number];
 /** The format card turns to its next file this often, unless held. */
 const FORMAT_SLIDE_MS = 6000;
 
-export default function Observatory() {
+/** The observatory inside another page, as the DBLP tab's shortest path: the
+    stage alone, showing one path as a distance query from its first vertex to
+    its last, with nothing parked for the observatory's own page. */
+export interface ObservatoryEmbed {
+  /** The path as a graph file and its names, its vertices 1..n along it. */
+  path: Handoff | null;
+  /** What sits in the stage's upper corners. */
+  left: ReactNode;
+  right: ReactNode;
+  /** What the stage shows while it has no path. */
+  empty: ReactNode;
+}
+
+/** A path as a line, its first vertex on the left and its last on the right:
+    the force simulation starts from here and keeps that order. The small
+    zigzag lets the line give way to the repulsion. */
+function pathLine(n: number, length: number): Float32Array {
+  const positions = new Float32Array((n + 1) * 2);
+  for (let v = 1; v <= n; v++) {
+    positions[2 * v] = (v - (n + 1) / 2) * length;
+    positions[2 * v + 1] = (v % 2 === 0 ? 1 : -1) * length * 0.15;
+  }
+  return positions;
+}
+
+export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}) {
+  const embedded = embed !== undefined;
   const t = useT().observatory;
   const tRef = useRef(t);
   tRef.current = t;
@@ -519,9 +545,7 @@ export default function Observatory() {
   const cameraRef = useRef<Camera>({ x: 0, y: 0, zoom: 1 });
   const fitRef = useRef<() => void>(() => {});
   /** `parseBytes`, for the boot effect, which runs before it is defined. */
-  const openPendingRef = useRef<(waiting: Pending, choice: Repr) => Promise<void>>(
-    async () => {},
-  );
+  const openPendingRef = useRef<(waiting: Pending, choice: Repr) => Promise<void>>(async () => {});
   const parseRef = useRef<
     (name: string, bytes: Uint8Array, names: NamesFile | null) => Promise<Pending | null>
   >(async () => null);
@@ -774,6 +798,8 @@ export default function Observatory() {
         };
         setStatus({ kind: 'ready' });
         // The graph left here on the way out, if any, comes back as it was...
+        // Embedded, neither is this one's to take.
+        if (embedded) return;
         const saved = takeSession<ObservatorySession>(OBSERVATORY_SESSION);
         if (saved) restoreRef.current(saved);
         // ...unless a network built on the DBLP tab was opened here since.
@@ -792,8 +818,13 @@ export default function Observatory() {
     return () => {
       cancelled = true;
       // Leaving with a graph open parks it, picture and panels included,
-      // for the next visit; it is not freed.
-      const parked = snapshot();
+      // for the next visit; it is not freed. An embedded path is only a view.
+      const parked = embedded ? null : snapshot();
+      if (embedded) {
+        searchRef.current?.result.free();
+        graphRef.current?.free();
+        graphRef.current = null;
+      }
       if (parked) {
         keepSession<ObservatorySession>(OBSERVATORY_SESSION, parked, {
           bytes: parked.graph.heapBytes,
@@ -810,7 +841,7 @@ export default function Observatory() {
       rendererRef.current = null;
       lease.release();
     };
-  }, [snapshot]);
+  }, [embedded, snapshot]);
 
   // The canvas takes its colours from the CSS variables: while a theme
   // switch eases them, the renderer is handed them every frame (the label
@@ -1232,9 +1263,11 @@ export default function Observatory() {
         // the largest component: the force placement is only a seed for
         // the simulation.
         const willSimulate = graph.vertexCount <= SIMULATION_LIMIT;
-        const positions = willSimulate
-          ? graph.initialLayout()
-          : graph.layout(wasm.LayoutKind.Radial, Math.max(1, labels.indexOf(1)));
+        const positions = embedded
+          ? pathLine(graph.vertexCount, wasm.edgeLength())
+          : willSimulate
+            ? graph.initialLayout()
+            : graph.layout(wasm.LayoutKind.Radial, Math.max(1, labels.indexOf(1)));
         const edges = graph.edges();
         // Per component: edges (by one endpoint's label) and the degree range.
         const componentEdges = new Uint32Array(sizes.length + 1);
@@ -1315,7 +1348,7 @@ export default function Observatory() {
         setStatus({ kind: 'ready' });
       }
     },
-    [fit, attachNames],
+    [embedded, fit, attachNames],
   );
 
   /**
@@ -1763,6 +1796,37 @@ export default function Observatory() {
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [playing, search, fitDiscovered]);
+
+  // Embedded, the path given goes the way of any file (one at a time: a load
+  // must not free what the one before it is building), skipping the picker...
+  const embedPath = embed?.path ?? null;
+  const booted = status.kind === 'ready' || status.kind === 'parsing';
+  const embedQueue = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    if (!embedded || !booted) return;
+    let stale = false;
+    embedQueue.current = embedQueue.current.then(async () => {
+      if (stale) return;
+      if (!embedPath) {
+        clearGraph();
+        return;
+      }
+      const waiting = await parseBytes(embedPath.name, embedPath.bytes, embedPath.names);
+      if (waiting && !stale) await openPending(waiting, 'csr');
+    });
+    return () => {
+      stale = true;
+    };
+  }, [embedded, booted, embedPath, clearGraph, parseBytes, openPending]);
+
+  // ...and once it stands, is searched from its first vertex to its last.
+  const embedRan = useRef<Handoff | null>(null);
+  useEffect(() => {
+    if (!embedPath || !meta || search || meta.name !== embedPath.name) return;
+    if (embedRan.current === embedPath) return;
+    embedRan.current = embedPath;
+    runSearch('dijkstra', 1, meta.vertices);
+  }, [embedPath, meta, search, runSearch]);
 
   // With a destination, playing walks the path from the origin to it, a
   // quarter second an edge (between 1.2 and 6 seconds in all).
@@ -2759,19 +2823,29 @@ export default function Observatory() {
 
   const canvasVisible = meta !== null;
 
+  /** What is fixed to the window. Inside another page an ancestor's animation or
+      filter would make it fixed to that ancestor instead, so it goes straight on
+      the body (in full screen only the app is shown, and nothing is above it). */
+  const overPage = (node: ReactNode) =>
+    embedded && !fullscreen ? createPortal(node, document.body) : node;
+
   return (
     <div
       ref={appRef}
-      className={`${styles.app} ${dragOver ? styles.dragOver : ''} ${fullscreen ? styles.fullscreen : ''}`}
+      className={`${styles.app} ${dragOver ? styles.dragOver : ''} ${fullscreen ? styles.fullscreen : ''} ${embedded ? styles.embedded : ''}`}
       style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}
-      onDragOver={(event) => {
-        event.preventDefault();
-        if (!dragOver) setDragOver(true);
-      }}
+      onDragOver={
+        embedded
+          ? undefined
+          : (event) => {
+              event.preventDefault();
+              if (!dragOver) setDragOver(true);
+            }
+      }
       onDragLeave={(event) => {
         if (event.currentTarget === event.target) setDragOver(false);
       }}
-      onDrop={onDrop}
+      onDrop={embedded ? undefined : onDrop}
     >
       <input
         ref={fileInputRef}
@@ -3376,7 +3450,8 @@ export default function Observatory() {
           onDoubleClick={(event) => {
             if (!onCanvas(event)) return;
             const v = pick(event.clientX, event.clientY);
-            if (v) pickTarget(v);
+            // An embedded path is the answer shown: no other target to pick.
+            if (v && !embedded) pickTarget(v);
             else fit();
           }}
           style={{
@@ -3391,8 +3466,20 @@ export default function Observatory() {
           />
           <canvas ref={labelCanvasRef} className={styles.labels} aria-hidden="true" />
 
-          {!meta && <Constellation />}
-          {!meta && (
+          {embed && (
+            <>
+              <div className={`${styles.floating} ${styles.cornerLeft}`}>{embed.left}</div>
+              <div className={`${styles.floating} ${styles.cornerRight}`}>{embed.right}</div>
+            </>
+          )}
+          {embed &&
+            !meta &&
+            status.kind !== 'unsupported' &&
+            status.kind !== 'failed' &&
+            embed.empty}
+
+          {!meta && !embedded && <Constellation />}
+          {!meta && (!embedded || status.kind === 'unsupported' || status.kind === 'failed') && (
             <div className={styles.empty}>
               {status.kind === 'unsupported' ? (
                 <div className={styles.emptyCard}>
@@ -3451,7 +3538,11 @@ export default function Observatory() {
                   </IconButton>
                 </div>
                 {findOpen && (
-                  <div className={`${styles.help} ${styles.find}`} role="dialog" aria-label={t.find}>
+                  <div
+                    className={`${styles.help} ${styles.find}`}
+                    role="dialog"
+                    aria-label={t.find}
+                  >
                     <VertexField
                       id="find"
                       label={t.find}
@@ -3696,7 +3787,7 @@ export default function Observatory() {
               </div>
 
               {/* The structure strip's toggle, bottom centre, once a search ran */}
-              {search && !phone && (
+              {search && !phone && !embedded && (
                 <div className={`${styles.floating} ${styles.floatingBottomCenter}`}>
                   <div className={styles.cluster}>
                     <IconButton
@@ -3735,7 +3826,7 @@ export default function Observatory() {
               )}
 
               {/* The search's tree as a graph, left centre; the way back once open */}
-              {(search || treeOpen) && (
+              {(search || treeOpen) && !embedded && (
                 <div className={`${styles.floating} ${styles.floatingLeftCenter}`}>
                   <div className={`${styles.cluster} ${styles.clusterVertical}`}>
                     {treeOpen && (
@@ -3781,7 +3872,11 @@ export default function Observatory() {
                   )}
                 </div>
                 {helpOpen && (
-                  <div className={`${styles.help} ${styles.helpBottom}`} role="dialog" aria-label={t.controlsTitle}>
+                  <div
+                    className={`${styles.help} ${styles.helpBottom}`}
+                    role="dialog"
+                    aria-label={t.controlsTitle}
+                  >
                     <span className={`label ${styles.helpTitle}`}>{t.controlsTitle}</span>
                     <ul className={styles.keys}>
                       {t.controls.map(([key, does]) => (
@@ -3835,35 +3930,39 @@ export default function Observatory() {
             </>
           )}
 
-          {meta && hovered !== 0 && pointer && hoverInfo && (
-            <div
-              className={styles.tooltip}
-              style={
-                pointer.x + 14 + TOOLTIP_WIDTH > window.innerWidth
-                  ? { right: window.innerWidth - pointer.x + 14, top: pointer.y + 14 }
-                  : { left: pointer.x + 14, top: pointer.y + 14 }
-              }
-              role="status"
-            >
-              {nameOf(hovered) && <span className={styles.tooltipName}>{nameOf(hovered)}</span>}
-              <span className="mono">{t.vertex(hovered)}</span>
-              <span>{t.degree(hoverInfo.degree)}</span>
-              {search &&
-                (hoverInfo.level === null ? (
-                  <span>{t.notReached}</span>
-                ) : (
-                  <span>
-                    {hoverInfo.distance !== null
-                      ? t.distanceAt(formatWeight(hoverInfo.distance))
-                      : t.level(hoverInfo.level)}
-                    {hoverInfo.parent !== null && t.parent(hoverInfo.parent)}
-                  </span>
-                ))}
-            </div>
-          )}
+          {meta &&
+            hovered !== 0 &&
+            pointer &&
+            hoverInfo &&
+            overPage(
+              <div
+                className={styles.tooltip}
+                style={
+                  pointer.x + 14 + TOOLTIP_WIDTH > window.innerWidth
+                    ? { right: window.innerWidth - pointer.x + 14, top: pointer.y + 14 }
+                    : { left: pointer.x + 14, top: pointer.y + 14 }
+                }
+                role="status"
+              >
+                {nameOf(hovered) && <span className={styles.tooltipName}>{nameOf(hovered)}</span>}
+                <span className="mono">{t.vertex(hovered)}</span>
+                <span>{t.degree(hoverInfo.degree)}</span>
+                {search &&
+                  (hoverInfo.level === null ? (
+                    <span>{t.notReached}</span>
+                  ) : (
+                    <span>
+                      {hoverInfo.distance !== null
+                        ? t.distanceAt(formatWeight(hoverInfo.distance))
+                        : t.level(hoverInfo.level)}
+                      {hoverInfo.parent !== null && t.parent(hoverInfo.parent)}
+                    </span>
+                  ))}
+              </div>,
+            )}
         </div>
 
-        {meta && search && (structuresOpen || stripClosing) && !phone && (
+        {meta && search && (structuresOpen || stripClosing) && !phone && !embedded && (
           <Structures
             t={t}
             search={search}
@@ -3900,14 +3999,15 @@ export default function Observatory() {
         )}
       </div>
 
-      {notice && (
-        <div className={styles.notice} role="alert">
-          <span>{notice}</span>
-          <button type="button" onClick={() => setNotice(null)} aria-label={t.dismiss}>
-            ×
-          </button>
-        </div>
-      )}
+      {notice &&
+        overPage(
+          <div className={styles.notice} role="alert">
+            <span>{notice}</span>
+            <button type="button" onClick={() => setNotice(null)} aria-label={t.dismiss}>
+              ×
+            </button>
+          </div>,
+        )}
     </div>
   );
 }
@@ -4321,8 +4421,7 @@ export function VertexField({
             if (shown.length) {
               const picked = shown[Math.min(active, shown.length - 1)];
               take(picked.name, picked.vertex);
-            }
-            else onEnter();
+            } else onEnter();
           }
         }}
         placeholder={placeholder}
