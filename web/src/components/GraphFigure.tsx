@@ -49,6 +49,8 @@ interface Props {
   parents?: number[];
   /** Vertices in order along a path: drawn as a thick blue line. */
   path?: number[];
+  /** Edges of a subgraph, drawn like a path's. */
+  kept?: Edge[];
   /** Component id per vertex: colours the vertices by component. */
   components?: number[];
   /** Vertices to ring in blue. */
@@ -66,6 +68,7 @@ export default function GraphFigure({
   levels,
   parents,
   path,
+  kept,
   components,
   marks,
   weights,
@@ -91,6 +94,7 @@ export default function GraphFigure({
   const maxLevel = levels ? Math.max(0, ...levels.filter((l) => l !== UNREACHED)) : 0;
   const onPath = new Set<string>();
   if (path) for (let i = 1; i < path.length; i++) onPath.add(key(path[i - 1], path[i]));
+  if (kept) for (const [u, v] of kept) onPath.add(key(u, v));
   const marked = new Set(marks ?? []);
   const coloured = components !== undefined || levels !== undefined;
 

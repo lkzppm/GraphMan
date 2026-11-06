@@ -277,6 +277,11 @@ fn dijkstra() -> Result<(), Box<dyn std::error::Error>> {
     let vector = algo::dijkstra(&graph, 1, FrontierKind::Vector)?;
     let same = vector == tree; // true
 
+    // One pair: the run stops as soon as the target is settled.
+    let between = algo::shortest_path(&graph, 1, 4)?.unwrap();
+    let answer = (between.distance, between.hops()); // (3.0, 2)
+    let via = between.vertices; // [1, 2, 4]
+
     // A negative weight is refused, not answered wrongly.
     let negative = Csr::build(&EdgeList::parse(b"3\n1 2 1\n2 3 -1\n")?)?;
     let refused = algo::dijkstra(&negative, 1, FrontierKind::Heap); // Err(NegativeWeight { .. })
@@ -284,6 +289,8 @@ fn dijkstra() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!((to_5, path), (Some(2.5), Some(vec![1, 2, 3, 5])));
     assert_eq!(order, [1, 2, 3, 5, 4]);
     assert!(same);
+    assert_eq!(answer, (3.0, 2));
+    assert_eq!(via, [1, 2, 4]);
     let refused = refused.unwrap_err();
     assert_eq!(
         (refused.edge.u, refused.edge.v, refused.edge.weight),
@@ -302,10 +309,6 @@ fn frontiers() -> Result<(), Box<dyn std::error::Error>> {
     let text = b"5\n1 2 0.5\n1 3 2\n2 3 1\n2 4 2.5\n3 5 1\n4 5 0.75\n";
     let graph = Csr::build(&EdgeList::parse(text)?)?;
 
-    // A pair query stops as soon as the target is settled.
-    let path = algo::shortest_path(&graph, 1, 4)?.unwrap();
-    let (distance, via) = (path.distance, path.vertices); // (3.0, [1, 2, 4])
-
     // k sources (the case study): one frontier and one tree for every run,
     // each run resetting only what the previous one touched.
     let mut frontier = HeapFrontier::default();
@@ -317,7 +320,6 @@ fn frontiers() -> Result<(), Box<dyn std::error::Error>> {
     }
     let kind = frontier.kind(); // FrontierKind::Heap
     // wiki:end
-    assert_eq!((distance, via), (3.0, vec![1, 2, 4]));
     assert_eq!(farthest[0], (4, 3.0));
     assert_eq!(kind, graphman::FrontierKind::Heap);
     Ok(())
@@ -340,5 +342,38 @@ fn names() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(near_miss, vec![3]);
     // The library page shows these answers beside the block.
     assert_eq!(names.vertex("Eva Tardos"), None);
+    Ok(())
+}
+
+#[test]
+fn subgraphs() -> Result<(), Box<dyn std::error::Error>> {
+    // wiki:start subgraphs
+    use graphman::algo::{self, SubgraphRule};
+    use graphman::{Build, Csr, EdgeList};
+
+    let text = b"5\n1 2\n1 3\n2 3\n2 4\n3 5\n4 5\n";
+    let graph = Csr::build(&EdgeList::parse(text)?)?;
+
+    // By size: a BFS from 1 stopped at two vertices. 3 is left out, though
+    // it is as close to 1 as 2 is.
+    let kept = algo::select(&graph, SubgraphRule::Ball, 1, 2); // [1, 2]
+    let cut = algo::induce(&graph, kept);
+    let inside = cut.edge_count(); // 1
+
+    // By radius: everything at most k = 1 edge from 1, weights ignored, and
+    // every edge among them, collected during the BFS itself.
+    let ego = algo::egonet(&graph, 1, 1);
+    let around = ego.kept(); // [1, 2, 3]
+    let among = ego.edges(); // [(1, 2, 1.0), (1, 3, 1.0), (2, 3, 1.0)]: 2-3 as well
+
+    // Either way, renumbered from 1 and written back in the course's format.
+    let mut file = Vec::new();
+    ego.write_edges(&mut file)?; // "3\n1 2\n1 3\n2 3\n"
+    // wiki:end
+    assert_eq!(cut.kept(), [1, 2]);
+    assert_eq!(inside, 1);
+    assert_eq!(around, [1, 2, 3]);
+    assert_eq!(among, [(1, 2, 1.0), (1, 3, 1.0), (2, 3, 1.0)]);
+    assert_eq!(file, b"3\n1 2\n1 3\n2 3\n");
     Ok(())
 }

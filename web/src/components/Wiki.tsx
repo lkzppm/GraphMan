@@ -46,6 +46,7 @@ type ChapterId =
   | 'dijkstra'
   | 'frontiers'
   | 'names'
+  | 'subgraphs'
   | 'cli';
 
 /** Every chapter and the source file it documents. */
@@ -61,6 +62,7 @@ const CHAPTERS: { id: ChapterId; source: string }[] = [
   { id: 'dijkstra', source: 'src/algo/shortest_path.rs' },
   { id: 'frontiers', source: 'src/algo/frontier.rs' },
   { id: 'names', source: 'src/io/names.rs' },
+  { id: 'subgraphs', source: 'src/algo/subgraph.rs' },
   { id: 'cli', source: '../graphman-cli/src/main.rs' },
 ];
 
@@ -124,6 +126,20 @@ const NAME_LOOKUPS: [string, string][] = [
   ['vertex("Eva Tardos")', 'None'],
 ];
 const FLOW_COMMAND = 'graphman bfs grafo.txt --from 1';
+
+/** A cut of the sample, as the subgraphs chapter draws it: the vertices kept
+    shaded by their level from 1 and the edges among them in blue, the rest
+    dim. */
+function cutOfSample(kept: number[]) {
+  return {
+    levels: BFS.levels.map((level, v) => (kept.includes(v) ? level : UNREACHED)),
+    kept: SAMPLE_EDGES.filter(([u, v]) => kept.includes(u) && kept.includes(v)),
+  };
+}
+/** What the subgraphs example keeps: the BFS stopped at two vertices, and
+    the egonet of radius 1. */
+const CUT_BY_SIZE = cutOfSample([1, 2]);
+const CUT_EGONET = cutOfSample([1, 2, 3]);
 
 export default function Wiki({ examples }: { examples: Record<string, string> }) {
   const t = useT();
@@ -281,7 +297,31 @@ export default function Wiki({ examples }: { examples: Record<string, string> })
             <Names />
           </Chapter>
 
-          <Chapter meta={chapter('cli')} index={12}>
+          <Chapter meta={chapter('subgraphs')} index={12}>
+            {code('subgraphs')}
+            <div className={styles.split}>
+              <Figure legend={l.chapters.subgraphs.size}>
+                <GraphFigure
+                  edges={SAMPLE_EDGES}
+                  positions={SAMPLE_POSITIONS}
+                  levels={CUT_BY_SIZE.levels}
+                  kept={CUT_BY_SIZE.kept}
+                  marks={[1]}
+                />
+              </Figure>
+              <Figure legend={l.chapters.subgraphs.egonet}>
+                <GraphFigure
+                  edges={SAMPLE_EDGES}
+                  positions={SAMPLE_POSITIONS}
+                  levels={CUT_EGONET.levels}
+                  kept={CUT_EGONET.kept}
+                  marks={[1]}
+                />
+              </Figure>
+            </div>
+          </Chapter>
+
+          <Chapter meta={chapter('cli')} index={13}>
             <Flow steps={l.chapters.cli.flow} />
             <ol className={styles.commands}>
               {COMMANDS.map((command, i) => (

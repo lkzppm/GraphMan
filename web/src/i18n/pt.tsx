@@ -146,7 +146,7 @@ export const pt: Dictionary = {
       },
       dijkstra: {
         title: 'Dijkstra',
-        body: 'dijkstra devolve uma ShortestPathTree: a distância e o pai de cada vértice alcançado, a ordem em que foram fixados (por distância) e path_to. O algoritmo é escrito uma vez, como dijkstra_into sobre uma Frontier, a estrutura que guarda as estimativas de distância, escolhida em tempo de execução como a representação. O relaxamento é estrito e toda fila desempata pelo menor vértice, então todas constroem a mesma árvore. Um grafo com aresta negativa é recusado com NegativeWeight, cuja mensagem termina em "shortest paths with negative weights are not implemented yet": num grafo não direcionado, ir e voltar por uma aresta negativa deixa um caminho tão curto quanto se queira, então não há resposta a dar.',
+        body: 'dijkstra devolve uma ShortestPathTree: a distância e o pai de cada vértice alcançado, a ordem em que foram fixados (por distância) e path_to; shortest_path responde um só par, parando assim que o alvo é fixado, com um Path que guarda a distância, os vértices e hops(), seu número de arestas. O algoritmo é escrito uma vez, como dijkstra_into sobre uma Frontier, a estrutura que guarda as estimativas de distância, escolhida em tempo de execução como a representação. O relaxamento é estrito e toda fila desempata pelo menor vértice, então todas constroem a mesma árvore. Um grafo com aresta negativa é recusado com NegativeWeight, cuja mensagem termina em "shortest paths with negative weights are not implemented yet": num grafo não direcionado, ir e voltar por uma aresta negativa deixa um caminho tão curto quanto se queira, então não há resposta a dar.',
         bfs: 'BFS a partir de 1: o menor número de arestas, 1 → 3 → 5 pesa 3',
         dijkstra: 'Dijkstra a partir de 1: o caminho mais leve, 1 → 2 → 3 → 5 pesa 2,5',
       },
@@ -207,6 +207,12 @@ export const pt: Dictionary = {
         file: 'o arquivo de nomes',
         answers: 'o que ele responde',
       },
+      subgraphs: {
+        title: 'Recortes e egonets',
+        body: 'Um grafo grande demais para olhar é recortado: select diz quais vértices ficam (uma bola ao redor de uma semente, parada num tamanho, os mais conectados ou os primeiros) e induce monta o grafo entre eles, renumerado a partir de 1 e escrito de volta no formato da disciplina. egonet recorta por raio: todo vértice a até k arestas da semente, ignorando os pesos, e todas as arestas entre eles. É uma só BFS, que coleta as arestas enquanto anda, então nenhuma linha de vizinhos é lida duas vezes, e ela sempre mantém a última camada inteira, onde um recorte por tamanho pode parar no meio.',
+        size: 'select(Ball, 1, 2) e induce: parado no tamanho, o 3 fica de fora',
+        egonet: 'egonet(1, 1): o 1, seus vizinhos 2 e 3, e a aresta entre eles',
+      },
       cli: {
         title: 'A linha de comando',
         body: 'O binário graphman embrulha a biblioteca: todo comando recebe um arquivo de grafo, um --repr (list, matrix ou csr) e escreve os arquivos de saída da disciplina. dijkstra escreve a árvore de caminhos mínimos e mostra os caminhos até os alvos. study roda o estudo de caso inteiro, das duas partes, e escreve JSON mais o RESULTS.md.',
@@ -230,6 +236,15 @@ export const pt: Dictionary = {
   // A aba DBLP: um console, três passos (a rede, o recorte, o resultado).
   dblp: {
     title: 'Rede de colaboração DBLP',
+    built: {
+      title: 'Como o grafo é montado',
+      lines: [
+        'Cada pesquisador com ao menos uma publicação em coautoria é um vértice.',
+        'Dois pesquisadores têm uma aresta quando publicaram juntos nos anos escolhidos.',
+        'A aresta pesa 1 / p, onde p é o número de publicações em comum: uma pesa 1, quatro pesam 0,25. Quanto mais publicam juntos, mais próximos estão, e nenhum peso passa de 1.',
+        'Uma publicação conta o mesmo para cada par de autores, não importa quantos autores tenha.',
+      ],
+    },
     loading: 'buscando a versão mais recente',
     failed: (reason: string) => `A versão mais recente não pôde ser buscada (${reason}). Veja`,
     releases: 'todas as versões mensais',
@@ -262,12 +277,25 @@ export const pt: Dictionary = {
       ball: 'Ao redor de um pesquisador',
       mostConnected: 'Os mais conectados',
       whole: 'A rede inteira',
+      path: 'Caminho mais curto',
     },
     ruleHints: {
-      ball: 'Uma BFS a partir do pesquisador, parada no tamanho: um só pedaço conexo, o pesquisador como vértice 1.',
+      ball: 'Uma BFS a partir do pesquisador, parada num tamanho ou num raio (a egonet): um só pedaço conexo, o pesquisador como vértice 1.',
       mostConnected: 'Os pesquisadores com mais coautores; o primeiro deles é o vértice 1.',
       whole: 'Todos os pesquisadores e colaborações dos anos escolhidos, como estão.',
+      path: 'O caminho mais leve entre dois pesquisadores, por Dijkstra sobre os pesos, e somente ele.',
     },
+    cutBy: 'Parar em',
+    cuts: {
+      size: 'Tamanho',
+      radius: 'Egonet',
+    },
+    cutHints: {
+      size: 'Uma BFS parada ao alcançar este número de pesquisadores.',
+      radius:
+        'Todos os pesquisadores a até k arestas, ignorando os pesos, e todas as colaborações entre eles.',
+    },
+    radius: 'Raio k, em arestas',
     seed: 'Pesquisador',
     seedPlaceholder: 'um nome, ou o número de um vértice',
     invalidSeed: 'Não é um pesquisador desta rede.',
@@ -286,6 +314,15 @@ export const pt: Dictionary = {
       `O arquivo deste recorte tem ${size}, acima do limite de ${limit} do observatório, então ele não abre lá. Exporte os arquivos ou faça um recorte menor.`,
     heavy:
       'um recorte deste tamanho abre no observatório, devagar: conte com segundos e vários GB de memória',
+    path: {
+      from: 'De',
+      to: 'Para',
+      distance: 'distância',
+      edges: 'arestas',
+      needBoth: 'nomeie dois pesquisadores para achar o caminho entre eles',
+      searching: 'procurando o caminho mais curto',
+      none: 'sem caminho: os dois estão em componentes diferentes',
+    },
   },
 
   footer: {
@@ -762,8 +799,14 @@ export const pt: Dictionary = {
     distributions: { degree: 'Graus', weight: 'Pesos' },
     openTree: 'Abrir a árvore da busca como grafo',
     closeTree: 'Voltar ao grafo em que a busca correu',
-    axisMin: { degree: 'Acender os vértices de menor grau', weight: 'Acender as arestas mais leves' },
-    axisMax: { degree: 'Acender os vértices de maior grau', weight: 'Acender as arestas mais pesadas' },
+    axisMin: {
+      degree: 'Acender os vértices de menor grau',
+      weight: 'Acender as arestas mais leves',
+    },
+    axisMax: {
+      degree: 'Acender os vértices de maior grau',
+      weight: 'Acender as arestas mais pesadas',
+    },
     columnHint: 'clique numa coluna para acender seus vértices; clique de novo para apagar',
     distributionUnit: { degree: 'vértices por grau', weight: 'arestas por peso' },
     distributionBucket: {

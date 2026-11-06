@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   Info,
   Network,
+  Route as RouteIcon,
   Share2,
   UsersRound,
   Search,
@@ -19,6 +20,7 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import Constellation from '@/components/Constellation';
@@ -35,7 +37,7 @@ import {
   type DblpManifest,
   type DblpYear,
 } from '@/lib/dblp';
-import { formatBytes, formatInt } from '@/lib/format';
+import { formatBytes, formatInt, formatWeight } from '@/lib/format';
 import {
   loadGraphman,
   type Graph,
@@ -43,7 +45,7 @@ import {
   type NetworkBuilder,
   type Subgraph,
 } from '@/lib/graphman';
-import { OBSERVATORY_MAX_BYTES, offerGraph } from '@/lib/handoff';
+import { OBSERVATORY_MAX_BYTES, offerGraph, type Handoff } from '@/lib/handoff';
 import {
   DBLP_SESSION,
   OBSERVATORY_SESSION,
@@ -54,10 +56,24 @@ import {
 } from '@/lib/session';
 import styles from './DblpConsole.module.css';
 
-/** How a cut picks its vertices (the wasm `SubgraphKind`). */
-type Rule = 'ball' | 'mostConnected' | 'whole';
-const RULES: readonly Rule[] = ['ball', 'mostConnected', 'whole'];
-const RULE_ICONS = { ball: UserRound, mostConnected: Network, whole: Globe } as const;
+/** The observatory itself, fetched only when the path mode is chosen: it
+    brings the WebGPU renderer with it. */
+const Observatory = dynamic(() => import('@/observatory/Observatory'), { ssr: false });
+
+/** How a cut picks its vertices (the wasm `SubgraphKind`), or the mode with no
+    cut at all: the shortest path between two researchers. */
+type Rule = 'ball' | 'mostConnected' | 'whole' | 'path';
+const RULES: readonly Rule[] = ['ball', 'mostConnected', 'whole', 'path'];
+const RULE_ICONS = {
+  ball: UserRound,
+  mostConnected: Network,
+  whole: Globe,
+  path: RouteIcon,
+} as const;
+
+/** Where a cut around a researcher stops: at a size, or at a radius (the egonet). */
+type CutBy = 'size' | 'radius';
+const CUTS: readonly CutBy[] = ['size', 'radius'];
 
 /** Which years make the network: everything up to the year, the year
     alone, or a range ending in it. */
@@ -69,6 +85,15 @@ const MIN_SIZE = 10;
 const DEFAULT_SIZE = 2000;
 /** The researcher the course's questions start from, when the year has him. */
 const DEFAULT_SEED = 'Edsger W. Dijkstra';
+/** Where the course's last question ends, when the year has him, spelled as
+    DBLP spells him now (the course's 2009 file has no suffix). */
+const DEFAULT_TARGET = 'Daniel R. Figueiredo 0001';
+/** How long the counters and the path's canvas take to swap (the CSS's `.fold`). */
+const FOLD_MS = 450;
+/** The radius a fresh egonet opens at, and the most its slider offers (the
+    field beside it takes any). */
+const DEFAULT_RADIUS = 1;
+const SLIDER_RADIUS = 10;
 /** Slider steps (the slider is logarithmic). */
 const STEPS = 1000;
 /** Past this many vertices the observatory draws, but slowly. */
@@ -141,8 +166,11 @@ interface DblpSession {
   base: Base;
   builtAt: number;
   seedInput: string;
+  targetInput: string;
   rule: Rule;
+  cutBy: CutBy;
   size: number;
+  radius: number;
 }
 
 /** A range opens five years long, or as long as the build allows. */
@@ -156,6 +184,46 @@ interface Preview {
   bytes: number;
 }
 
+/** A researcher on a path: the vertex in the whole network, and the name. */
+interface PathStop {
+  vertex: number;
+  name: string;
+}
+
+/** A shortest path found, for the pair of researchers `key` names; `stops` is
+    null when there is none to draw, because they are in different components
+    or, when `failed`, because the search itself failed (the notice says why). */
+interface Route {
+  key: string;
+  stops: PathStop[] | null;
+  weights: number[];
+  distance: number;
+  edges: number;
+  failed: boolean;
+}
+
+/** The library's rule for a cut (the whole network is the earliest vertices,
+    all of them). */
+function kindOf(module: GraphmanModule, which: Rule) {
+  return which === 'ball'
+    ? module.SubgraphKind.Ball
+    : which === 'mostConnected'
+      ? module.SubgraphKind.MostConnected
+      : module.SubgraphKind.Earliest;
+}
+
+/** What a researcher field holds as a vertex of the network, 0 when it is not
+    one. */
+function vertexOf(graph: Graph, vertices: number, text: string): number {
+  const typed = text.trim();
+  if (!typed) return 0;
+  if (/^\d+$/.test(typed)) {
+    const v = Number(typed);
+    return v >= 1 && v <= vertices ? v : 0;
+  }
+  return graph.vertexNamed(typed) ?? 0;
+}
+
 /** The year a fresh page offers: the last one, the whole network. */
 function initialYear(manifest: DblpManifest): number {
   return manifest.years[manifest.years.length - 1].year;
@@ -167,9 +235,12 @@ function initialYear(manifest: DblpManifest): number {
  * file per year, unpacked in the tab, kept in the browser's cache for next
  * time) and sums them in wasm into that year's network, so any year from
  * the first in DBLP to the dump's can be picked. Centre, the cut: around a researcher, the most
- * connected or the earliest, at the size wanted, with what it will weigh
- * counted live. Right, the result: opened in the observatory, or exported
- * as the two course-format files.
+ * connected or the earliest, at the size wanted, or a researcher's egonet,
+ * with what it will weigh counted live. Right, the result: opened in the
+ * observatory, or exported as the two course-format files. One more mode
+ * replaces the cut: the shortest path between two researchers, in the
+ * observatory itself (embedded, the stage alone) where the counters were, its
+ * results in the upper corners, and the right box takes the path's two files.
  */
 export default function DblpConsole() {
   const { t: dictionary } = useLocale();
@@ -187,9 +258,13 @@ export default function DblpConsole() {
   const [job, setJob] = useState<Job | null>(null);
   const jobRef = useRef<AbortController | null>(null);
   const [seedInput, setSeedInput] = useState('');
+  const [targetInput, setTargetInput] = useState('');
   const [rule, setRule] = useState<Rule>('ball');
+  const [cutBy, setCutBy] = useState<CutBy>('size');
   const [size, setSize] = useState(DEFAULT_SIZE);
+  const [radius, setRadius] = useState(DEFAULT_RADIUS);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [route, setRoute] = useState<Route | null>(null);
   const [opening, setOpening] = useState(false);
   const [writing, setWriting] = useState<Writing | null>(null);
   const writeRef = useRef<AbortController | null>(null);
@@ -224,8 +299,11 @@ export default function DblpConsole() {
           setSpan(saved.base.span);
           setFrom(saved.base.from);
           setSeedInput(saved.seedInput);
+          setTargetInput(saved.targetInput);
           setRule(saved.rule);
+          setCutBy(saved.cutBy);
           setSize(saved.size);
+          setRadius(saved.radius);
         } else {
           if (saved) release(saved.base.graph);
           const last = initialYear(loaded);
@@ -245,9 +323,18 @@ export default function DblpConsole() {
   }, []);
 
   /** The inputs as of the last render, for the snapshot taken on unmount. */
-  const latestRef = useRef({ seedInput, rule, size, builtAt: manifest?.builtAt ?? 0 });
+  const latest = {
+    seedInput,
+    targetInput,
+    rule,
+    cutBy,
+    size,
+    radius,
+    builtAt: manifest?.builtAt ?? 0,
+  };
+  const latestRef = useRef(latest);
   useEffect(() => {
-    latestRef.current = { seedInput, rule, size, builtAt: manifest?.builtAt ?? 0 };
+    latestRef.current = latest;
   });
 
   // Leaving the page stops a download; a network summed is parked for the
@@ -365,11 +452,14 @@ export default function DblpConsole() {
       setBase(loaded);
       const seed = graph.vertexNamed(DEFAULT_SEED);
       setSeedInput(seed ? DEFAULT_SEED : (graph.name(1) ?? '1'));
+      setTargetInput(graph.vertexNamed(DEFAULT_TARGET) ? DEFAULT_TARGET : '');
       setSize((current) => Math.min(current, graph.vertexCount));
     } catch (error) {
       if (!controller.signal.aborted) {
         const message = error instanceof Error ? error.message : String(error);
-        setNotice(error instanceof WebAssembly.RuntimeError ? t.outOfMemory : t.failedFetch(message));
+        setNotice(
+          error instanceof WebAssembly.RuntimeError ? t.outOfMemory : t.failedFetch(message),
+        );
       }
     } finally {
       // `finish` consumed the builder; otherwise its table is freed here.
@@ -392,21 +482,20 @@ export default function DblpConsole() {
   }, [wasm, manifest, year, key, fetchNetwork]);
 
   /** The years chosen, for file names: `2018`, `only_2018`, `2014_2018`. */
-  const spanStem = span === 'until' ? `${year}` : span === 'only' ? `only_${year}` : `${from}_${year}`;
+  const spanStem =
+    span === 'until' ? `${year}` : span === 'only' ? `only_${year}` : `${from}_${year}`;
   /** The whole network needs no size: the cut is every vertex, in order. */
   const cutSize = rule === 'whole' ? (base?.vertices ?? size) : size;
 
   /** The seed as a vertex of the loaded network, 0 when it is not one. */
-  const seedVertex = useMemo(() => {
-    if (!base) return 0;
-    const typed = seedInput.trim();
-    if (!typed) return 0;
-    if (/^\d+$/.test(typed)) {
-      const v = Number(typed);
-      return v >= 1 && v <= base.vertices ? v : 0;
-    }
-    return base.graph.vertexNamed(typed) ?? 0;
-  }, [base, seedInput]);
+  const seedVertex = useMemo(
+    () => (base ? vertexOf(base.graph, base.vertices, seedInput) : 0),
+    [base, seedInput],
+  );
+  const targetVertex = useMemo(
+    () => (base ? vertexOf(base.graph, base.vertices, targetInput) : 0),
+    [base, targetInput],
+  );
 
   const suggest = useCallback((text: string) => {
     const graph = baseRef.current?.graph;
@@ -418,12 +507,17 @@ export default function DblpConsole() {
     }));
   }, []);
 
-  const kindOf = (module: GraphmanModule, which: Rule) =>
-    which === 'ball'
-      ? module.SubgraphKind.Ball
-      : which === 'mostConnected'
-        ? module.SubgraphKind.MostConnected
-        : module.SubgraphKind.Earliest;
+  /** The cut chosen, of the network loaded. */
+  const byRadius = rule === 'ball' && cutBy === 'radius';
+  const cutOf = useCallback(
+    (graph: Graph, module: GraphmanModule) =>
+      byRadius
+        ? graph.egonet(seedVertex, radius)
+        : graph.subgraph(kindOf(module, rule), seedVertex || 1, cutSize),
+    [byRadius, seedVertex, radius, rule, cutSize],
+  );
+  /** The cut chosen, for file names. */
+  const cutStem = byRadius ? `egonet${radius}` : rule.toLowerCase();
 
   /** What a failed write says: wasm traps when its memory runs out. */
   const writeFailure = useCallback(
@@ -437,12 +531,12 @@ export default function DblpConsole() {
   // What the cut would be, counted a moment after the last change.
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (!base || !wasm || (rule === 'ball' && !seedVertex)) {
+      if (!base || !wasm || rule === 'path' || (rule === 'ball' && !seedVertex)) {
         setPreview(null);
         return;
       }
       try {
-        const cut = base.graph.subgraph(kindOf(wasm, rule), seedVertex || 1, cutSize);
+        const cut = cutOf(base.graph, wasm);
         setPreview({ vertices: cut.vertices, edges: cut.edges, bytes: cut.bytes });
         cut.free();
       } catch (error) {
@@ -451,7 +545,89 @@ export default function DblpConsole() {
       }
     }, 120);
     return () => clearTimeout(timer);
-  }, [base, wasm, rule, seedVertex, cutSize, writeFailure]);
+  }, [base, wasm, rule, seedVertex, cutOf, writeFailure]);
+
+  /** Which pair the path shown should be of, null when there is no pair yet. */
+  const pairKey =
+    base && seedVertex && targetVertex ? `${base.key}:${seedVertex}:${targetVertex}` : null;
+  const routeKey = rule === 'path' ? pairKey : null;
+  /** By the pair, not the mode: the path stays on the canvas as it folds away. */
+  const shownRoute = route && route.key === pairKey ? route : null;
+
+  // The canvas stays mounted while it folds away, and is mounted the moment
+  // its mode is chosen, so it unfolds with its content.
+  const [routeMounted, setRouteMounted] = useState(rule === 'path');
+  if (rule === 'path' && !routeMounted) setRouteMounted(true);
+  useEffect(() => {
+    if (rule === 'path' || !routeMounted) return;
+    const timer = setTimeout(() => setRouteMounted(false), FOLD_MS);
+    return () => clearTimeout(timer);
+  }, [rule, routeMounted]);
+
+  /** When the mode was last chosen: a search, synchronous, must not freeze the unfolding. */
+  const enteredPath = useRef(0);
+  useEffect(() => {
+    if (rule === 'path') enteredPath.current = performance.now();
+  }, [rule]);
+  /** The path as the observatory reads any graph: an edge file and a names
+      file, numbered along it, so the first researcher is vertex 1. */
+  const routeFile = useMemo((): Handoff | null => {
+    if (!shownRoute?.stops) return null;
+    const encoder = new TextEncoder();
+    const edges = shownRoute.weights.map((weight, i) => `${i + 1} ${i + 2} ${weight}`);
+    const names = shownRoute.stops.map((stop, i) => `${i + 1},${stop.name}`);
+    const stops = shownRoute.stops;
+    const stem = `dblp_${spanStem}_path_${stops[0].vertex}_${stops[stops.length - 1].vertex}`;
+    return {
+      name: `${stem}.txt`,
+      bytes: encoder.encode([shownRoute.stops.length, ...edges, ''].join('\n')),
+      names: { name: `${stem}_vertices.txt`, bytes: encoder.encode(names.join('\n') + '\n') },
+    };
+  }, [shownRoute, spanStem]);
+
+  // The shortest path, a moment after the last change: the run is synchronous
+  // (seconds on the whole network), and the status paints first.
+  useEffect(() => {
+    if (!base || !routeKey || route?.key === routeKey) return;
+    const timer = setTimeout(
+      () => {
+        const nothing = { key: routeKey, stops: null, weights: [], distance: 0, edges: 0 };
+        let found: Route;
+        try {
+          const path = base.graph.shortestPath(seedVertex, targetVertex);
+          if (path) {
+            const stops = Array.from(path.vertices()).map((vertex) => ({
+              vertex,
+              name: base.graph.name(vertex) ?? String(vertex),
+            }));
+            found = {
+              ...nothing,
+              stops,
+              weights: Array.from(path.weights()),
+              distance: path.distance,
+              edges: path.edges,
+              failed: false,
+            };
+            path.free();
+          } else {
+            found = { ...nothing, failed: false };
+          }
+        } catch (error) {
+          found = { ...nothing, failed: true };
+          setNotice(
+            error instanceof WebAssembly.RuntimeError
+              ? t.outOfMemory
+              : error instanceof Error
+                ? error.message
+                : String(error),
+          );
+        }
+        setRoute(found);
+      },
+      Math.max(150, FOLD_MS + 40 - (performance.now() - enteredPath.current)),
+    );
+    return () => clearTimeout(timer);
+  }, [base, route, routeKey, seedVertex, targetVertex, t]);
 
   /** The cut's two files, named after what made them; `null` when cancelled
       or failed, which the notice then says. */
@@ -467,9 +643,9 @@ export default function DblpConsole() {
       // Let the button paint before the (synchronous) cut.
       await new Promise((resolve) => setTimeout(resolve, 30));
       if (controller.signal.aborted) return null;
-      const made = graph.subgraph(kindOf(wasm, rule), seedVertex || 1, cutSize);
+      const made = cutOf(graph, wasm);
       cut = made;
-      const stem = `dblp_${spanStem}_${rule.toLowerCase()}_${made.vertices}`;
+      const stem = `dblp_${spanStem}_${cutStem}_${made.vertices}`;
       const report = () => setWriting({ action, percent: Math.floor(made.progress * 100) });
       const edges = await collectFile(() => made.nextEdges(), controller.signal, report);
       const names = await collectFile(() => made.nextNames(graph), controller.signal, report);
@@ -492,6 +668,14 @@ export default function DblpConsole() {
   };
 
   const open = async () => {
+    // A path is already its files, and small: nothing to write, nothing to free.
+    if (rule === 'path') {
+      if (!routeFile) return;
+      setOpening(true);
+      offerGraph(routeFile);
+      router.push('/observatory');
+      return;
+    }
     const built = await writeFiles('open');
     if (!built) return;
     setOpening(true);
@@ -511,6 +695,15 @@ export default function DblpConsole() {
   };
 
   const exportFiles = async () => {
+    if (rule === 'path') {
+      if (!routeFile) return;
+      const blobOf = (bytes: Uint8Array) =>
+        new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'text/plain' });
+      saveFile(routeFile.name, blobOf(routeFile.bytes));
+      const names = routeFile.names;
+      if (names) setTimeout(() => saveFile(names.name, blobOf(names.bytes)), 300);
+      return;
+    }
     const built = await writeFiles('export');
     if (!built) return;
     saveFile(built.name, built.file);
@@ -528,22 +721,40 @@ export default function DblpConsole() {
   const sizeOf = (step: number) => clampSize(Math.exp(low + (step / STEPS) * (high - low)));
 
   const live = base !== null && job === null;
-  const canCut = live && preview !== null && !opening && writing === null;
+  const canCut =
+    live &&
+    (rule === 'path' ? routeFile !== null : preview !== null) &&
+    !opening &&
+    writing === null;
   /** The cut's file is more than the observatory takes: it can only be exported. */
   const overLimit = preview !== null && preview.bytes > OBSERVATORY_MAX_BYTES;
   const warning = overLimit
     ? t.overLimit(formatBytes(preview.bytes), formatBytes(OBSERVATORY_MAX_BYTES))
     : t.heavy;
-  const stem = base
-    ? `dblp_${spanStem}_${rule.toLowerCase()}_${preview?.vertices ?? cutSize}`
-    : '';
+  const stem = base ? `dblp_${spanStem}_${cutStem}_${preview?.vertices ?? cutSize}` : '';
+  const seeded = rule === 'ball' || rule === 'path';
+  const invalidOf = (text: string, vertex: number) =>
+    text.trim() !== '' && vertex === 0 ? t.invalidSeed : null;
 
   return (
     <div className={styles.stage}>
       <Constellation />
       <div className={styles.console}>
         <header className={styles.heading}>
-          <h1 className={styles.title}>{t.title}</h1>
+          <div className={styles.titleRow}>
+            <h1 className={styles.title}>{t.title}</h1>
+            <span className={`${styles.info} ${styles.infoTitle}`}>
+              <button type="button" className={styles.infoButton} aria-label={t.built.title}>
+                <Info size={15} aria-hidden="true" />
+              </button>
+              <span className={`${styles.tip} ${styles.tipBuilt}`} role="tooltip">
+                <span className={styles.tipHead}>{t.built.title}</span>
+                {t.built.lines.map((line) => (
+                  <span key={line}>{line}</span>
+                ))}
+              </span>
+            </span>
+          </div>
           {manifest && <p className={styles.dated}>{dumpDate(manifest, lang)}</p>}
         </header>
         {manifestError && (
@@ -587,7 +798,10 @@ export default function DblpConsole() {
                 </div>
               </div>
               <div className={styles.years} data-range={span === 'range' || undefined}>
-                <div className={`${styles.field} ${styles.fromSlot}`} aria-hidden={span !== 'range'}>
+                <div
+                  className={`${styles.field} ${styles.fromSlot}`}
+                  aria-hidden={span !== 'range'}
+                >
                   <label htmlFor="dblp-from" className={styles.fieldLabel}>
                     {t.from}
                   </label>
@@ -663,7 +877,9 @@ export default function DblpConsole() {
                 <div>
                   <dt>{t.facts.transfer}</dt>
                   <dd className="mono">
-                    {formatBytes(transferBytes(manifest, spanStart(manifest, span, from, year), year))}
+                    {formatBytes(
+                      transferBytes(manifest, spanStart(manifest, span, from, year), year),
+                    )}
                   </dd>
                 </div>
               </dl>
@@ -755,73 +971,208 @@ export default function DblpConsole() {
               </div>
               <div
                 className={styles.controls}
-                data-seed={rule === 'ball' || undefined}
+                data-seed={seeded || undefined}
                 data-hidden={rule === 'whole' || undefined}
               >
-                <div className={styles.seedSlot} aria-hidden={rule !== 'ball'}>
+                <div className={styles.seedSlot} aria-hidden={!seeded}>
                   <ResearcherField
-                    label={t.seed}
+                    id="dblp-seed"
+                    label={rule === 'path' ? t.path.from : t.seed}
                     value={seedInput}
                     onChange={setSeedInput}
                     placeholder={t.seedPlaceholder}
                     suggest={suggest}
-                    disabled={!live || rule !== 'ball'}
-                    invalid={seedInput.trim() !== '' && seedVertex === 0 ? t.invalidSeed : null}
+                    disabled={!live || !seeded}
+                    invalid={invalidOf(seedInput, seedVertex)}
                   />
                 </div>
-                <div className={styles.field}>
-                  <label htmlFor="dblp-size" className={styles.fieldLabel}>
-                    <SlidersHorizontal size={13} aria-hidden="true" />
-                    {t.size}
-                  </label>
-                  <div className={styles.sizeRow}>
-                    <input
-                      type="range"
-                      min={0}
-                      max={STEPS}
-                      value={stepOf(size)}
-                      style={{ '--fill': `${(100 * stepOf(size)) / STEPS}%` } as CSSProperties}
-                      aria-label={t.size}
+                {rule === 'path' ? (
+                  <div key="target" className={styles.swapIn}>
+                    <ResearcherField
+                      id="dblp-target"
+                      label={t.path.to}
+                      value={targetInput}
+                      onChange={setTargetInput}
+                      placeholder={t.seedPlaceholder}
+                      suggest={suggest}
                       disabled={!live}
-                      onChange={(event) => setSize(sizeOf(Number(event.target.value)))}
-                    />
-                    <input
-                      id="dblp-size"
-                      type="number"
-                      className={`mono ${styles.input} ${styles.number}`}
-                      min={1}
-                      max={maxSize}
-                      value={size}
-                      disabled={!live}
-                      onChange={(event) => setSize(clampSize(Number(event.target.value) || 1))}
+                      invalid={invalidOf(targetInput, targetVertex)}
                     />
                   </div>
-                </div>
+                ) : (
+                  <div key="size" className={`${styles.field} ${styles.swapIn}`}>
+                    <div className={styles.fieldHead}>
+                      <label htmlFor="dblp-size" className={styles.fieldLabel}>
+                        <SlidersHorizontal size={13} aria-hidden="true" />
+                        {rule === 'ball' ? t.cutBy : t.size}
+                      </label>
+                      {rule === 'ball' && (
+                        <div className={styles.toggle} role="radiogroup" aria-label={t.cutBy}>
+                          {CUTS.map((which) => (
+                            <button
+                              key={which}
+                              type="button"
+                              role="radio"
+                              aria-checked={cutBy === which}
+                              className={styles.segment}
+                              title={t.cutHints[which]}
+                              disabled={!live}
+                              onClick={() => setCutBy(which)}
+                            >
+                              {t.cuts[which]}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {byRadius ? (
+                      <div className={styles.sizeRow}>
+                        <input
+                          type="range"
+                          min={1}
+                          max={SLIDER_RADIUS}
+                          value={Math.min(radius, SLIDER_RADIUS)}
+                          style={
+                            {
+                              '--fill': `${(100 * (Math.min(radius, SLIDER_RADIUS) - 1)) / (SLIDER_RADIUS - 1)}%`,
+                            } as CSSProperties
+                          }
+                          aria-label={t.radius}
+                          disabled={!live}
+                          onChange={(event) => setRadius(Number(event.target.value))}
+                        />
+                        <span className={`mono ${styles.radiusName}`} aria-hidden="true">
+                          k =
+                        </span>
+                        <input
+                          id="dblp-size"
+                          type="number"
+                          className={`mono ${styles.input} ${styles.number} ${styles.numberShort}`}
+                          min={1}
+                          max={maxSize}
+                          value={radius}
+                          aria-label={t.radius}
+                          title={t.radius}
+                          disabled={!live}
+                          onChange={(event) =>
+                            setRadius(clampSize(Number(event.target.value) || 1))
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <div className={styles.sizeRow}>
+                        <input
+                          type="range"
+                          min={0}
+                          max={STEPS}
+                          value={stepOf(size)}
+                          style={{ '--fill': `${(100 * stepOf(size)) / STEPS}%` } as CSSProperties}
+                          aria-label={t.size}
+                          disabled={!live}
+                          onChange={(event) => setSize(sizeOf(Number(event.target.value)))}
+                        />
+                        <input
+                          id="dblp-size"
+                          type="number"
+                          className={`mono ${styles.input} ${styles.number}`}
+                          min={1}
+                          max={maxSize}
+                          value={size}
+                          aria-label={t.size}
+                          title={t.size}
+                          disabled={!live}
+                          onChange={(event) => setSize(clampSize(Number(event.target.value) || 1))}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className={styles.tiles} aria-live="polite">
-                <Tile
-                  icon={UsersRound}
-                  value={preview?.vertices ?? null}
-                  loading={job !== null}
-                  format={formatInt}
-                  share={preview && base ? preview.vertices / base.vertices : null}
-                  label={t.facts.vertices}
-                />
-                <Tile
-                  icon={Share2}
-                  value={preview?.edges ?? null}
-                  loading={job !== null}
-                  format={formatInt}
-                  share={preview && base ? preview.edges / base.edges : null}
-                  label={t.facts.edges}
-                />
-                <FileSize
-                  value={preview?.bytes ?? null}
-                  loading={job !== null}
-                  label={t.facts.file}
-                  files={base ? [`${stem}.txt`, `${stem}_vertices.txt`] : null}
-                  caption={t.filesCaption}
-                />
+              <div className={styles.swap}>
+                {routeMounted && (
+                  <div
+                    className={styles.fold}
+                    data-open={rule === 'path' || undefined}
+                    inert={rule !== 'path'}
+                  >
+                    <div className={styles.foldInner}>
+                      <div className={styles.route}>
+                        <Observatory
+                          embed={{
+                            path: routeFile,
+                            left: (
+                              <RouteFact
+                                label={t.path.distance}
+                                value={shownRoute?.stops ? shownRoute.distance : null}
+                                format={formatWeight}
+                              />
+                            ),
+                            right: (
+                              <RouteFact
+                                side="right"
+                                label={t.path.edges}
+                                value={shownRoute?.stops ? shownRoute.edges : null}
+                                format={formatInt}
+                              />
+                            ),
+                            empty:
+                              shownRoute?.stops || shownRoute?.failed ? null : (
+                                <p className={`comment ${styles.routeNote}`} role="status">
+                                  {pairKey && !shownRoute ? (
+                                    <>
+                                      <LoaderCircle
+                                        size={14}
+                                        className={styles.spinner}
+                                        aria-hidden="true"
+                                      />
+                                      {t.path.searching}
+                                    </>
+                                  ) : shownRoute ? (
+                                    t.path.none
+                                  ) : (
+                                    t.path.needBoth
+                                  )}
+                                </p>
+                              ),
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div
+                  className={styles.fold}
+                  data-open={rule !== 'path' || undefined}
+                  inert={rule === 'path'}
+                >
+                  <div className={styles.foldInner}>
+                    <div className={styles.tiles} aria-live="polite">
+                      <Tile
+                        icon={UsersRound}
+                        value={preview?.vertices ?? null}
+                        loading={job !== null}
+                        format={formatInt}
+                        share={preview && base ? preview.vertices / base.vertices : null}
+                        label={t.facts.vertices}
+                      />
+                      <Tile
+                        icon={Share2}
+                        value={preview?.edges ?? null}
+                        loading={job !== null}
+                        format={formatInt}
+                        share={preview && base ? preview.edges / base.edges : null}
+                        label={t.facts.edges}
+                      />
+                      <FileSize
+                        value={preview?.bytes ?? null}
+                        loading={job !== null}
+                        label={t.facts.file}
+                        files={base ? [`${stem}.txt`, `${stem}_vertices.txt`] : null}
+                        caption={t.filesCaption}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
               {live && rule === 'ball' && !seedVertex && (
                 <p className={`comment ${styles.line}`}>{t.needSeed}</p>
@@ -875,7 +1226,9 @@ export default function DblpConsole() {
                   ) : (
                     <FileDown size={20} strokeWidth={1.75} aria-hidden="true" />
                   )}
-                  <span>{writing?.action === 'export' ? t.writing(writing.percent) : t.export}</span>
+                  <span>
+                    {writing?.action === 'export' ? t.writing(writing.percent) : t.export}
+                  </span>
                 </button>
               </section>
             </div>
@@ -958,6 +1311,33 @@ function Tile({
   );
 }
 
+/** One number of the path's result: a tracked label, a blue number counting
+    to its value. */
+function RouteFact({
+  side,
+  label,
+  value,
+  format,
+}: {
+  side?: 'right';
+  label: string;
+  value: number | null;
+  format: (value: number) => string;
+}) {
+  const shown = useCountUp(value);
+  return (
+    <div
+      className={styles.routeFact}
+      data-side={side}
+      data-empty={value === null || undefined}
+      aria-live="polite"
+    >
+      <span className={`label ${styles.tileLabel}`}>{label}</span>
+      <span className={`mono ${styles.fileSizeValue}`}>{shown === null ? '·' : format(shown)}</span>
+    </div>
+  );
+}
+
 /** The edge file's size, plain: a blue number counting to its value, with
     the two files' names behind a file icon, like the rules' captions. */
 function FileSize({
@@ -1014,6 +1394,7 @@ function FileSize({
 /** A researcher by name or vertex, with the library's suggestions under
     the field while it is typed into. */
 function ResearcherField({
+  id,
   label,
   value,
   onChange,
@@ -1022,6 +1403,7 @@ function ResearcherField({
   disabled,
   invalid,
 }: {
+  id: string;
   label: string;
   value: string;
   onChange: (next: string) => void;
@@ -1035,13 +1417,15 @@ function ResearcherField({
   const shown = suggestions.length === 1 && suggestions[0].name === value.trim() ? [] : suggestions;
   return (
     <div className={styles.field}>
-      <label htmlFor="dblp-seed" className={styles.fieldLabel}>
-        <Search size={13} aria-hidden="true" />
-        {label}
-      </label>
+      <div className={styles.fieldHead}>
+        <label htmlFor={id} className={styles.fieldLabel}>
+          <Search size={13} aria-hidden="true" />
+          {label}
+        </label>
+      </div>
       <div className={styles.fieldWrap}>
         <input
-          id="dblp-seed"
+          id={id}
           className={`${styles.input} ${invalid ? styles.inputInvalid : ''}`}
           value={value}
           placeholder={placeholder}
@@ -1092,5 +1476,7 @@ function dumpDate(manifest: DblpManifest, lang: string): string {
   const day = manifest.date
     ? new Date(`${manifest.date}T12:00:00Z`)
     : new Date(manifest.builtAt * 1000);
-  return new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'long', year: 'numeric' }).format(day);
+  return new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'long', year: 'numeric' }).format(
+    day,
+  );
 }
