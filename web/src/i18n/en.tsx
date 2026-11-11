@@ -674,6 +674,16 @@ export const en = {
     sweepGroups: { course: 'the course', faster: 'faster walks' },
     floydTooLarge: (n: string, limit: string) =>
       `Floyd-Warshall runs here on up to ${limit} vertices: its table grows as n² and its time as n³, and this graph has ${n}. The CLI takes it (graphman floyd-warshall).`,
+    runFloyd: 'Run Floyd-Warshall on every pair',
+    floydRunHint: 'Every pair at once: no origin to pick.',
+    floydHint:
+      'Floyd-Warshall fills one table with the distance between every pair of vertices. Run it, watch the rounds, then click a vertex to read its row (a double click on another: the path between them).',
+    floydPairs: 'Pairs with a path',
+    floydLongest: 'Longest distance',
+    floydLongestPair: 'The farthest pair:',
+    floydRowHint:
+      'Click a vertex to read its row: the shortest paths from it. Double click another for the path between them.',
+    floydRounds: 'Round k of Floyd-Warshall',
     cycleNoteGraph: (w: string) =>
       `A negative cycle, weighing ${w}, in the graph: Floyd-Warshall has no distances for any pair it touches.`,
     cycleNote: (w: string) =>

@@ -180,12 +180,16 @@ export default function DpTable({
   t,
   search,
   step,
+  round,
   prepared,
   link,
 }: {
   t: Strings;
   search: DpSearch;
   step: number;
+  /** Floyd-Warshall's table on its own: the round to show, in place of the
+      moment the step's vertex became final. */
+  round?: number;
   prepared: Prepared;
   link: Link;
 }) {
@@ -204,8 +208,12 @@ export default function DpTable({
   }, []);
   const columns = Math.max(1, Math.floor((box.width - LABEL_W - 36) / CELL_W));
   const rows = Math.max(1, Math.floor((box.height - CHROME) / CELL_H));
-  const moment = momentOf(prepared, search, step);
-  const v = search.order[Math.min(step, search.order.length - 1)] ?? search.root;
+  const moment =
+    round !== undefined ? { at: round, pass: round } : momentOf(prepared, search, step);
+  const v =
+    round !== undefined
+      ? 0
+      : (search.order[Math.min(step, search.order.length - 1)] ?? search.root);
 
   let caption: ReactNode;
   let rowHead: string;
@@ -270,8 +278,12 @@ export default function DpTable({
     const k = moment.pass;
     // Rows hold the origin's (and the pivot's, when both fit); columns
     // follow the step's vertex.
-    const rowStart = windowOf(n, rows, search.root - 1, k ? k - 1 : search.root - 1);
-    const colStart = windowOf(n, columns, v - 1, k ? k - 1 : v - 1);
+    // With no row picked, both follow the pivot.
+    const pivot = Math.max(k - 1, 0);
+    const anchorRow = search.root ? search.root - 1 : pivot;
+    const anchorCol = v ? v - 1 : pivot;
+    const rowStart = windowOf(n, rows, anchorRow, k ? k - 1 : anchorRow);
+    const colStart = windowOf(n, columns, anchorCol, k ? k - 1 : anchorCol);
     const cols: number[] = [];
     for (let j = colStart + 1; j <= Math.min(n, colStart + columns); j++) cols.push(j);
     head = cols.map((j) => ({

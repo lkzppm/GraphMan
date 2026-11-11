@@ -475,10 +475,14 @@ graphman generate -n 1000 -m 5000 --directed --weights -1:10 --potential -o g.tx
    `Parsed(bytes, directed)`, `Graph.directed`, `edges()` lists every arc,
    `bellmanFord`, `negativeCycle`, `edgeWeight`. Since then: the Directed
    switch on the opening card; the negative cycle in red in the path card;
-   Floyd-Warshall as a fifth search (a sweep picker, Plain / Pruned /
-   Blocked; run once per graph and sweep, every origin then a row of the
-   tables; refused past 1,000 vertices, the CLI takes it; a negative cycle
-   anywhere drawn as Bellman-Ford's); Bellman-Ford's replay in the order the
+   Floyd-Warshall as a fifth algorithm with no origin (a sweep picker,
+   Plain / Pruned / Blocked, and one run button for every pair; the table
+   shown on its own with its numbers, pairs with a path and the farthest
+   pair, and replayed round by round: the vertices 1 to k lit, the pivot k
+   selected, the strip's `D_k` following; a click then reads a vertex's
+   row, a double click the path between two, off the same tables, run once
+   per graph and sweep; refused past 1,000 vertices, the CLI takes it; a
+   negative cycle anywhere drawn as Bellman-Ford's); Bellman-Ford's replay in the order the
    vertices became final; the structure strip showing each programme's
    table (`FloydRounds` in the library: the plain sweep one round at a time,
    reporting the cells each round lowered; `bellmanFordTrace`, `floydTrace`
