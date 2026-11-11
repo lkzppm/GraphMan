@@ -44,10 +44,14 @@ enum Command {
     BellmanFord(commands::bellman_ford::Args),
     /// Distances between all pairs in one table (Floyd-Warshall), printed for chosen vertices.
     FloydWarshall(commands::floyd_warshall::Args),
+    /// Distances between all pairs by one Bellman-Ford and n Dijkstras (Johnson).
+    Johnson(commands::johnson::Args),
     /// Distance between pairs of vertices (weighted when the graph is).
     Distance(commands::distance::Args),
     /// Diameter: exact (brute force or iFUB) or a 4-sweep lower bound.
     Diameter(commands::diameter::Args),
+    /// Strongly connected components, in topological order, and the condensation.
+    Scc(commands::scc::Args),
     /// Connected components, largest first.
     Components(commands::components::Args),
     /// Time BFS, DFS or Dijkstra from many distinct start vertices.
@@ -77,6 +81,8 @@ fn main() -> Result<()> {
         Command::Dijkstra(args) => commands::dijkstra::run(args, &ui),
         Command::BellmanFord(args) => commands::bellman_ford::run(args, &ui),
         Command::Distance(args) => commands::distance::run(args, &ui),
+        Command::Johnson(args) => commands::johnson::run(args, &ui),
+        Command::Scc(args) => commands::scc::run(args, &ui),
         Command::FloydWarshall(args) => commands::floyd_warshall::run(args, &ui),
         Command::Diameter(args) => commands::diameter::run(args, &ui),
         Command::Components(args) => commands::components::run(args, &ui),

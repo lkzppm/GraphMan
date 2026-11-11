@@ -69,6 +69,8 @@ graphman dijkstra samples/weighted_100.txt --from 10 --to 20 30 --frontier vecto
 graphman bellman-ford G --directed --to 100 --from 10 20 30 --schedule queue   # Part 3: distances to a target
 graphman bellman-ford G --directed --negative-cycle                            # the whole-graph question
 graphman floyd-warshall G --directed --pairs 10 20 30 40 50 --sweep blocked    # all pairs, one table
+graphman johnson G -D --frontier heap ; graphman scc G -D                        # the Part 3 plus
+graphman generate -n 1000 -m 5000 -D -w -1:10 --potential [--plant-cycle] -o g.txt
 graphman dblp dblp.xml.gz --out graphs --years 2009   # the DBLP dump → rede_colaboracao.txt + names, whole and up to 2009
 graphman dblp dblp.xml.gz --out out --gzip --site by-year   # plus the site layout: one file per year
 cd web && pnpm install && pnpm run dev      # builds the wasm, syncs data, starts Next.js

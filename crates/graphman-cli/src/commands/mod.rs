@@ -10,6 +10,8 @@ pub mod distance;
 pub mod floyd_warshall;
 pub mod generate;
 pub mod info;
+pub mod johnson;
 pub mod memory;
+pub mod scc;
 pub mod search;
 pub mod study;

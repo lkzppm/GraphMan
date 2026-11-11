@@ -11,6 +11,10 @@
 //!   there is one ([`negative_cycle`] asks the whole graph).
 //! * [`floyd_warshall`] — shortest paths between all pairs in one `n × n` table updated in
 //!   place ([`AllPairs`]), over four [`SweepKind`]s, refused past the memory budget.
+//! * [`johnson`] — all pairs as one Bellman-Ford ([`potentials`]) and `n` Dijkstras over any
+//!   frontier on a [`Reweighted`] view of the graph.
+//! * [`StrongComponents`] — strongly connected components (iterative Tarjan), the condensation,
+//!   a topological order, and [`dag_shortest_path`] on an acyclic graph.
 //! * [`Components`] — connected components, largest first (weakly connected when directed).
 //! * [`diameter`] — exact (brute force or iFUB) and approximate (4-sweep) diameter.
 //! * [`degree_stats`] / [`weight_stats`] — min, max, mean (and median) degree and weight.
@@ -24,7 +28,9 @@ mod diameter;
 mod distance;
 mod floyd_warshall;
 mod frontier;
+mod johnson;
 mod layout;
+mod scc;
 mod schedule;
 mod shortest_path;
 mod stats;
@@ -46,7 +52,9 @@ pub use frontier::{
     LazyHeapFrontier, Measured, PairingHeapFrontier, QuadHeapFrontier, RadixHeapFrontier,
     VectorFrontier,
 };
+pub use johnson::{Reweighted, ReweightedRow, johnson, johnson_with, potentials};
 pub use layout::{RadialLayout, TreeLayout, radial_layout, tree_layout};
+pub use scc::{NotAcyclic, StrongComponents, dag_shortest_path};
 pub use schedule::{
     AnySchedule, MeasuredSchedule, QueueSchedule, Schedule, ScheduleCounts, ScheduleKind, Start,
     SweepSchedule, YenSchedule,
