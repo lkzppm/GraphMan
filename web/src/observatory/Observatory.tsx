@@ -2067,6 +2067,21 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         // The search picture is the tree: no selection ring or neighbourhood on the origin.
         setSelected(0);
         renderer.setSelected(0);
+        if (which === 'floyd_warshall') {
+          // A row read off Floyd-Warshall's table: nothing ran, so nothing
+          // replays; the tree (and the path, if any) shows whole at once.
+          const end = span - 1;
+          revealRef.current = end;
+          setReveal(end);
+          renderer.setRevealRate(1e-3);
+          renderer.setReveal(end);
+          const last = path ? path.length - 1 : -1;
+          walkRef.current = Math.max(last, 0);
+          setWalk(Math.max(last, 0));
+          renderer.setWalk(last);
+          setPlaying(false);
+          return;
+        }
         if (path) {
           // A destination reached: the search is shown whole, up to it, and
           // the timeline walks the path.
@@ -2125,6 +2140,43 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     });
     setFloydPlaying(true);
   }, [ensureFloyd, runSearch]);
+
+  /** Floyd-Warshall's row on screen dropped: back to the table and its rounds. */
+  const backToTable = () => {
+    searchRef.current?.result.free();
+    searchRef.current = null;
+    setSearch(null);
+    setPlaying(false);
+    setTargetInput('');
+    setSelected(0);
+    rendererRef.current?.setPath(0, null);
+    rendererRef.current?.setWalk(-1);
+  };
+
+  /** Floyd-Warshall's whole result dropped: the row, the table, its tables. */
+  const dropFloyd = () => {
+    searchRef.current?.result.free();
+    searchRef.current = null;
+    setSearch(null);
+    setPlaying(false);
+    setFloyd(null);
+    setFloydPlaying(false);
+    floydRef.current?.run.free();
+    floydRef.current = null;
+    setTargetInput('');
+    setSelected(0);
+    const renderer = rendererRef.current;
+    renderer?.setSearch(null);
+    renderer?.setPath(0, null);
+    renderer?.setWalk(-1);
+    renderer?.setSelected(0);
+  };
+
+  /** Whether Floyd-Warshall's tables for the graph and sweep on screen are kept. */
+  const floydReady = () => {
+    const table = floydRef.current;
+    return kind === 'floyd_warshall' && table?.graph === graphRef.current && table?.sweep === sweep;
+  };
 
   // The reveal animation: discovery ranks light up over a duration that
   // grows slowly with the tree, so small graphs stay watchable and large
@@ -2629,13 +2681,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         lastClick.current = { vertex: g.vertex, at: event.timeStamp, origin: rootInput };
         setRootInput(vertexLabel(g.vertex));
         // Floyd-Warshall's table is already there: a click reads the row.
-        const table = floydRef.current;
-        if (
-          kind === 'floyd_warshall' &&
-          table?.graph === graphRef.current &&
-          table?.sweep === sweep
-        )
-          runSearch('floyd_warshall', g.vertex);
+        if (floydReady()) runSearch('floyd_warshall', g.vertex);
       }
     }
     // A click on the background (a pan that never moved) clears the selection.
@@ -2648,6 +2694,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       pinnedRef.current = false;
       setHovered(0);
       renderer?.setHovered(0);
+      // Floyd-Warshall: the row's tree goes with the selection.
+      if (floydReady() && searchRef.current?.sweep) backToTable();
     }
     if (g.mode === 'drag') {
       renderer?.endDrag();
@@ -3629,19 +3677,30 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
               sheet="search"
               grow
               actions={
-                search && (
+                search ? (
                   <>
                     {search.target !== 0 && (
                       <IconButton label={t.clearTarget} onClick={clearTarget}>
                         <RouteOff size={14} />
                       </IconButton>
                     )}
+                    {search.sweep && (
+                      // A row of Floyd-Warshall's table: unselect its tree,
+                      // back to the table.
+                      <IconButton label={t.clearRow} onClick={backToTable}>
+                        <Undo2 size={14} />
+                      </IconButton>
+                    )}
                     <IconButton label={t.downloadTree} onClick={downloadTree}>
                       <Download size={14} />
                     </IconButton>
                     <IconButton
-                      label={t.clearSearch}
+                      label={search.sweep ? t.clearFloyd : t.clearSearch}
                       onClick={() => {
+                        if (search.sweep) {
+                          dropFloyd();
+                          return;
+                        }
                         search.result.free();
                         setSearch(null);
                         setPlaying(false);
@@ -3652,6 +3711,12 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                       <Trash2 size={14} />
                     </IconButton>
                   </>
+                ) : (
+                  floydView && (
+                    <IconButton label={t.clearFloyd} onClick={dropFloyd}>
+                      <Trash2 size={14} />
+                    </IconButton>
+                  )
                 )
               }
             >
@@ -4822,6 +4887,11 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
               hovered={hovered}
               onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
               onSelect={(v) => {
+                if (floydReady()) {
+                  setRootInput(vertexLabel(v));
+                  runSearch('floyd_warshall', v);
+                  return;
+                }
                 setSelected(v);
                 rendererRef.current?.setSelected(v);
               }}

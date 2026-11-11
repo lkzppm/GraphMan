@@ -369,8 +369,10 @@ export default function DpTable({
               <th
                 className={styles.dpRowHead}
                 data-mark={r.mark}
+                data-pick={r.vertex ? '' : undefined}
                 onPointerEnter={r.vertex ? () => link.onHover(r.vertex) : undefined}
                 onPointerLeave={r.vertex ? () => link.onHover(0) : undefined}
+                onClick={r.vertex ? () => link.onSelect(r.vertex) : undefined}
               >
                 {r.label}
               </th>

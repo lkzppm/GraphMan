@@ -678,10 +678,12 @@ export const en = {
     floydHint:
       'Floyd-Warshall fills one table with the distance between every pair of vertices. Run it, watch the rounds, then click a vertex to read its row (a double click on another: the path between them).',
     floydPairs: 'Pairs with a path',
+    clearRow: 'Unselect the tree, back to the table',
+    clearFloyd: "Clear Floyd-Warshall's result",
     floydLongest: 'Longest distance',
     floydLongestPair: 'The farthest pair:',
     floydRowHint:
-      'Click a vertex to read its row: the shortest paths from it. Double click another for the path between them.',
+      'Click a vertex, or a row of the matrix, to see its shortest-path tree; double click another for the path between them. A click on the blank canvas unselects it.',
     floydRounds: 'Round k of Floyd-Warshall',
     cycleNoteGraph: (w: string) =>
       `A negative cycle, weighing ${w}, in the graph: Floyd-Warshall has no distances for any pair it touches.`,
