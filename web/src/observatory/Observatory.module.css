@@ -569,6 +569,69 @@
   color: var(--fg);
 }
 
+/* An on/off switch: a grey track, the accent when on, a white knob that
+   slides across. The picker card's "Directed". */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.toggle:hover,
+.toggle[aria-checked='true'] {
+  color: var(--fg);
+}
+
+.toggleTrack {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--border-2);
+  transition: background 0.2s var(--ease);
+}
+
+.toggle[aria-checked='true'] .toggleTrack {
+  background: var(--accent);
+}
+
+.toggleKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s var(--ease);
+}
+
+.toggle[aria-checked='true'] .toggleKnob {
+  transform: translateX(12px);
+}
+
+.toggle:focus-visible .toggleTrack {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toggleTrack,
+  .toggleKnob {
+    transition: none;
+  }
+}
+
 @media (max-width: 620px) {
   .reprCards {
     grid-template-columns: 1fr;
