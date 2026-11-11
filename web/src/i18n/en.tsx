@@ -127,8 +127,8 @@ export const en = {
           "When the representation is chosen at runtime (the CLI takes it as a flag), AnyGraph holds whichever was built and dispatch! runs a generic expression on it. The algorithm is still specialised per representation; the only dynamic decision is one match. Every builder also knows its cost before allocating (required_bytes) and checks it against a MemoryBudget, the machine's memory by default: a 375 000-vertex bitset matrix is 17.6 GB, and asking for it gives a typed BuildError::OverBudget, not a process dying in swap.",
       },
       traversals: {
-        title: 'Traversals',
-        body: 'bfs and dfs return a SearchTree: parent and level of every reached vertex, plus the order of discovery. BFS is level-synchronous (the order doubles as the queue); DFS is iterative over neighbour iterators, so it uses O(depth) memory and yields exactly the tree the recursive version would.',
+        title: 'BFS and DFS',
+        body: 'bfs and dfs return a SearchTree: parent and level of every reached vertex, plus the order of discovery, in O(n + m). BFS goes level by level and keeps its queue inside the discovery order itself (the front is the vertex after the one being expanded), so it needs no queue of its own and its levels are the distances in edges. DFS goes as deep as it can first; it is written twice: iterative over neighbour iterators, with an explicit stack, so it uses O(depth) memory and never overflows, and dfs_recursive, one call per level as the textbook writes it. Both yield the same tree, because every representation keeps neighbour rows ascending. On a directed graph both follow the arcs.',
         bfs: 'BFS from 1: vertices by level, tree edges in blue, depth 2',
         dfs: 'DFS from 1: the same graph, one path down to depth 4',
       },

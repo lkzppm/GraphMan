@@ -124,8 +124,8 @@ export const pt: Dictionary = {
           'Quando a representação é escolhida em tempo de execução (a CLI recebe como flag), AnyGraph guarda a que foi construída e dispatch! roda uma expressão genérica sobre ela. O algoritmo continua especializado por representação; a única decisão dinâmica é um match. Todo builder também sabe seu custo antes de alocar (required_bytes) e o confere contra um MemoryBudget, a memória da máquina por padrão: a matriz de bits de 375 000 vértices tem 17,6 GB, e pedi-la devolve um BuildError::OverBudget tipado, não um processo morrendo em swap.',
       },
       traversals: {
-        title: 'Buscas',
-        body: 'bfs e dfs devolvem uma SearchTree: pai e nível de cada vértice alcançado, mais a ordem de descoberta. A BFS é síncrona por nível (a ordem serve de fila); a DFS é iterativa sobre iteradores de vizinhos, então usa memória O(profundidade) e produz exatamente a árvore que a versão recursiva produziria.',
+        title: 'BFS e DFS',
+        body: 'bfs e dfs devolvem uma SearchTree: pai e nível de cada vértice alcançado, mais a ordem de descoberta, em O(n + m). A BFS vai nível a nível e guarda a fila dentro da própria ordem de descoberta (o início é o vértice depois do que está sendo expandido), então não precisa de uma fila à parte e seus níveis são as distâncias em arestas. A DFS vai o mais fundo que pode primeiro; ela é escrita duas vezes: iterativa sobre iteradores de vizinhos, com pilha explícita, então usa memória O(profundidade) e nunca estoura, e dfs_recursive, uma chamada por nível como o livro escreve. As duas dão a mesma árvore, porque toda representação mantém as linhas de vizinhos em ordem crescente. Num grafo direcionado, ambas seguem os arcos.',
         bfs: 'BFS a partir de 1: vértices por nível, arestas da árvore em azul, profundidade 2',
         dfs: 'DFS a partir de 1: o mesmo grafo, um caminho só até a profundidade 4',
       },
