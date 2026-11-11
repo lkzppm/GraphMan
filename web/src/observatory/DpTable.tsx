@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -205,6 +206,7 @@ export default function DpTable({
   link: Link;
 }) {
   const s = t.structures;
+  const tipId = useId();
   // The table takes the strip's body: as many columns and rows as fit.
   const ref = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ width: 0, height: 0 });
@@ -333,8 +335,14 @@ export default function DpTable({
 
   return (
     <div ref={ref} className={styles.dp}>
-      <span className={`mono ${styles.dpFormula}`} title={meaning} aria-label={meaning}>
+      {/* The recurrence; what it means shows under it on hover or focus,
+          in the site's tooltip (the browser's own is slow, and some never
+          show it). */}
+      <span className={`mono ${styles.dpFormula}`} tabIndex={0} aria-describedby={tipId}>
         {formula}
+        <span id={tipId} className={styles.dpTip} role="tooltip">
+          {meaning}
+        </span>
       </span>
       <table className={`mono ${styles.dpTable}`} style={fill(box, head.length, body.length)}>
         <thead>
