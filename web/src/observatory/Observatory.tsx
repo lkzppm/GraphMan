@@ -2871,11 +2871,14 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       const sy = (v: number) => (positions[2 * v + 1] - camera.y) * camera.zoom + cy;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      const radius = Math.min(12, Math.max(1.5, 3.5 * Math.sqrt(camera.zoom)));
 
-      // Weights first, so a vertex number is never covered: a small pill at
-      // the middle of each edge long enough on screen to hold one. The
-      // selected vertex's edges, and the edges Dijkstra's tree has used so
-      // far in the replay, turn blue and are drawn last, on top.
+      // Weights first, so a vertex number is never covered: a small pill on
+      // each edge long enough on screen to hold one, at its middle or, when
+      // a vertex or another pill is there, slid along the edge to the first
+      // free spot. The selected vertex's edges, and the edges the search's
+      // tree has used so far in the replay, turn blue and are drawn last,
+      // on top.
       if (weights) {
         ctx.font = `500 10px ${mono}`;
         const background = style.getPropertyValue('--bg');
@@ -2889,23 +2892,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           stroke: style.getPropertyValue('--accent'),
           text: style.getPropertyValue('--accent'),
         };
-        /** Where the pill of edge `e` goes: the middle of the edge, if it is
-            on screen and long enough to hold the pill between its discs. */
-        const box = (e: number) => {
-          const u = edges[2 * e];
-          const v = edges[2 * e + 1];
-          const x1 = sx(u);
-          const y1 = sy(u);
-          const x2 = sx(v);
-          const y2 = sy(v);
-          const x = (x1 + x2) / 2;
-          const y = (y1 + y2) / 2;
-          if (x < -30 || y < -30 || x > rect.width + 30 || y > rect.height + 30) return null;
-          const width = ctx.measureText(weightText[e]).width + 8;
-          if (Math.hypot(x2 - x1, y2 - y1) < width + 28) return null;
-          return { e, x, y, width };
-        };
-        type Box = NonNullable<ReturnType<typeof box>>;
+        type Box = { e: number; x: number; y: number; width: number };
         const paint = ({ e, x, y, width }: Box, colors: typeof plain) => {
           ctx.beginPath();
           ctx.roundRect(x - width / 2, y - 7.5, width, 15, 4);
@@ -2921,26 +2908,80 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           ctx.fillStyle = colors.text;
           ctx.fillText(weightText[e], x, y + 0.5);
         };
-        // Labels never overlap: each pill claims the cells of a coarse
-        // screen grid it covers (with a margin), and a pill whose cells are
-        // taken is not drawn. Zoomed out, a readable sample of the weights
+        // Labels never overlap a vertex or each other: every vertex on
+        // screen, then each pill, claims the cells of a coarse screen grid
+        // it covers (with a margin), and a pill finds a spot whose cells are
+        // free or is not drawn. Zoomed out, a readable sample of the weights
         // shows; zooming in makes room for the rest.
         const CELL = 6;
         const cols = Math.ceil(rect.width / CELL) + 2;
         const rows = Math.ceil(rect.height / CELL) + 2;
         const taken = new Uint8Array(cols * rows);
-        const claim = ({ x, y, width }: Box, force: boolean) => {
-          const c0 = Math.max(0, Math.floor((x - width / 2 - 2) / CELL));
-          const c1 = Math.min(cols - 1, Math.floor((x + width / 2 + 2) / CELL));
-          const r0 = Math.max(0, Math.floor((y - 9.5) / CELL));
-          const r1 = Math.min(rows - 1, Math.floor((y + 9.5) / CELL));
-          if (!force) {
-            for (let r = r0; r <= r1; r++) {
-              for (let c = c0; c <= c1; c++) if (taken[r * cols + c]) return false;
+        /** The grid cells of a rectangle, clipped: [c0, c1, r0, r1]. */
+        const cells = (x0: number, x1: number, y0: number, y1: number) =>
+          [
+            Math.max(0, Math.floor(x0 / CELL)),
+            Math.min(cols - 1, Math.floor(x1 / CELL)),
+            Math.max(0, Math.floor(y0 / CELL)),
+            Math.min(rows - 1, Math.floor(y1 / CELL)),
+          ] as const;
+        const area = ({ x, y, width }: Box) =>
+          cells(x - width / 2 - 2, x + width / 2 + 2, y - 9.5, y + 9.5);
+        const free = (b: Box) => {
+          const [c0, c1, r0, r1] = area(b);
+          for (let r = r0; r <= r1; r++) {
+            for (let c = c0; c <= c1; c++) if (taken[r * cols + c]) return false;
+          }
+          return true;
+        };
+        const take = ([c0, c1, r0, r1]: readonly [number, number, number, number]) => {
+          if (c0 > c1) return;
+          for (let r = r0; r <= r1; r++) taken.fill(1, r * cols + c0, r * cols + c1 + 1);
+        };
+        // The vertices first, with room for the rings and the growth a
+        // search or a path gives them (past a size, too many to matter).
+        if (positions.length / 2 <= 200_000) {
+          const room = Math.max(radius * 1.6, 6) + 3;
+          for (let i = 2; i < positions.length; i += 2) {
+            const x = (positions[i] - camera.x) * camera.zoom + cx;
+            const y = (positions[i + 1] - camera.y) * camera.zoom + cy;
+            if (x < -room || y < -room || x > rect.width + room || y > rect.height + room) continue;
+            take(cells(x - room, x + room, y - room, y + room));
+          }
+        }
+        /** Where along an edge its pill is tried: the middle, then further
+            out on either side. */
+        const ALONG = [0.5, 0.4, 0.6, 0.3, 0.7, 0.22, 0.78];
+        /** The pill of edge `e`: the first spot along the edge that is on
+            screen, clear of both ends' discs and free (or, with `force`,
+            the middle when none is). `null` when the edge is too short. */
+        const place = (e: number, force: boolean): Box | null => {
+          const u = edges[2 * e];
+          const v = edges[2 * e + 1];
+          const x1 = sx(u);
+          const y1 = sy(u);
+          const x2 = sx(v);
+          const y2 = sy(v);
+          const length = Math.hypot(x2 - x1, y2 - y1);
+          const width = ctx.measureText(weightText[e]).width + 8;
+          // Clear of both ends' claimed squares, with a cell to spare.
+          const clear = (width / 2 + Math.max(radius * 1.6, 6) + 5 + CELL) / length;
+          if (clear >= 0.5) return null;
+          let fallback: Box | null = null;
+          for (const t of ALONG) {
+            if (t < clear || t > 1 - clear) continue;
+            const x = x1 + (x2 - x1) * t;
+            const y = y1 + (y2 - y1) * t;
+            if (x < -30 || y < -30 || x > rect.width + 30 || y > rect.height + 30) continue;
+            const b = { e, x, y, width };
+            fallback ??= b;
+            if (free(b)) {
+              take(area(b));
+              return b;
             }
           }
-          for (let r = r0; r <= r1; r++) taken.fill(1, r * cols + c0, r * cols + c1 + 1);
-          return true;
+          if (force && fallback) take(area(fallback));
+          return force ? fallback : null;
         };
         const selectedVertex = selectedRef.current;
         const run = searchRef.current?.kind === 'dijkstra' ? searchRef.current : null;
@@ -2963,11 +3004,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           const u = edges[2 * e];
           const v = edges[2 * e + 1];
           if ((selectedVertex && (u === selectedVertex || v === selectedVertex)) || used(u, v)) {
-            const b = box(e);
-            if (b) {
-              claim(b, true);
-              mine.push(b);
-            }
+            const b = place(e, true);
+            if (b) mine.push(b);
           }
         }
         let step = 7919 % Math.max(m, 1) || 1;
@@ -2979,14 +3017,12 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           if ((selectedVertex && (u === selectedVertex || v === selectedVertex)) || used(u, v)) {
             continue;
           }
-          const b = box(e);
-          if (b && claim(b, false)) shown.push(b);
+          const b = place(e, false);
+          if (b) shown.push(b);
         }
         for (const b of shown) paint(b, plain);
         for (const b of mine) paint(b, chosen);
       }
-
-      const radius = Math.min(12, Math.max(1.5, 3.5 * Math.sqrt(camera.zoom)));
 
       // The vertices in the structure strip, ringed: the queue, the stack,
       // the frontier at this step; the one the step is about more strongly.
