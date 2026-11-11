@@ -1,8 +1,8 @@
 //! Adjacency matrix packed as a bitset: one bit per vertex pair.
 
 use super::{
-    Build, BuildError, Graph, Representation, UNIT_WEIGHT, Vertex, Weight, Weighted, WeightedEdge,
-    allocation_failed,
+    Build, BuildError, Graph, Orientation, Representation, UNIT_WEIGHT, Vertex, Weight, Weighted,
+    WeightedEdge, allocation_failed, csr::first_negative,
 };
 use crate::io::EdgeList;
 use core::mem::size_of;
@@ -22,6 +22,9 @@ use core::mem::size_of;
 /// `(n + 1) × (n + 1)` table of [`Weight`]s, 64 times the size of the
 /// bitset (800 MB for 10 000 vertices). The bits still answer every
 /// adjacency question; the table is read only for weights, in `O(1)`.
+///
+/// A directed graph sets bit `(u, v)` for the arc `u → v` only, so the
+/// matrix is no longer symmetric; its size does not change.
 #[derive(Debug, Clone)]
 pub struct AdjacencyMatrix {
     vertex_count: usize,
@@ -29,9 +32,12 @@ pub struct AdjacencyMatrix {
     bits: Vec<u64>,
     /// `(n + 1)²` weights, row-major; empty when the graph is unweighted.
     weights: Vec<Weight>,
+    /// Row lengths: out-degrees when directed.
     degrees: Vec<u32>,
+    directed: bool,
     edge_count: usize,
     negative_edge: Option<WeightedEdge>,
+    negative_loops: Vec<WeightedEdge>,
 }
 
 impl AdjacencyMatrix {
@@ -68,7 +74,12 @@ impl AdjacencyMatrix {
 impl Build for AdjacencyMatrix {
     const REPRESENTATION: Representation = Representation::AdjacencyMatrix;
 
-    fn required_bytes(vertex_count: usize, _edge_count: usize, weighted: bool) -> usize {
+    fn required_bytes_oriented(
+        vertex_count: usize,
+        _edge_count: usize,
+        weighted: bool,
+        _orientation: Orientation,
+    ) -> usize {
         // Saturating: in the browser `usize` is 32 bits, and a wrapped product
         // would let a matrix nobody can allocate through the budget check.
         let side = vertex_count.saturating_add(1);
@@ -84,10 +95,79 @@ impl Build for AdjacencyMatrix {
     }
 
     fn build_unchecked(edges: &EdgeList) -> Result<Self, BuildError> {
-        let n = edges.vertex_count();
-        let required = Self::required_bytes(n, edges.edge_count(), edges.is_weighted());
-        let fail = || allocation_failed(Self::REPRESENTATION, required);
+        let directed = edges.is_directed();
+        let mut matrix = Self::empty(
+            edges.vertex_count(),
+            edges.is_weighted(),
+            directed,
+            edges.degrees(),
+        )?;
+        matrix.edge_count = edges.edge_count();
+        matrix.negative_edge = edges.negative_edge();
+        matrix.negative_loops = edges.negative_loops().to_vec();
+        for &[u, v] in edges.edges() {
+            matrix.set(u, v);
+            if !directed {
+                matrix.set(v, u);
+            }
+        }
+        if let Some(edge_weights) = edges.weights() {
+            let stride = matrix.vertex_count + 1;
+            for (&[u, v], &weight) in edges.edges().iter().zip(edge_weights) {
+                let (u, v) = (u as usize, v as usize);
+                matrix.weights[u * stride + v] = weight;
+                if !directed {
+                    matrix.weights[v * stride + u] = weight;
+                }
+            }
+        }
+        Ok(matrix)
+    }
 
+    /// Every set bit `(u, v)` sets `(v, u)` in a fresh matrix: `O(n² / 64 +
+    /// m)`, plus the weight table's `n²` copy when weighted.
+    fn transpose_unchecked(&self) -> Result<Self, BuildError> {
+        if !self.directed {
+            return Ok(self.clone());
+        }
+        let n = self.vertex_count;
+        let mut in_degrees = vec![0u32; n + 1];
+        for u in 1..=n as Vertex {
+            for v in self.neighbors(u) {
+                in_degrees[v as usize] += 1;
+            }
+        }
+        let weighted = self.is_weighted();
+        let mut transpose = Self::empty(n, weighted, true, in_degrees)?;
+        transpose.edge_count = self.edge_count;
+        transpose.negative_loops = self.negative_loops.clone();
+        let stride = n + 1;
+        for u in 1..=n as Vertex {
+            for v in self.neighbors(u) {
+                transpose.set(v, u);
+                if weighted {
+                    let (u, v) = (u as usize, v as usize);
+                    transpose.weights[v * stride + u] = self.weights[u * stride + v];
+                }
+            }
+        }
+        if self.negative_edge.is_some() {
+            transpose.negative_edge = first_negative(&transpose);
+        }
+        Ok(transpose)
+    }
+}
+
+impl AdjacencyMatrix {
+    /// A matrix with no bit set, its tables allocated and zeroed.
+    fn empty(
+        n: usize,
+        weighted: bool,
+        directed: bool,
+        degrees: Vec<u32>,
+    ) -> Result<Self, BuildError> {
+        let required = Self::required_bytes(n, 0, weighted);
+        let fail = || allocation_failed(Self::REPRESENTATION, required);
         // Checked: an unrepresentable size is an allocation failure, not a
         // wrapped (small) table indexed past its end.
         let too_large = || BuildError::AllocationFailed {
@@ -100,34 +180,22 @@ impl Build for AdjacencyMatrix {
         bits.try_reserve_exact(total_words).map_err(fail())?;
         bits.resize(total_words, 0);
         let mut weights: Vec<Weight> = Vec::new();
-        if edges.is_weighted() {
+        if weighted {
             let cells = (n + 1).checked_mul(n + 1).ok_or_else(too_large)?;
             weights.try_reserve_exact(cells).map_err(fail())?;
             weights.resize(cells, 0.0);
         }
-
-        let mut matrix = Self {
+        Ok(Self {
             vertex_count: n,
             words_per_row,
             bits,
             weights,
-            degrees: edges.degrees(),
-            edge_count: edges.edge_count(),
-            negative_edge: edges.negative_edge(),
-        };
-        for &[u, v] in edges.edges() {
-            matrix.set(u, v);
-            matrix.set(v, u);
-        }
-        if let Some(edge_weights) = edges.weights() {
-            let stride = n + 1;
-            for (&[u, v], &weight) in edges.edges().iter().zip(edge_weights) {
-                let (u, v) = (u as usize, v as usize);
-                matrix.weights[u * stride + v] = weight;
-                matrix.weights[v * stride + u] = weight;
-            }
-        }
-        Ok(matrix)
+            degrees,
+            directed,
+            edge_count: 0,
+            negative_edge: None,
+            negative_loops: Vec::new(),
+        })
     }
 }
 
@@ -161,6 +229,11 @@ impl Graph for AdjacencyMatrix {
     fn has_edge(&self, u: Vertex, v: Vertex) -> bool {
         let word = self.row(u)[v as usize / Self::WORD_BITS];
         word & (1u64 << (v as usize % Self::WORD_BITS)) != 0
+    }
+
+    #[inline]
+    fn is_directed(&self) -> bool {
+        self.directed
     }
 
     fn heap_bytes(&self) -> usize {
@@ -207,6 +280,10 @@ impl Weighted for AdjacencyMatrix {
 
     fn negative_edge(&self) -> Option<WeightedEdge> {
         self.negative_edge
+    }
+
+    fn negative_loops(&self) -> &[WeightedEdge] {
+        &self.negative_loops
     }
 }
 
