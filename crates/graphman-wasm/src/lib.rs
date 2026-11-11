@@ -17,8 +17,8 @@ use graphman::algo::{
     self, AllPairs, Components, Control, DegreeStats, DiameterMethod, FloydError, FloydRounds,
     Frontier, FrontierEntry, FrontierKind, HeapFrontier, LazyHeapFrontier, MeasuredSchedule,
     PairingHeapFrontier, QuadHeapFrontier, RadialLayout, RadixHeapFrontier, ScheduleKind,
-    SearchTree, ShortestPathTree, Start, SweepKind, UNREACHED, VectorFrontier, Visitor,
-    WeightStats, bellman_ford_into, bfs_into, dfs_into, dfs_recursive_into, dijkstra_into,
+    SearchTree, ShortestPathTree, Start, StrongComponents, SweepKind, UNREACHED, VectorFrontier,
+    Visitor, WeightStats, bellman_ford_into, bfs_into, dfs_into, dfs_recursive_into, dijkstra_into,
     tree_layout,
 };
 use graphman::io::write_summary;
@@ -1261,6 +1261,30 @@ impl WasmGraph {
         labels.push(0);
         labels.extend((1..=n).map(|v| components.component_of(v)));
         labels
+    }
+
+    /// Strong component id of every vertex, indexed by vertex: the library's
+    /// strongly connected components (iterative Tarjan), renumbered like
+    /// [`componentLabels`](Self::component_labels), `1` the largest (ties
+    /// by the smallest vertex), so the page browses both the same way. On
+    /// an undirected graph they are the connected components.
+    #[wasm_bindgen(js_name = strongComponentLabels)]
+    pub fn strong_component_labels(&self) -> Vec<u32> {
+        let strong = dispatch!(&self.graph, g => StrongComponents::compute(g));
+        let count = strong.count() as u32;
+        let mut ids: Vec<u32> = (1..=count).collect();
+        ids.sort_by_key(|&id| {
+            let members = strong.members(id);
+            (core::cmp::Reverse(members.len()), members[0])
+        });
+        let mut rank = vec![0u32; count as usize + 1];
+        for (r, &id) in ids.iter().enumerate() {
+            rank[id as usize] = r as u32 + 1;
+        }
+        let n = self.graph.vertex_count() as Vertex;
+        core::iter::once(0)
+            .chain((1..=n).map(|v| rank[strong.component_of(v) as usize]))
+            .collect()
     }
 
     /// Runs a BFS or DFS from `root` and returns the tree, timed with
@@ -2518,6 +2542,18 @@ mod tests {
                 assert!(order[..rank].contains(&p), "{p} before {v}");
             }
         }
+    }
+
+    #[test]
+    fn strong_components_are_ranked_by_size_like_the_weak_ones() {
+        // {1} → the cycle {2, 3, 4}, and 5 alone after it.
+        let parsed = WasmEdges::new(b"5\n1 2\n2 3\n3 4\n4 2\n4 5\n", true).expect("parses");
+        let g = parsed.build(RepresentationKind::Csr).expect("fits");
+        let labels = g.strong_component_labels();
+        assert_eq!(labels[2], 1);
+        assert_eq!((labels[3], labels[4]), (1, 1));
+        // Two singletons: the smaller vertex first.
+        assert_eq!((labels[1], labels[5]), (2, 3));
     }
 
     #[test]

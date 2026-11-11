@@ -435,7 +435,13 @@ off its axis; both charts stay mounted, and switching grows the new bars
 from the axis, staggered left to right, as the old ones sink into it),
 component bar; the summary, the memory view and the components browser
 swap in place without a jump: the old view fades out, the next rises in,
-and the panel eases its height between them); Search: the algorithm
+and the panel eases its height between them; on a directed graph the
+components browser holds a "Fortemente conexas" switch, the Directed one's
+look: on, the browser, the canvas, the arrow keys and the legend go
+through the strong components instead of the weak ones, ranked by size
+the same way, the header saying "fortemente conexo" or "acíclico" when
+there is one, or one per vertex; a component's density counts arcs both
+ways on a directed graph); Search: the algorithm
 as a full-width segmented control in rows (BFS / DFS / Dijkstra over the
 two dynamic programmes, Bellman-Ford / Floyd-Warshall: each row cut in
 equal columns so no name wraps, the thumb

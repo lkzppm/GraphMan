@@ -224,6 +224,45 @@ interface GraphMeta {
   parseMs: number;
 }
 
+/** A graph's components as the panel and the canvas read them: the weak
+    ones (connected ones, undirected) loaded with the graph, or the strong
+    ones on a directed graph. */
+interface ComponentData {
+  /** Vertices per component, largest first (id = index + 1). */
+  sizes: Uint32Array;
+  /** Component id per vertex (1 = largest, ranked by size). */
+  labels: Uint32Array;
+  /** Edges or arcs inside each component (both ends in it; index = id). */
+  edges: Uint32Array;
+  /** Smallest and largest (out-)degree per component (index = id). */
+  degree: { min: Uint32Array; max: Uint32Array };
+}
+
+/** The panel's numbers for a labelling: sizes, edges inside, degree range. */
+function componentData(
+  labels: Uint32Array,
+  edgeList: Uint32Array,
+  degrees: Uint32Array,
+): ComponentData {
+  let count = 0;
+  for (let v = 1; v < labels.length; v++) count = Math.max(count, labels[v]);
+  const sizes = new Uint32Array(count);
+  for (let v = 1; v < labels.length; v++) sizes[labels[v] - 1] += 1;
+  const edges = new Uint32Array(count + 1);
+  for (let i = 0; i < edgeList.length; i += 2) {
+    const c = labels[edgeList[i]];
+    if (c === labels[edgeList[i + 1]]) edges[c] += 1;
+  }
+  const min = new Uint32Array(count + 1).fill(0xffffffff);
+  const max = new Uint32Array(count + 1);
+  for (let v = 1; v < labels.length; v++) {
+    const c = labels[v];
+    if (degrees[v] < min[c]) min[c] = degrees[v];
+    if (degrees[v] > max[c]) max[c] = degrees[v];
+  }
+  return { sizes, labels, edges, degree: { min, max } };
+}
+
 /** The searches the panel offers. A Bellman-Ford run is shown as a
     shortest-path tree, like Dijkstra's (its `Search` keeps `kind:
     'dijkstra'` and names its `schedule`). */
@@ -715,6 +754,26 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   >({});
   const [diameterBusy, setDiameterBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /** The components panel on a directed graph: the strong components
+      instead of the weak ones, and their numbers, worked out once per
+      graph (`meta` names the graph they belong to). */
+  const [strongShown, setStrongShown] = useState(false);
+  const [strong, setStrong] = useState<{ meta: GraphMeta; data: ComponentData } | null>(null);
+  const weakComponents = useMemo<ComponentData | null>(
+    () =>
+      meta && {
+        sizes: meta.componentSizes,
+        labels: meta.componentLabels,
+        edges: meta.componentEdges,
+        degree: meta.componentDegree,
+      },
+    [meta],
+  );
+  const strongData = strong && strong.meta === meta ? strong.data : null;
+  /** The components the panel, the canvas and the arrow keys go through. */
+  const components = strongShown && strongData ? strongData : weakComponents;
+  const componentsRef = useRef(components);
+  componentsRef.current = components;
   /** The negative cycle Bellman-Ford found instead of distances (closed: first vertex last too). */
   const [cycle, setCycle] = useState<{
     vertices: Uint32Array;
@@ -1287,7 +1346,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   /** Lights component `c` (0 clears), frames it, and hands the arrow keys to it. */
   const selectComponent = useCallback(
     (c: number) => {
-      const labels = metaRef.current?.componentLabels;
+      const labels = componentsRef.current?.labels;
       setComponent(c);
       rendererRef.current?.setComponent(c);
       keysTarget.current = c ? 'components' : 'search';
@@ -1298,6 +1357,32 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     },
     [fitVertices],
   );
+
+  /** The components panel's switch: the strong components or the weak ones,
+      the canvas relabelled and the largest one lit. */
+  const showStrong = (on: boolean) => {
+    const graph = graphRef.current;
+    const current = metaRef.current;
+    if (!graph || !current) return;
+    let data = strong && strong.meta === current ? strong.data : null;
+    if (on && !data) {
+      data = componentData(graph.strongComponentLabels(), current.edgeList, current.degrees);
+      setStrong({ meta: current, data });
+    }
+    const next =
+      on && data
+        ? data
+        : {
+            sizes: current.componentSizes,
+            labels: current.componentLabels,
+            edges: current.componentEdges,
+            degree: current.componentDegree,
+          };
+    componentsRef.current = next;
+    setStrongShown(on);
+    rendererRef.current?.setComponentLabels(next.labels);
+    selectComponent(1);
+  };
 
   const toWorld = useCallback((clientX: number, clientY: number) => {
     const stage = stageRef.current;
@@ -1441,16 +1526,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
             ? graph.initialLayout()
             : graph.layout(wasm.LayoutKind.Radial, Math.max(1, labels.indexOf(1)));
         const edges = graph.edges();
-        // Per component: edges (by one endpoint's label) and the degree range.
-        const componentEdges = new Uint32Array(sizes.length + 1);
-        for (let i = 0; i < edges.length; i += 2) componentEdges[labels[edges[i]]] += 1;
-        const degreeMin = new Uint32Array(sizes.length + 1).fill(0xffffffff);
-        const degreeMax = new Uint32Array(sizes.length + 1);
-        for (let v = 1; v < labels.length; v++) {
-          const c = labels[v];
-          if (degrees[v] < degreeMin[c]) degreeMin[c] = degrees[v];
-          if (degrees[v] > degreeMax[c]) degreeMax[c] = degrees[v];
-        }
+        // Per component: edges inside and the degree range.
+        const weak = componentData(labels, edges, degrees);
         renderer.load(
           {
             vertexCount: graph.vertexCount,
@@ -1485,12 +1562,13 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           edgeWeights: weights ? graph.weights() : null,
           componentSizes: sizes,
           componentLabels: labels,
-          componentEdges,
-          componentDegree: { min: degreeMin, max: degreeMax },
+          componentEdges: weak.edges,
+          componentDegree: weak.degree,
           parseMs: waiting.parseMs,
         });
         setComponent(0);
         setComponentsOpen(false);
+        setStrongShown(false);
         setMemoryOpen(false);
         setLayout(willSimulate ? 'force' : 'radial');
         setSearch(null);
@@ -2788,7 +2866,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           : event.key === 'ArrowDown' || event.key === 'ArrowLeft'
             ? -1
             : 0;
-      const count = metaRef.current?.componentSizes.length ?? 0;
+      const count = componentsRef.current?.sizes.length ?? 0;
       if (
         arrow &&
         k.component &&
@@ -3640,6 +3718,9 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                   <ComponentsView
                     t={t}
                     meta={meta}
+                    data={components ?? weakComponents!}
+                    strong={strongShown && strongData !== null}
+                    onStrong={showStrong}
                     current={component}
                     onSelect={selectComponent}
                     onClose={() => {
@@ -4832,7 +4913,10 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                     </>
                   ) : component ? (
                     <>
-                      <span className={styles.swatchLit} /> {t.component(component)}
+                      <span className={styles.swatchLit} />{' '}
+                      {strongShown && strongData
+                        ? t.strongComponent(component)
+                        : t.component(component)}
                       <span className={styles.legendSep} />
                       <span className={styles.swatchDim} /> {t.theRest}
                     </>
@@ -6192,34 +6276,67 @@ function MemoryView({
 function ComponentsView({
   t,
   meta,
+  data,
+  strong,
+  onStrong,
   current,
   onSelect,
   onClose,
 }: {
   t: Strings;
   meta: GraphMeta;
+  /** The components shown: the weak ones, or the strong ones. */
+  data: ComponentData;
+  strong: boolean;
+  /** The switch to the strong components (directed graphs only). */
+  onStrong: (on: boolean) => void;
   current: number;
   onSelect: (c: number) => void;
   onClose: () => void;
 }) {
-  const sizes = meta.componentSizes;
+  const sizes = data.sizes;
   const total = meta.vertices;
   const shown = Math.min(sizes.length, 8);
   let rest = 0;
   for (let i = shown; i < sizes.length; i++) rest += sizes[i];
   const size = current ? sizes[current - 1] : 0;
-  const edges = current ? meta.componentEdges[current] : 0;
-  const possible = (size * (size - 1)) / 2;
+  const edges = current ? data.edges[current] : 0;
+  // An undirected component holds at most one edge per pair, a directed
+  // one an arc each way.
+  const possible = meta.directed ? size * (size - 1) : (size * (size - 1)) / 2;
+  const hint =
+    sizes.length === 1
+      ? strong
+        ? t.stronglyConnected
+        : t.connected
+      : strong && sizes.length === total
+        ? t.acyclic
+        : t.smallest(formatInt(sizes[sizes.length - 1]));
   return (
     <div className={styles.chart} aria-label={t.components}>
       <div className={styles.chartHeader}>
         <span className={`label ${styles.tileLabel}`}>
-          {t.componentsCount(formatInt(sizes.length))}
+          {strong
+            ? t.strongComponentsCount(formatInt(sizes.length))
+            : t.componentsCount(formatInt(sizes.length))}
         </span>
-        <span className={styles.tileHint}>
-          {sizes.length === 1 ? t.connected : t.smallest(formatInt(sizes[sizes.length - 1]))}
-        </span>
+        <span className={styles.tileHint}>{hint}</span>
       </div>
+      {meta.directed && (
+        <button
+          type="button"
+          role="switch"
+          aria-checked={strong}
+          className={styles.toggle}
+          title={t.strongHint}
+          onClick={() => onStrong(!strong)}
+        >
+          <span className={styles.toggleTrack} aria-hidden="true">
+            <span className={styles.toggleKnob} />
+          </span>
+          {t.strongToggle}
+        </button>
+      )}
       <div className={styles.segments} role="group" aria-label={t.pickComponent}>
         {Array.from({ length: shown }, (_, i) => (
           <button
@@ -6297,8 +6414,8 @@ function ComponentsView({
           />
           <Tile
             label={t.componentDegree}
-            value={`${meta.componentDegree.min[current]} – ${meta.componentDegree.max[current]}`}
-            hint={t.mean(size ? ((2 * edges) / size).toFixed(2) : '0')}
+            value={`${data.degree.min[current]} – ${data.degree.max[current]}`}
+            hint={t.mean(size ? (((meta.directed ? 1 : 2) * edges) / size).toFixed(2) : '0')}
           />
           <Tile
             label={t.density}
