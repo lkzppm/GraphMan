@@ -1,6 +1,13 @@
 'use client';
 
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import { formatInt, formatWeight } from '@/lib/format';
 import type { Dictionary } from '@/i18n';
 import styles from './Structures.module.css';
@@ -167,11 +174,15 @@ function windowOf(count: number, size: number, keep: number, also = keep): numbe
   return Math.max(0, Math.min(count - size, Math.round(centre - size / 2)));
 }
 
-const CELL_W = 52;
-const CELL_H = 22;
-const LABEL_W = 46;
-/** The caption, the column labels and the air around them. */
-const CHROME = 74;
+/** A cell's least width and its least and greatest height (px): as many
+    as fit at the least, then stretched to fill the strip. */
+const CELL_W = 56;
+const CELL_W_MAX = 150;
+const ROW_MIN = 22;
+const ROW_MAX = 40;
+const LABEL_W = 52;
+/** The recurrence above, the counter below and the air around them. */
+const CHROME = 58;
 
 /** A value as the table writes it. */
 const show = (d: number) => (d === Infinity ? '∞' : formatWeight(d));
@@ -206,8 +217,10 @@ export default function DpTable({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  const columns = Math.max(1, Math.floor((box.width - LABEL_W - 36) / CELL_W));
-  const rows = Math.max(1, Math.floor((box.height - CHROME) / CELL_H));
+  const room = Math.max(0, box.width - LABEL_W - 8);
+  const columns = Math.max(1, Math.floor(room / CELL_W));
+  // The column labels take a row of their own.
+  const rows = Math.max(1, Math.floor((box.height - CHROME) / ROW_MIN) - 1);
   const moment =
     round !== undefined ? { at: round, pass: round } : momentOf(prepared, search, step);
   const v =
@@ -215,7 +228,11 @@ export default function DpTable({
       ? 0
       : (search.order[Math.min(step, search.order.length - 1)] ?? search.root);
 
-  let caption: ReactNode;
+  /** The recurrence, in the accent over the table; what it means, as its
+      tooltip; where the replay stands, under the table. */
+  let formula: ReactNode;
+  let meaning: string;
+  let counter: string;
   let rowHead: string;
   let head: { key: number; label: string; vertex: number; mark?: 'focus' | 'pivot' }[];
   let body: {
@@ -261,17 +278,13 @@ export default function DpTable({
         }),
       });
     }
-    caption = (
+    formula = (
       <>
-        <span className={`label ${styles.dpTitle}`}>{s.dp.bellmanTitle}</span>
-        <span className={`mono ${styles.dpFormula}`}>
-          d<sub>k</sub>[v] = min(d<sub>k−1</sub>[v], d<sub>k−1</sub>[u] + w(u, v))
-        </span>
-        <span className={`mono ${styles.dpMoment}`}>
-          {s.dp.passOf(formatInt(last), formatInt(trace.totalPasses))}
-        </span>
+        d<sub>k</sub>[v] = min(d<sub>k−1</sub>[v], d<sub>k−1</sub>[u] + w(u, v))
       </>
     );
+    meaning = s.dp.bellmanTitle;
+    counter = s.dp.passOf(formatInt(last), formatInt(trace.totalPasses));
   } else {
     const trace = prepared.trace;
     const n = trace.n;
@@ -308,24 +321,22 @@ export default function DpTable({
         })),
       });
     }
-    caption = (
+    formula = (
       <>
-        <span className={`label ${styles.dpTitle}`}>{s.dp.floydTitle}</span>
-        <span className={`mono ${styles.dpFormula}`}>
-          D<sub>k</sub>[i][j] = min(D<sub>k−1</sub>[i][j], D<sub>k−1</sub>[i][k] + D<sub>k−1</sub>
-          [k][j])
-        </span>
-        <span className={`mono ${styles.dpMoment}`}>
-          {k ? s.dp.roundOf(formatInt(k), formatInt(n)) : s.dp.start}
-        </span>
+        D<sub>k</sub>[i][j] = min(D<sub>k−1</sub>[i][j], D<sub>k−1</sub>[i][k] + D<sub>k−1</sub>
+        [k][j])
       </>
     );
+    meaning = s.dp.floydTitle;
+    counter = k ? s.dp.roundOf(formatInt(k), formatInt(n)) : s.dp.start;
   }
 
   return (
     <div ref={ref} className={styles.dp}>
-      <div className={styles.dpCaption}>{caption}</div>
-      <table className={`mono ${styles.dpTable}`}>
+      <span className={`mono ${styles.dpFormula}`} title={meaning} aria-label={meaning}>
+        {formula}
+      </span>
+      <table className={`mono ${styles.dpTable}`} style={fill(box, head.length, body.length)}>
         <thead>
           <tr>
             <th className={styles.dpCorner}>{rowHead}</th>
@@ -371,8 +382,22 @@ export default function DpTable({
           ))}
         </tbody>
       </table>
+      <span className={`mono ${styles.dpMoment}`}>{counter}</span>
     </div>
   );
+}
+
+/** The table stretched over the strip: its columns share the width (up to
+    a cap, so a few vertices do not become slabs) and its rows the height,
+    the text growing with them. */
+function fill(box: { width: number; height: number }, columns: number, rows: number) {
+  const width = Math.min(box.width, LABEL_W + columns * CELL_W_MAX);
+  const row = Math.max(ROW_MIN, Math.min(ROW_MAX, (box.height - CHROME) / (rows + 1)));
+  return {
+    width,
+    '--dp-row': `${Math.floor(row) - 2}px`,
+    '--dp-font': `${Math.min(13, Math.max(10.5, row * 0.42)).toFixed(1)}px`,
+  } as CSSProperties;
 }
 
 /** One prepared trace per trace object. */

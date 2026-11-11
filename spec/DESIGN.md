@@ -321,11 +321,15 @@ vertex on the path for Floyd-Warshall, so parents come first): Bellman-Ford's
 `d_k[v]` with one row per pass up to the one running and one column per
 vertex in replay order; Floyd-Warshall's `D_k[i][j]` after round `k`, the
 origin's row named in the accent, row and column `k` (the cross every
-update of the round reads) on a darker grey. Each holds its recurrence in
-mono over it, the cells the step's pass or round lowered tinted in the
-accent and fading in, the step's cell ringed (filled in the current row),
-∞ in the faint grey; a table larger than the strip is a window that follows
-the step. Floyd-Warshall replays up to 200 vertices, Bellman-Ford up to
+update of the round reads) on a darker grey. Each holds its recurrence
+alone over it, in mono and the accent, what it means as its tooltip, and
+the replay's moment under it (`pass 3 of 7`, `k = 4 of 10`); the cells
+the step's pass or round lowered are tinted in the accent and fade in, the
+step's cell is ringed (filled in the current row), ∞ in the faint grey.
+The table fills the strip: as many columns (56 px at least) and rows
+(22 px) as fit, then stretched over the width (150 px a column at most) and
+the height (40 px a row at most), the text growing with them; a table
+larger than the strip is a window that follows the step. Floyd-Warshall replays up to 200 vertices, Bellman-Ford up to
 400,000 lowerings; past that the strip says so. Floyd-Warshall has no
 origin: its panel holds the sweep with the run button beside it (no origin
 or destination fields, no mode), then
