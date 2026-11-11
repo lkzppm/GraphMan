@@ -1,7 +1,9 @@
 'use client';
 
 import {
+  ArrowUpRight,
   Brackets,
+  RefreshCcw,
   GalleryHorizontalEnd,
   Layers,
   Network,
@@ -65,8 +67,10 @@ import {
 } from 'react';
 import { formatBytes, formatCompact, formatInt, formatMs, formatWeight } from '@/lib/format';
 import {
+  DIRECTED_SAMPLE,
   NAMED_SAMPLE,
   NAMED_SAMPLE_NAMES,
+  NEGATIVE_CYCLE_SAMPLE,
   UNWEIGHTED_SAMPLE,
   WEIGHTED_SAMPLE,
   loadGraphman,
@@ -209,9 +213,12 @@ interface GraphMeta {
   parseMs: number;
 }
 
-type SearchKindName = 'bfs' | 'dfs' | 'dijkstra';
+/** The searches the panel offers. A Bellman-Ford run is shown as a
+    shortest-path tree, like Dijkstra's (its `Search` keeps `kind:
+    'dijkstra'` and names its `schedule`). */
+type SearchKindName = 'bfs' | 'dfs' | 'dijkstra' | 'bellman_ford';
 /** The built-in examples behind the empty sidebar's "Examples" tile. */
-const EXAMPLES = ['plain', 'weighted', 'named'] as const;
+const EXAMPLES = ['plain', 'weighted', 'named', 'directed', 'cycle'] as const;
 type Example = (typeof EXAMPLES)[number];
 /** How Dijkstra keeps its estimates: the course's three, then the three
     that go faster in practice. */
@@ -219,6 +226,27 @@ const FRONTIER_GROUPS: { group: 'course' | 'faster'; names: FrontierName[] }[] =
   { group: 'course', names: ['vector', 'heap', 'lazy_heap'] },
   { group: 'faster', names: ['quad_heap', 'pairing', 'radix'] },
 ];
+
+/** Which vertex Bellman-Ford re-examines next: the course's textbook and
+    its two optimisations, then the orders that need fewer passes. */
+type ScheduleName = 'rounds' | 'early_stop' | 'queue' | 'yen' | 'random_yen' | 'slf';
+const SCHEDULE_GROUPS: { group: 'course' | 'faster'; names: ScheduleName[] }[] = [
+  { group: 'course', names: ['rounds', 'early_stop', 'queue'] },
+  { group: 'faster', names: ['yen', 'random_yen', 'slf'] },
+];
+
+/** The wasm side's number for a schedule. */
+function scheduleType(wasm: GraphmanModule, name: ScheduleName) {
+  const types = wasm.ScheduleType;
+  return {
+    rounds: types.Rounds,
+    early_stop: types.EarlyStop,
+    queue: types.Queue,
+    yen: types.Yen,
+    random_yen: types.RandomYen,
+    slf: types.Slf,
+  }[name];
+}
 
 /** The wasm side's number for a frontier. */
 function frontierType(wasm: GraphmanModule, name: FrontierName) {
@@ -247,10 +275,18 @@ function distanceBands(
   order: Uint32Array,
 ): { levels: Uint32Array; width: number } {
   const levels = new Uint32Array(distances.length).fill(UNREACHED);
-  const farthest = order.length ? distances[order[order.length - 1]] : 0;
-  const width = farthest > 0 ? farthest / BANDS : 1;
+  // From the smallest distance up: with negative arcs (Bellman-Ford) some
+  // vertices are closer than the origin's 0.
+  let nearest = 0;
+  let farthest = 0;
+  for (const v of order) {
+    nearest = Math.min(nearest, distances[v]);
+    farthest = Math.max(farthest, distances[v]);
+  }
+  const width = farthest > nearest ? (farthest - nearest) / BANDS : 1;
   order.forEach((v, rank) => {
-    levels[v] = rank === 0 ? 0 : 1 + Math.min(BANDS - 1, Math.floor(distances[v] / width));
+    const band = Math.floor((distances[v] - nearest) / width);
+    levels[v] = rank === 0 ? 0 : 1 + Math.max(0, Math.min(BANDS - 1, band));
   });
   return { levels, width };
 }
@@ -258,7 +294,8 @@ function distanceBands(
 type SearchMode = 'search' | 'distance';
 
 interface Search {
-  kind: SearchKindName;
+  /** Bellman-Ford shows as `'dijkstra'`, with its `schedule`. */
+  kind: Exclude<SearchKindName, 'bellman_ford'>;
   root: number;
   /** The distance query's other end (0 otherwise). */
   target: number;
@@ -285,6 +322,9 @@ interface Search {
   bandWidth: number;
   /** Dijkstra only: the frontier that ran. */
   frontier: FrontierName | null;
+  /** Bellman-Ford only: the schedule that ran (its search shows as a
+      shortest-path tree, `kind: 'dijkstra'`). */
+  schedule?: ScheduleName | null;
   /** DFS only: the way it was written. */
   dfs: DfsName | null;
   /** Steps of the replay's timeline: one per discovery (`span`), or for a
@@ -560,6 +600,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [kind, setKind] = useState<SearchKindName>('bfs');
   const [frontier, setFrontier] = useState<FrontierName>('heap');
+  const [schedule, setSchedule] = useState<ScheduleName>('queue');
   const [dfsWay, setDfsWay] = useState<DfsName>('iterative');
   /** How deep the recursive DFS may go here (the library's browser limit). */
   const [recursionLimit, setRecursionLimit] = useState(0);
@@ -1287,6 +1328,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
             csrTargets: graph.adjacencyTargets(),
             positions,
             componentLabels: labels,
+            directed: graph.directed,
           },
           wasm.edgeLength(),
         );
@@ -1361,6 +1403,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       name: string,
       bytes: Uint8Array,
       names: NamesFile | null = null,
+      directed = false,
     ): Promise<Pending | null> => {
       const wasm = wasmRef.current;
       if (!wasm) return null;
@@ -1375,7 +1418,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       await new Promise((resolve) => setTimeout(resolve, 30));
       try {
         const t0 = performance.now();
-        const parsed = new wasm.Parsed(bytes);
+        const parsed = new wasm.Parsed(bytes, directed);
         const parseMs = performance.now() - t0;
         const memory = readMemory(parsed.memoryReport());
         const waiting: Pending = {
@@ -1425,6 +1468,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           csrTargets: saved.graph.adjacencyTargets(),
           positions: saved.positions,
           componentLabels: saved.meta.componentLabels,
+          directed: saved.graph.directed,
         },
         wasm.edgeLength(),
       );
@@ -1557,6 +1601,15 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         });
         return;
       }
+      if (which === 'directed' || which === 'cycle') {
+        const [name, text] =
+          which === 'directed'
+            ? ['directed.txt', DIRECTED_SAMPLE]
+            : ['directed_cycle.txt', NEGATIVE_CYCLE_SAMPLE];
+        // Read as arcs: each line `u v w` is the arc u → v.
+        void parseBytes(name, encode(text), null, true);
+        return;
+      }
       const [name, text] =
         which === 'weighted'
           ? ['sample_weighted.txt', WEIGHTED_SAMPLE]
@@ -1661,8 +1714,31 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         let settled: Uint32Array | null = null;
         let bandWidth = 0;
         let fullPath: Uint32Array | null = null;
-        if (which === 'dijkstra') {
-          const run = graph.dijkstra(root, frontierType(wasm, frontier));
+        if (which === 'bellman_ford') {
+          // A negative cycle reachable from the origin leaves no distances:
+          // the cycle itself is drawn, as a path, instead of a tree.
+          const cycle = graph.negativeCycle(root, scheduleType(wasm, schedule));
+          if (cycle.length) {
+            search?.result.free();
+            setSearch(null);
+            searchRef.current = null;
+            renderer.setSearch(null);
+            renderer.setPath(cycle[0], cycle);
+            let weight = 0;
+            for (let i = 0; i + 1 < cycle.length; i++) {
+              weight += graph.edgeWeight(cycle[i], cycle[i + 1]) ?? 0;
+            }
+            setNotice(
+              tRef.current.negativeCycle(Array.from(cycle).join(' → '), formatWeight(weight)),
+            );
+            return;
+          }
+        }
+        if (which === 'dijkstra' || which === 'bellman_ford') {
+          const run =
+            which === 'bellman_ford'
+              ? graph.bellmanFord(root, scheduleType(wasm, schedule))
+              : graph.dijkstra(root, frontierType(wasm, frontier));
           result = run;
           distances = run.distances();
           settled = run.order();
@@ -1710,11 +1786,12 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           for (let r = 0; r < span; r++) levelSizes[levels[order[r]]] += 1;
         }
         const moves = which === 'dfs' ? dfsTrail(order, parents, span, !(target && path)) : null;
-        renderer.setSearch({ kind: which, levels, ranks, parents, depth });
+        const shown = which === 'bellman_ford' ? 'dijkstra' : which;
+        renderer.setSearch({ kind: shown, levels, ranks, parents, depth });
         renderer.setPath(target, path);
         renderer.setPathOnly(pathOnly);
         setSearch({
-          kind: which,
+          kind: shown,
           root,
           target,
           path,
@@ -1731,6 +1808,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           settled,
           bandWidth,
           frontier: which === 'dijkstra' ? frontier : null,
+          schedule: which === 'bellman_ford' ? schedule : null,
           dfs: which === 'dfs' ? dfsWay : null,
           steps: moves ? moves.trail.length : span,
           trail: moves?.trail ?? null,
@@ -1764,7 +1842,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         setNotice(error instanceof Error ? error.message : String(error));
       }
     },
-    [search, pathOnly, frontier, dfsWay],
+    [search, pathOnly, frontier, schedule, dfsWay],
   );
 
   // The reveal animation: discovery ranks light up over a duration that
@@ -1870,7 +1948,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     (step: number, limit: number): FrontierView | null => {
       const graph = graphRef.current;
       const wasm = wasmRef.current;
-      if (!graph || !wasm || search?.kind !== 'dijkstra') return null;
+      if (!graph || !wasm || search?.kind !== 'dijkstra' || search.schedule) return null;
       try {
         const snapshot = graph.frontierAt(
           search.root,
@@ -2611,7 +2689,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     const bytes = encoder.encode(lines.join('\n') + '\n');
     let parsed: Parsed;
     try {
-      parsed = new wasm.Parsed(bytes);
+      parsed = new wasm.Parsed(bytes, false);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
       return;
@@ -2781,7 +2859,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     setPlaying(false);
     setSearch({ ...s, target: 0, path: null });
   };
-  const kindLabel = kind === 'dijkstra' ? t.dijkstra : kind.toUpperCase();
+  const kindLabel =
+    kind === 'dijkstra' ? t.dijkstra : kind === 'bellman_ford' ? t.bellmanFord : kind.toUpperCase();
   const runLabel =
     mode === 'distance'
       ? t.runDistance(
@@ -3064,13 +3143,19 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                     className={styles.segmented}
                     role="radiogroup"
                     aria-label={t.traversal}
-                    data-count="3"
+                    data-count="4"
                     data-active={
-                      kind === 'dfs' ? 'second' : kind === 'dijkstra' ? 'third' : 'first'
+                      kind === 'dfs'
+                        ? 'second'
+                        : kind === 'dijkstra'
+                          ? 'third'
+                          : kind === 'bellman_ford'
+                            ? 'fourth'
+                            : 'first'
                     }
                   >
                     <span className={styles.thumb} aria-hidden="true" />
-                    {(['bfs', 'dfs', 'dijkstra'] as const).map((which) => (
+                    {(['bfs', 'dfs', 'dijkstra', 'bellman_ford'] as const).map((which) => (
                       <button
                         key={which}
                         type="button"
@@ -3079,7 +3164,11 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                         className={kind === which ? styles.segmentActive : styles.segment}
                         onClick={() => setKind(which)}
                       >
-                        {which === 'dijkstra' ? t.dijkstra : which.toUpperCase()}
+                        {which === 'dijkstra'
+                          ? t.dijkstra
+                          : which === 'bellman_ford'
+                            ? t.bellmanFord
+                            : which.toUpperCase()}
                       </button>
                     ))}
                   </div>
@@ -3110,7 +3199,28 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                   </div>
                 </div>
                 {kind === 'dijkstra' && (
-                  <QueuePicker t={t} value={frontier} onChange={setFrontier} />
+                  <Picker
+                    label={t.frontier}
+                    groups={FRONTIER_GROUPS}
+                    groupNames={t.frontierGroups}
+                    value={frontier}
+                    onChange={setFrontier}
+                    names={t.frontiers}
+                    costs={t.frontierCosts}
+                    hints={t.frontierHints}
+                  />
+                )}
+                {kind === 'bellman_ford' && (
+                  <Picker
+                    label={t.schedule}
+                    groups={SCHEDULE_GROUPS}
+                    groupNames={t.scheduleGroups}
+                    value={schedule}
+                    onChange={setSchedule}
+                    names={t.schedules}
+                    costs={t.scheduleCosts}
+                    hints={t.scheduleHints}
+                  />
                 )}
                 {kind === 'dfs' && (
                   <Choice
@@ -3232,7 +3342,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                       onPick={(v) => {
                         setMode('distance');
                         setTargetInput(vertexLabel(v));
-                        runSearch('dijkstra', search.root, v);
+                        runSearch(search.schedule ? 'bellman_ford' : 'dijkstra', search.root, v);
                       }}
                     />
                   ) : (
@@ -3962,41 +4072,46 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
             )}
         </div>
 
-        {meta && search && (structuresOpen || stripClosing) && !phone && !embedded && (
-          <Structures
-            t={t}
-            search={search}
-            reveal={reveal}
-            playing={playing}
-            height={stripHeight}
-            columnRef={columnRef}
-            frontierAt={frontierAt}
-            hovered={hovered}
-            onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
-            onSelect={(v) => {
-              setSelected(v);
-              rendererRef.current?.setSelected(v);
-            }}
-            onMembers={onMembers}
-            closing={stripClosing && !structuresOpen}
-            onClosed={() => setStripClosing(false)}
-            maximized={stripMax}
-            onMaximize={setStripMax}
-            onResize={(height) => {
-              const next = clampStrip(
-                height,
-                columnRef.current?.getBoundingClientRect().height ?? 800,
-              );
-              setStripHeight(next);
-              columnRef.current?.style.setProperty('--strip-height', `${next}px`);
-              try {
-                localStorage.setItem(STRIP_HEIGHT_KEY, String(next));
-              } catch {
-                // No storage: the height lasts for this visit.
-              }
-            }}
-          />
-        )}
+        {meta &&
+          search &&
+          !search.schedule &&
+          (structuresOpen || stripClosing) &&
+          !phone &&
+          !embedded && (
+            <Structures
+              t={t}
+              search={search}
+              reveal={reveal}
+              playing={playing}
+              height={stripHeight}
+              columnRef={columnRef}
+              frontierAt={frontierAt}
+              hovered={hovered}
+              onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
+              onSelect={(v) => {
+                setSelected(v);
+                rendererRef.current?.setSelected(v);
+              }}
+              onMembers={onMembers}
+              closing={stripClosing && !structuresOpen}
+              onClosed={() => setStripClosing(false)}
+              maximized={stripMax}
+              onMaximize={setStripMax}
+              onResize={(height) => {
+                const next = clampStrip(
+                  height,
+                  columnRef.current?.getBoundingClientRect().height ?? 800,
+                );
+                setStripHeight(next);
+                columnRef.current?.style.setProperty('--strip-height', `${next}px`);
+                try {
+                  localStorage.setItem(STRIP_HEIGHT_KEY, String(next));
+                } catch {
+                  // No storage: the height lasts for this visit.
+                }
+              }}
+            />
+          )}
       </div>
 
       {notice &&
@@ -4071,14 +4186,24 @@ export function Panel({
     it, whichever has more room, and scrolls when that room runs out. The
     arrows move through it, Enter picks, Esc, a click outside or a scroll of
     the page closes it. */
-function QueuePicker({
-  t,
+function Picker<T extends string>({
+  label,
+  groups,
+  groupNames,
   value,
   onChange,
+  names,
+  costs,
+  hints,
 }: {
-  t: Strings;
-  value: FrontierName;
-  onChange: (next: FrontierName) => void;
+  label: string;
+  groups: { group: 'course' | 'faster'; names: T[] }[];
+  groupNames: Record<'course' | 'faster', string>;
+  value: T;
+  onChange: (next: T) => void;
+  names: Record<T, string>;
+  costs: Record<T, string>;
+  hints: Record<T, string>;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(value);
@@ -4086,7 +4211,7 @@ function QueuePicker({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
-  const order = FRONTIER_GROUPS.flatMap((g) => g.names);
+  const order = groups.flatMap((g) => g.names);
 
   const show = () => {
     const rect = buttonRef.current?.getBoundingClientRect();
@@ -4131,14 +4256,14 @@ function QueuePicker({
     listRef.current?.querySelector(`[data-name="${active}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [open, active]);
 
-  const pick = (name: FrontierName) => {
+  const pick = (name: T) => {
     onChange(name);
     setOpen(false);
   };
 
   return (
     <div className={styles.field}>
-      <span className={styles.fieldLabel}>{t.frontier}</span>
+      <span className={styles.fieldLabel}>{label}</span>
       <button
         ref={buttonRef}
         type="button"
@@ -4146,7 +4271,7 @@ function QueuePicker({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
-        title={t.frontierHints[value]}
+        title={hints[value]}
         onClick={() => (open ? setOpen(false) : show())}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -4166,7 +4291,7 @@ function QueuePicker({
           }
         }}
       >
-        <span className={styles.pickerValue}>{t.frontiers[value]}</span>
+        <span className={styles.pickerValue}>{names[value]}</span>
         <ChevronDown size={13} className={styles.pickerChevron} aria-hidden="true" />
       </button>
       {open &&
@@ -4177,13 +4302,13 @@ function QueuePicker({
             className={styles.pickerList}
             style={place}
             role="listbox"
-            aria-label={t.frontier}
+            aria-label={label}
           >
-            {FRONTIER_GROUPS.map(({ group, names }) => (
+            {groups.map(({ group, names: members }) => (
               <li key={group} role="presentation">
-                <span className={`label ${styles.pickerGroup}`}>{t.frontierGroups[group]}</span>
+                <span className={`label ${styles.pickerGroup}`}>{groupNames[group]}</span>
                 <ul role="presentation">
-                  {names.map((name) => (
+                  {members.map((name) => (
                     <li
                       key={name}
                       role="option"
@@ -4195,10 +4320,10 @@ function QueuePicker({
                       onClick={() => pick(name)}
                     >
                       <span className={styles.pickerName}>
-                        {t.frontiers[name]}
-                        <span className="mono">{t.frontierCosts[name]}</span>
+                        {names[name]}
+                        <span className="mono">{costs[name]}</span>
                       </span>
-                      <span className={styles.pickerHint}>{t.frontierHints[name]}</span>
+                      <span className={styles.pickerHint}>{hints[name]}</span>
                     </li>
                   ))}
                 </ul>
@@ -4329,10 +4454,14 @@ function ExamplesMenu({
               <Waypoints size={16} aria-hidden="true" />
             ) : which === 'weighted' ? (
               <Weight size={16} aria-hidden="true" />
-            ) : (
+            ) : which === 'named' ? (
               <Users size={16} aria-hidden="true" />
+            ) : which === 'directed' ? (
+              <ArrowUpRight size={16} aria-hidden="true" />
+            ) : (
+              <RefreshCcw size={16} aria-hidden="true" />
             )}
-            {/* Three choices fill the tile: the counts live in the title. */}
+            {/* The choices fill the tile: the counts live in the title. */}
             <span className={styles.menuText}>{t.samples[which].label}</span>
           </button>
         ))}

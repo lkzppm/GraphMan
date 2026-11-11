@@ -461,7 +461,21 @@ graphman generate -n 1000 -m 5000 --directed --weights -1:10 --potential -o g.tx
    `graphman scc`; `graphman generate -D -w -1:10 --potential
    [--plant-cycle]`; Johnson is a column of the study's question 4.
 7. Web: directed switch and arrows, Bellman-Ford in the observatory, the
-   Part 3 sheet and slides.
+   Part 3 sheet and slides. **Started** (the course's Part 3 graphs are not out,
+   so the observatory is tested on examples): two directed examples
+   (`samples/directed.txt`, negative arcs without a negative cycle, and
+   `samples/directed_cycle.txt`, with one) in the Examples menu, read as
+   arcs; arc heads in the edge shader (three segments an arc: the shaft and
+   two barbs, in device pixels); Bellman-Ford as a fourth search with a
+   schedule picker (the frontier picker made generic), shown as Dijkstra's
+   tree (`Search.kind` stays `'dijkstra'`, `schedule` names the order;
+   distance bands start at the smallest distance, and the replay walks the
+   final tree breadth-first, since a child can be closer than its parent);
+   a reachable negative cycle is drawn as a path, with its weight. Wasm:
+   `Parsed(bytes, directed)`, `Graph.directed`, `edges()` lists every arc,
+   `bellmanFord`, `negativeCycle`, `edgeWeight`. Still to come: a directed
+   switch for uploaded files, SCC colouring, the Floyd-Warshall heatmap,
+   the Part 3 sheet, slides and library chapters.
 
 ## References
 
