@@ -625,50 +625,46 @@
 
 /* ---- The dynamic programmes: Bellman-Ford's table, Floyd-Warshall's matrix ---- */
 
-/* The caption (the table's meaning, its recurrence, the moment) over a
-   table that fills the rest of the strip. */
+/* The recurrence over a table that fills the rest of the strip, and the
+   replay's moment (the pass, the round) under it. */
 .dp {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 6px;
   height: 100%;
   min-height: 0;
   overflow: hidden;
 }
 
-.dpCaption {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: baseline;
-  gap: 4px 14px;
-  font-size: 11px;
-}
-
-.dpTitle {
-  color: var(--accent);
-}
-
+/* In the accent; what it means is its tooltip. */
 .dpFormula {
-  color: var(--fg-2);
+  flex: none;
+  font-size: 12px;
+  color: var(--accent);
+  cursor: help;
 }
 
 .dpMoment {
-  color: var(--fg);
+  flex: none;
+  font-size: 11px;
+  color: var(--fg-2);
 }
 
 .dpTable {
+  flex: none;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 2px;
-  font-size: 10.5px;
+  font-size: var(--dp-font, 10.5px);
   font-variant-numeric: tabular-nums;
 }
 
 .dpCorner,
 .dpHead,
 .dpRowHead {
-  height: 20px;
+  height: var(--dp-row, 20px);
   padding: 0 6px;
   font-weight: 500;
   color: var(--fg-3);
@@ -676,13 +672,13 @@
 }
 
 .dpCorner {
-  min-width: 40px;
+  width: 50px;
   font-size: 9.5px;
   text-align: right;
 }
 
 .dpHead {
-  min-width: 48px;
+  overflow: hidden;
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition:
@@ -713,7 +709,8 @@
 }
 
 .dpCell {
-  height: 20px;
+  height: var(--dp-row, 20px);
+  overflow: hidden;
   padding: 0 6px;
   border-radius: var(--radius-sm);
   background: var(--bg-2);
