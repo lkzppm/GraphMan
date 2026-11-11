@@ -480,6 +480,37 @@
   display: block;
   height: 100%;
   background: var(--accent);
+  /* A switch of orientation on the picker reprices the strategies: the
+     bars glide to their new lengths. */
+  transition: width 0.45s var(--ease);
+}
+
+/* A value that changed in place (keyed by itself, so it remounts): it
+   fades in from just below instead of jumping. */
+.swap {
+  display: inline-block;
+  animation: swap 0.35s var(--ease) both;
+}
+
+@keyframes swap {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reprFill {
+    transition: none;
+  }
+
+  .swap {
+    animation: none;
+  }
 }
 
 .reprCard[data-state='blocked'] .reprFill,

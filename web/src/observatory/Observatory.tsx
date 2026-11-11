@@ -1459,6 +1459,35 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     [clearGraph],
   );
 
+  /** Reads the parsed file again with the other orientation, in place: the
+      card stays, only the counts and prices that change move to their new
+      values (no "parsing" state, nothing cleared). */
+  const reorient = useCallback((directed: boolean) => {
+    const wasm = wasmRef.current;
+    const current = pendingRef.current;
+    if (!wasm || !current || current.directed === directed) return;
+    try {
+      const t0 = performance.now();
+      const parsed = new wasm.Parsed(current.source, directed);
+      const parseMs = performance.now() - t0;
+      const next: Pending = {
+        ...current,
+        parsed,
+        directed,
+        vertices: parsed.vertexCount,
+        edges: parsed.edgeCount,
+        parseMs,
+        memory: readMemory(parsed.memoryReport()),
+      };
+      current.parsed.free();
+      pendingRef.current = next;
+      setPending(next);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setNotice(tRef.current.couldNotLoad(current.name, message));
+    }
+  }, []);
+
   parseRef.current = parseBytes;
   openPendingRef.current = openPending;
 
@@ -3670,9 +3699,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                   pending={pending}
                   leaving={status.kind === 'parsing'}
                   onChoose={(which) => void openPending(pending, which)}
-                  onDirected={(directed) =>
-                    void parseBytes(pending.name, pending.source, pending.names, directed)
-                  }
+                  onDirected={reorient}
                 />
               ) : (
                 <div className={styles.dropCard}>
@@ -5223,7 +5250,11 @@ function RepresentationOption({
           {state === 'blocked' ? t.memory.overBudget : t.memory.hints[which]}
         </span>
       </span>
-      <span className={`mono ${styles.reprBytes}`}>{formatBytes(bytes)}</span>
+      <span className={`mono ${styles.reprBytes}`}>
+        <span key={bytes} className={styles.swap}>
+          {formatBytes(bytes)}
+        </span>
+      </span>
       <span className={styles.reprTrack} aria-hidden="true">
         <span
           className={styles.reprFill}
@@ -5262,11 +5293,15 @@ function RepresentationPicker({
           {pending.name}
         </span>
         <span className={styles.pickMeta}>
-          {t.memory.parsed(
-            formatCompact(pending.vertices),
-            formatCompact(pending.edges),
-            pending.directed,
-          )}{' '}
+          {/* Keyed by what it says: a switch of orientation fades the new
+              counts in instead of jumping. */}
+          <span key={`${pending.edges}:${pending.directed}`} className={styles.swap}>
+            {t.memory.parsed(
+              formatCompact(pending.vertices),
+              formatCompact(pending.edges),
+              pending.directed,
+            )}
+          </span>{' '}
           · {t.parsedIn(formatMs(pending.parseMs))}
         </span>
       </div>
