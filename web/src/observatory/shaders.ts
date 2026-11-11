@@ -31,7 +31,7 @@ struct View {
   walk: f32,          // >= 0: the path is walked to this step (vertex index along it, fractional while moving); < 0: it follows the wave
   marked: u32,        // 1: only the marked vertices (and the edges between them) keep their colour; 2: the marked edges and their ends; the rest goes ghostly
   arrows: u32,        // 1: the graph is directed, every edge [a, b] is the arc a -> b and gets a head at b
-  incidentOut: u32,   // directed: the first incidentOut extras are the selected vertex's out-arcs (dashed)
+  incidentOut: u32,   // directed: the first incidentOut extras are the selected vertex's out-arcs (solid), the rest its in-arcs (dashed)
   base: vec4f,        // node colour without a search
   dim: vec4f,         // node not (yet) reached
   colorA: vec4f,      // level 0
@@ -285,7 +285,8 @@ struct Kind { tree: u32 }
 @group(0) @binding(6) var<uniform> kind: Kind;
 @group(0) @binding(7) var<storage, read> labels: array<u32>;
 // The edges at the selected vertex as [a, b] pairs (view.incident of them;
-// on a directed graph its out-arcs first, view.incidentOut of them).
+// on a directed graph its out-arcs first, view.incidentOut of them, then its
+// in-arcs, drawn dashed).
 @group(0) @binding(8) var<storage, read> extras: array<u32>;
 // 1 per vertex, then per edge (from slot n + 1), a distribution column lit
 // (see view.marked); one buffer, as the vertex stage binds eight at most.
@@ -296,7 +297,7 @@ struct VOut {
   @location(0) color: vec4f,
   // Device pixels from the start of the segment, for the dashes.
   @location(1) along: f32,
-  // 1: drawn dashed (an out-arc of the selected vertex).
+  // 1: drawn dashed (an in-arc of the selected vertex).
   @location(2) dashed: f32,
 }
 
@@ -336,7 +337,7 @@ fn arc(segment: u32) -> Arc {
     if (segment >= view.incident) { return r; }
     a = extras[2u * segment];
     b = extras[2u * segment + 1u];
-    if (segment < view.incidentOut) { r.dashed = 1.0; }
+    if (segment >= view.incidentOut) { r.dashed = 1.0; }
   } else {
     e = segment * stride;
     if (e >= count) { return r; }
