@@ -188,19 +188,21 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   negative, around one cycle), more minimal than the home, in two parts:
   **the library** (how it is built: start, the format, representations,
   direction, weights, visitors, names, cuts, the command line) and
-  **algorithms** (every one: traversals, distance and components, the
+  **algorithms** (every one: BFS and DFS, distance and components, the
   diameter, Dijkstra and its priority queues, Bellman-Ford and its
   schedules, Floyd-Warshall, Johnson, strong components). Each part opens
   with a mono number in the accent, a 34 px title and one grey paragraph;
   the chapters are numbered across both. A rail fixed on the left
-  and centred on the viewport lists the chapters as vertices on one
+  and centred on the room under the nav lists the chapters as vertices on one
   vertical edge (34 px a stop, less when nineteen would not fit the
   viewport); the edge is drawn in blue down to the current stop, whose
   vertex is filled and larger (hidden below 1240 px; it fades out when the
   footer scrolls up to it and returns when the footer leaves). One 760 px column,
   centred, with no head of its own: the first part opens the page. The
   figures draw arcs with small filled heads, a negative cycle in the
-  `--cycle` red, and Floyd-Warshall's table as a table.
+  `--cycle` red, and Floyd-Warshall's table as a table; their coordinates
+  are rounded to two decimals, so the server's drawing and the browser's
+  hydrate alike.
   Each chapter: mono index, title, a link to the source file
   it documents, one paragraph, the Rust example (plain usage with results
   in comments, never tests) and a fixed drawing of what it computes. Code

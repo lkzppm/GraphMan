@@ -101,7 +101,10 @@ export default function GraphFigure({
   const notePlace = (v: number): [number, number] => {
     const [dx, dy] = [pos[v][0] - centre[0], pos[v][1] - centre[1]];
     const length = Math.hypot(dx, dy) || 1;
-    return [pos[v][0] + (dx / length) * NOTE_OFFSET, pos[v][1] + (dy / length) * NOTE_OFFSET];
+    return [
+      round(pos[v][0] + (dx / length) * NOTE_OFFSET),
+      round(pos[v][1] + (dy / length) * NOTE_OFFSET),
+    ];
   };
 
   const maxLevel = levels ? Math.max(0, ...levels.filter((l) => l !== UNREACHED)) : 0;
@@ -142,9 +145,9 @@ export default function GraphFigure({
       [base[0] - uy * HEAD_HALF, base[1] + ux * HEAD_HALF],
       [base[0] + uy * HEAD_HALF, base[1] - ux * HEAD_HALF],
     ]
-      .map(([x, y]) => `${x},${y}`)
+      .map(([x, y]) => `${round(x)},${round(y)}`)
       .join(' ');
-    return { end: base, head };
+    return { end: [round(base[0]), round(base[1])], head };
   };
 
   return (
@@ -229,6 +232,12 @@ export default function GraphFigure({
       ))}
     </svg>
   );
+}
+
+/** Two decimals: the server and the browser can differ in a float's last
+    digit, and the drawing must hydrate to the same attributes. */
+function round(x: number) {
+  return Math.round(x * 100) / 100;
 }
 
 function key(u: number, v: number) {

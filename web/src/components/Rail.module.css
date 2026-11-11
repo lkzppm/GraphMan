@@ -11,7 +11,8 @@
   position: fixed;
   z-index: 5;
   left: max(24px, calc((100vw - var(--container)) / 2 - 220px));
-  top: 50%;
+  /* Centred on the room under the sticky nav, not on the whole viewport. */
+  top: calc(50% + var(--nav-height) / 2);
   transform: translateY(-50%);
   animation: railIn 0.7s var(--ease) 0.15s backwards;
   transition:
@@ -35,7 +36,7 @@
 .rail ol {
   /* A stop's height: 34 px, smaller when many stops would not fit the
      viewport (the library's nineteen chapters on a laptop). */
-  --step: clamp(22px, calc((100vh - 160px) / var(--stops)), 34px);
+  --step: clamp(22px, calc((100vh - var(--nav-height) - 120px) / var(--stops)), 34px);
   position: relative;
   list-style: none;
   display: flex;
