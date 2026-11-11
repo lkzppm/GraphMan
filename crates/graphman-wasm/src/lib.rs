@@ -1141,8 +1141,10 @@ impl WasmGraph {
             }
         };
         let start = now();
+        // The observatory's graphs are undirected, where every method runs.
         let d =
-            dispatch!(&self.graph, g => algo::diameter_with_progress(g, kind.into(), &progress));
+            dispatch!(&self.graph, g => algo::diameter_with_progress(g, kind.into(), &progress))
+                .expect("every diameter method runs on an undirected graph");
         DiameterResult {
             value: d.value,
             from: d.endpoints.0,

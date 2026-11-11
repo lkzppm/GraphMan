@@ -23,7 +23,7 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
     let parent = tree.parent(4); // Some(2)
     let level = tree.level(4); // Some(2)
 
-    let diameter = algo::diameter(&graph, algo::DiameterMethod::IFub);
+    let diameter = algo::diameter(&graph, algo::DiameterMethod::IFub)?;
     let value = diameter.value; // 2
     // wiki:end
     assert_eq!(n, 5);
@@ -195,7 +195,7 @@ fn distance_and_components() {
 }
 
 #[test]
-fn diameter() {
+fn diameter() -> Result<(), Box<dyn std::error::Error>> {
     // wiki:start diameter
     use graphman::{Build, Control, Csr, DiameterMethod, EdgeList, algo};
 
@@ -204,10 +204,10 @@ fn diameter() {
 
     // Four methods, one driver: brute force, iFUB, Takes-Kosters bounds and
     // the 4-sweep lower bound. All but the sweep certify their answer.
-    let exact = algo::diameter(&graph, DiameterMethod::IFub);
+    let exact = algo::diameter(&graph, DiameterMethod::IFub)?;
     let (value, certified) = (exact.value, exact.is_exact); // (2, true)
     let endpoints = exact.endpoints; // (1, 5): a longest shortest path, 1-3-5
-    let sweep = algo::diameter(&graph, DiameterMethod::Sweep);
+    let sweep = algo::diameter(&graph, DiameterMethod::Sweep)?;
     let lower_bound = (sweep.value, sweep.is_exact); // (2, false)
 
     // Every method takes a budget: the callback sees the BFS count after each
@@ -216,7 +216,7 @@ fn diameter() {
         true => Control::Continue,
         false => Control::Break,
     };
-    let bounded = algo::diameter_with_progress(&graph, DiameterMethod::Exact, &stop_after_two);
+    let bounded = algo::diameter_with_progress(&graph, DiameterMethod::Exact, &stop_after_two)?;
     let gave_up = bounded.cancelled; // true
     // wiki:end
     assert_eq!((value, certified, endpoints), (2, true, (1, 5)));
@@ -224,9 +224,10 @@ fn diameter() {
     assert_eq!(lower_bound, (2, false));
     assert!(gave_up && !bounded.is_exact);
     for method in DiameterMethod::ALL {
-        let d = algo::diameter(&graph, method);
+        let d = algo::diameter(&graph, method)?;
         assert_eq!((d.value, d.is_exact), (2, method.is_exact()));
     }
+    Ok(())
 }
 
 #[test]

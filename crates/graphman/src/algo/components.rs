@@ -1,4 +1,4 @@
-//! Connected components.
+//! Connected components (weakly connected on a directed graph).
 
 use super::traversal::{SearchTree, bfs_into};
 use crate::graph::{Graph, Vertex};
@@ -7,6 +7,11 @@ use std::io::{self, Write};
 /// The connected components of a graph, numbered `1..=count` from largest to
 /// smallest. Ties are broken by the smallest vertex in the component, so the
 /// numbering is deterministic.
+///
+/// On a directed graph these are the **weakly** connected components: the
+/// components of the graph with every arc read both ways. (A BFS along the
+/// out-arcs would only find what one vertex reaches; the strongly connected
+/// components are a different question.)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Components {
     /// Component id of every vertex (index 0 unused).
@@ -17,23 +22,21 @@ pub struct Components {
 }
 
 impl Components {
-    /// Finds the components with one BFS per component (`O(n + m)` total).
+    /// Finds the components: one BFS per component on an undirected graph
+    /// (`O(n + m)` total), a union-find over the arcs on a directed one
+    /// (`O(m α(n))`).
     pub fn compute<G: Graph>(graph: &G) -> Self {
+        let (label, sizes) = match graph.is_directed() {
+            false => label_by_search(graph),
+            true => label_by_union(graph),
+        };
+        Self::rank(graph, label, &sizes)
+    }
+
+    /// Renumbers raw component ids (`1..`, in order of their smallest
+    /// vertex) from largest to smallest and lists the members.
+    fn rank<G: Graph>(graph: &G, mut label: Vec<u32>, sizes: &[(usize, Vertex)]) -> Self {
         let n = graph.vertex_count();
-        let mut label = vec![0u32; n + 1];
-        let mut sizes: Vec<(usize, Vertex)> = Vec::new(); // (size, smallest vertex)
-        let mut tree = SearchTree::new(n);
-        for v in graph.vertices() {
-            if label[v as usize] != 0 {
-                continue;
-            }
-            bfs_into(graph, v, &mut tree, &mut ());
-            let id = sizes.len() as u32 + 1;
-            for &w in tree.order() {
-                label[w as usize] = id;
-            }
-            sizes.push((tree.reached_count(), v));
-        }
 
         // Rank components: largest first, then smallest vertex.
         let mut ranked: Vec<u32> = (0..sizes.len() as u32).collect();
@@ -124,4 +127,67 @@ impl Components {
         }
         w.flush()
     }
+}
+
+/// Raw component ids and `(size, smallest vertex)` per id, one BFS per
+/// component.
+fn label_by_search<G: Graph>(graph: &G) -> (Vec<u32>, Vec<(usize, Vertex)>) {
+    let n = graph.vertex_count();
+    let mut label = vec![0u32; n + 1];
+    let mut sizes: Vec<(usize, Vertex)> = Vec::new();
+    let mut tree = SearchTree::new(n);
+    for v in graph.vertices() {
+        if label[v as usize] != 0 {
+            continue;
+        }
+        bfs_into(graph, v, &mut tree, &mut ());
+        let id = sizes.len() as u32 + 1;
+        for &w in tree.order() {
+            label[w as usize] = id;
+        }
+        sizes.push((tree.reached_count(), v));
+    }
+    (label, sizes)
+}
+
+/// Raw component ids and sizes from a union-find over every arc (union by
+/// size, path halving), so an arc joins its ends whichever way it points.
+fn label_by_union<G: Graph>(graph: &G) -> (Vec<u32>, Vec<(usize, Vertex)>) {
+    let n = graph.vertex_count();
+    let mut parent: Vec<Vertex> = (0..=n as Vertex).collect();
+    let mut size = vec![1u32; n + 1];
+    let find = |parent: &mut [Vertex], mut v: Vertex| {
+        while parent[v as usize] != v {
+            let grand = parent[parent[v as usize] as usize];
+            parent[v as usize] = grand;
+            v = grand;
+        }
+        v
+    };
+    for u in graph.vertices() {
+        for w in graph.neighbors(u) {
+            let (a, b) = (find(&mut parent, u), find(&mut parent, w));
+            if a != b {
+                let (big, small) = match size[a as usize] >= size[b as usize] {
+                    true => (a, b),
+                    false => (b, a),
+                };
+                parent[small as usize] = big;
+                size[big as usize] += size[small as usize];
+            }
+        }
+    }
+    // Ids in order of each component's smallest vertex, as the BFS gives them.
+    let mut label = vec![0u32; n + 1];
+    let mut root_id = vec![0u32; n + 1];
+    let mut sizes: Vec<(usize, Vertex)> = Vec::new();
+    for v in graph.vertices() {
+        let root = find(&mut parent, v) as usize;
+        if root_id[root] == 0 {
+            sizes.push((size[root] as usize, v));
+            root_id[root] = sizes.len() as u32;
+        }
+        label[v as usize] = root_id[root];
+    }
+    (label, sizes)
 }

@@ -6,7 +6,7 @@
 //! * [`dijkstra`] / [`shortest_path`] — shortest paths on weighted graphs, one
 //!   algorithm over six interchangeable [`Frontier`]s (vector, heap, lazy heap,
 //!   4-ary heap, pairing heap, radix heap).
-//! * [`Components`] — connected components, largest first.
+//! * [`Components`] — connected components, largest first (weakly connected when directed).
 //! * [`diameter`] — exact (brute force or iFUB) and approximate (4-sweep) diameter.
 //! * [`degree_stats`] / [`weight_stats`] — min, max, mean (and median) degree and weight.
 //! * [`radial_layout`], [`tree_layout`] — free `O(n)` layouts derived from a search tree, used by the observatory.
@@ -24,7 +24,7 @@ mod subgraph;
 mod traversal;
 
 pub use components::Components;
-pub use diameter::{Diameter, DiameterMethod, diameter, diameter_with_progress};
+pub use diameter::{Diameter, DiameterError, DiameterMethod, diameter, diameter_with_progress};
 pub use distance::{distance, distance_into, eccentricity, eccentricity_into};
 pub use frontier::{
     DaryHeapFrontier, Frontier, FrontierCounts, FrontierEntry, FrontierKind, HeapFrontier,
@@ -36,7 +36,7 @@ pub use shortest_path::{
     NegativeWeight, Path, ShortestPathTree, dijkstra, dijkstra_into, dijkstra_with, shortest_path,
     shortest_path_into,
 };
-pub use stats::{DegreeStats, WeightStats, degree_stats, weight_stats};
+pub use stats::{DegreeStats, WeightStats, degree_stats, in_degree_stats, weight_stats};
 pub use subgraph::{Induced, SubgraphRule, egonet, induce, select};
 pub use traversal::{
     Control, DfsKind, RecursionLimit, SearchTree, UNREACHED, Visitor, bfs, bfs_into, bfs_with, dfs,

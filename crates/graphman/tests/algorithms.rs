@@ -67,7 +67,7 @@ fn figure_one_stats_distance_components_and_diameter() {
     assert_eq!(components.members(1), &[1, 2, 3, 4, 5]);
 
     for method in DiameterMethod::ALL {
-        let d = algo::diameter(&g, method);
+        let d = algo::diameter(&g, method).unwrap();
         assert_eq!(d.value, 2, "{method}");
         assert_eq!(algo::distance(&g, d.endpoints.0, d.endpoints.1), Some(2));
     }
@@ -126,10 +126,10 @@ fn diameter_methods_agree_on_random_graphs() {
         (4, 400, 5000),
     ] {
         let g = Csr::build(&random_graph(seed, n, m)).unwrap();
-        let exact = algo::diameter(&g, DiameterMethod::Exact);
-        let ifub = algo::diameter(&g, DiameterMethod::IFub);
-        let bounds = algo::diameter(&g, DiameterMethod::Bounds);
-        let sweep = algo::diameter(&g, DiameterMethod::Sweep);
+        let exact = algo::diameter(&g, DiameterMethod::Exact).unwrap();
+        let ifub = algo::diameter(&g, DiameterMethod::IFub).unwrap();
+        let bounds = algo::diameter(&g, DiameterMethod::Bounds).unwrap();
+        let sweep = algo::diameter(&g, DiameterMethod::Sweep).unwrap();
         assert_eq!(ifub.value, exact.value, "seed {seed}");
         assert_eq!(bounds.value, exact.value, "seed {seed}");
         assert!(ifub.is_exact && bounds.is_exact && exact.is_exact && !sweep.is_exact);
@@ -162,9 +162,9 @@ fn components_are_sorted_and_complete() {
     assert_eq!(c.component_of(6), 2);
 
     assert_eq!(algo::distance(&g, 1, 5), None);
-    assert_eq!(algo::diameter(&g, DiameterMethod::Exact).value, 3);
-    assert_eq!(algo::diameter(&g, DiameterMethod::IFub).value, 3);
-    assert_eq!(algo::diameter(&g, DiameterMethod::Bounds).value, 3);
+    assert_eq!(algo::diameter(&g, DiameterMethod::Exact).unwrap().value, 3);
+    assert_eq!(algo::diameter(&g, DiameterMethod::IFub).unwrap().value, 3);
+    assert_eq!(algo::diameter(&g, DiameterMethod::Bounds).unwrap().value, 3);
     let tree = algo::bfs(&g, 8);
     assert_eq!(tree.reached_count(), 1);
     assert!(!tree.is_reached(1));
@@ -176,7 +176,7 @@ fn path_graph_diameter_and_search_trees() {
     let edges = EdgeList::from_edges(n as usize, (1..n).map(|v| (v, v + 1))).unwrap();
     let g = Csr::build(&edges).unwrap();
     for method in DiameterMethod::ALL {
-        let d = algo::diameter(&g, method);
+        let d = algo::diameter(&g, method).unwrap();
         assert_eq!(d.value, n - 1, "{method}");
     }
     let dfs = algo::dfs(&g, 1);
@@ -303,10 +303,10 @@ fn exact_methods_prune_components_against_the_global_bound() {
     };
     edges.extend((301..340).map(|v| (v, v + 1)));
     let g = Csr::build(&EdgeList::from_edges(340, edges).unwrap()).unwrap();
-    let exact = algo::diameter(&g, DiameterMethod::Exact);
+    let exact = algo::diameter(&g, DiameterMethod::Exact).unwrap();
     assert_eq!(exact.value, 39);
     for method in [DiameterMethod::IFub, DiameterMethod::Bounds] {
-        let d = algo::diameter(&g, method);
+        let d = algo::diameter(&g, method).unwrap();
         assert_eq!(d.value, 39, "{method}");
         assert!(d.is_exact, "{method}");
         assert_eq!(algo::distance(&g, d.endpoints.0, d.endpoints.1), Some(39));
