@@ -680,10 +680,12 @@ export const pt: Dictionary = {
     floydHint:
       'O Floyd-Warshall preenche uma tabela com a distância entre cada par de vértices. Rode, acompanhe as rodadas e depois clique num vértice para ler a linha dele (um duplo clique em outro: o caminho entre os dois).',
     floydPairs: 'Pares com caminho',
+    clearRow: 'Desmarcar a árvore e voltar à tabela',
+    clearFloyd: 'Limpar o resultado do Floyd-Warshall',
     floydLongest: 'Maior distância',
     floydLongestPair: 'O par mais distante:',
     floydRowHint:
-      'Clique num vértice para ler a linha dele: os caminhos mínimos a partir dele. Duplo clique em outro para o caminho entre os dois.',
+      'Clique num vértice, ou numa linha da matriz, para ver a árvore de caminhos mínimos dele; duplo clique em outro para o caminho entre os dois. Um clique no fundo da tela desmarca.',
     floydRounds: 'Rodada k do Floyd-Warshall',
     cycleNoteGraph: (w: string) =>
       `Um ciclo negativo, de peso ${w}, no grafo: o Floyd-Warshall não tem distâncias para nenhum par que passe por ele.`,

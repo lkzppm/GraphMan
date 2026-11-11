@@ -340,10 +340,13 @@ the farthest pair as a link to its path, and a timeline over the rounds
 canvas shows the round: the vertices 1 to k (the ones allowed in between)
 in the accent, the rest grey, the pivot k selected (its out-arcs solid,
 its in-arcs dashed: row k and column k of the table), and the strip's
-matrix follows the pivot. A click on a vertex reads its row (its
-shortest-path tree, replayed as any search's), a double click on another
-the path between them, both off the same tables; clearing the row goes
-back to the table. No legend shows while no row is picked: there is no
+matrix follows the pivot. A click on a vertex, or on a row's label in
+the matrix, reads its row: its shortest-path tree, shown whole at once
+(nothing ran, so nothing replays; the timeline can still replay it); a
+double click on another the path between them, both off the same tables.
+A click on the blank canvas, or the panel's undo button, unselects the
+tree and goes back to the table; the trash drops Floyd-Warshall's whole
+result. No legend shows while no row is picked: there is no
 origin to name. Closed by default, the choice remembered;
 not on phones. Its top
 edge resizes it like the sidebar's (a horizontal grip pill in the middle,
