@@ -3,10 +3,12 @@
 GraphMan is a graph library + CLI in Rust and a web "observatory" in Next.js,
 built for the COS 242 (Graph Theory, UFRJ) course project. Part 1 (done)
 covers undirected graphs: two representations, BFS/DFS, distances,
-diameter, connected components and a benchmark study. Part 2 (current
-scope) adds real edge weights and Dijkstra over two interchangeable
-frontiers (vector and decrease-key heap); Part 3 will add direction and
-flows on top of the same core, so keep the `Graph` trait small and the
+diameter, connected components and a benchmark study. Part 2 (done) adds
+real edge weights and Dijkstra over interchangeable frontiers (vector,
+decrease-key heaps and more). Part 3 (current scope, `spec/PHASE3.md`)
+adds direction, Bellman-Ford over interchangeable schedules (with the
+negative cycle as a certificate) and Floyd-Warshall over interchangeable
+sweeps, on the same core, so keep the `Graph` trait small and the
 algorithms generic.
 The DBLP tab rebuilds the course's collaboration network from the
 monthly DBLP dump (`graphman dblp`, a GitHub Action, GitHub Pages).
@@ -22,7 +24,8 @@ or slides: a comma, a colon or a full stop takes its place.
 ## Read these first
 
 - `spec/ASSIGNMENT.md` — what the course requires (translated summaries of
-  `docs/trabalho-P1.pdf` and `docs/trabalho-P2.pdf`) and the case-study questions.
+  `docs/trabalho-P1.pdf`, `docs/trabalho-P2.pdf` and `docs/trabalho-P3.pdf`)
+  and the case-study questions.
 - `spec/ARCHITECTURE.md` — how the Rust crates and the web app are organised,
   the design decisions worth presenting, and the data formats.
 - `spec/WORKFLOW.md` — git flow, commit style, CI, how to run studies and
@@ -33,6 +36,9 @@ or slides: a comma, a colon or a full stop takes its place.
 - `spec/PHASE2.md` — the Part 2 design (weights, the `Frontier` trait behind
   both Dijkstras, vertex names, the study runner), direction for Part 3, and
   the planned `petgraph` bridge (test oracle now, shared traits later).
+- `spec/PHASE3.md` — the Part 3 design: direction as a flag plus a
+  transpose, Bellman-Ford over a `Schedule`, Floyd-Warshall over a
+  `SweepKind`, Johnson, SCC, the study runner and the order of work.
 
 ## Layout
 
@@ -111,6 +117,15 @@ cd web && pnpm run typecheck && pnpm run lint # must be green (CI enforces)
   (blocks between `// wiki:start <id>` and `// wiki:end`, extracted by
   `web/scripts/sync-data.mjs`); change them there, never in the web code,
   so the page only ever shows what `cargo test` has run.
+- Direction is data, not a type: `Graph::is_directed`, `neighbors` means
+  out-neighbours, and an arc goes from the first vertex of a line to the
+  second. Anything that needs in-arcs runs on `Build::transpose` (an
+  undirected graph is its own). Bellman-Ford is written once
+  (`bellman_ford_into`) over a `Schedule`; a new order of re-examining
+  vertices is a new `Schedule`, never a second Bellman-Ford. Its negative
+  cycles are returned as the cycle, not a boolean. Floyd-Warshall keeps
+  one `n × n` table updated in place and is priced and refused by the
+  memory budget like the matrix.
 - Every representation keeps neighbour rows ascending; tests rely on all
   representations producing identical search trees.
 - Timings in studies exclude parsing and file output (course rule).
