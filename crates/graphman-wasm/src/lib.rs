@@ -950,32 +950,52 @@ impl WasmGraph {
         })
     }
 
-    /// Row offsets of the neighbour rows (`n + 2` entries, index 0 unused):
-    /// `offsets[v]..offsets[v + 1]` indexes the neighbours of `v` in
-    /// [`adjacencyTargets`](Self::adjacency_targets). Read off the degrees, so
-    /// the GPU gets the same buffers whichever representation is in use.
+    /// Row offsets of the neighbour rows the canvas draws with (`n + 2`
+    /// entries, index 0 unused): `offsets[v]..offsets[v + 1]` indexes the
+    /// neighbours of `v` in [`adjacencyTargets`](Self::adjacency_targets).
+    /// On a directed graph a row holds the out- and the in-neighbours (each
+    /// once), so the layout's springs pull both ends of an arc and a
+    /// selected vertex lights every vertex it is joined to.
     #[wasm_bindgen(js_name = adjacencyOffsets)]
     pub fn adjacency_offsets(&self) -> Vec<u32> {
-        let n = self.graph.vertex_count();
-        let mut offsets = Vec::with_capacity(n + 2);
+        let rows = self.drawing_rows();
+        let mut offsets = Vec::with_capacity(rows.len() + 1);
         offsets.push(0);
         offsets.push(0);
-        for v in 1..=n as Vertex {
+        for row in rows.iter().skip(1) {
             let last = *offsets.last().expect("offsets is never empty");
-            offsets.push(last + self.graph.degree(v) as u32);
+            offsets.push(last + row.len() as u32);
         }
         offsets
     }
 
-    /// Every neighbour row back to back (`2m` entries), ascending within a row.
+    /// Every neighbour row back to back, ascending within a row (`2m`
+    /// entries on an undirected graph; out- and in-neighbours on a directed one).
     #[wasm_bindgen(js_name = adjacencyTargets)]
     pub fn adjacency_targets(&self) -> Vec<u32> {
+        self.drawing_rows().concat()
+    }
+
+    /// The rows the canvas draws with, indexed by vertex: the neighbour
+    /// rows, read both ways on a directed graph.
+    fn drawing_rows(&self) -> Vec<Vec<u32>> {
         dispatch!(&self.graph, g => {
-            let mut targets = Vec::with_capacity(2 * g.edge_count());
+            let mut rows: Vec<Vec<u32>> = vec![Vec::new(); g.vertex_count() + 1];
             for v in g.vertices() {
-                targets.extend(g.neighbors(v));
+                rows[v as usize].extend(g.neighbors(v));
             }
-            targets
+            if g.is_directed() {
+                for v in g.vertices() {
+                    for w in g.neighbors(v) {
+                        rows[w as usize].push(v);
+                    }
+                }
+                for row in &mut rows {
+                    row.sort_unstable();
+                    row.dedup();
+                }
+            }
+            rows
         })
     }
 
