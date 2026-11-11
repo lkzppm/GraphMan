@@ -78,6 +78,8 @@ export interface GraphBuffers {
   positions: Float32Array;
   /** Component id per vertex, used to compute the gravity anchors. */
   componentLabels: Uint32Array;
+  /** Every `[u, v]` of `edges` is the arc u → v: drawn with a head at v. */
+  directed?: boolean;
 }
 
 export interface SearchBuffers {
@@ -150,6 +152,7 @@ type ViewValues = {
   mute: number;
   walk: number;
   marked: number;
+  arrows: number;
   base: Rgba;
   dim: Rgba;
   colorA: Rgba;
@@ -184,6 +187,7 @@ const EMPTY_VIEW: ViewValues = {
   dest: 0,
   mute: 0,
   marked: 0,
+  arrows: 0,
   walk: -1,
   base: [0.5, 0.5, 0.5, 1],
   dim: [0.5, 0.5, 0.5, 1],
@@ -431,6 +435,7 @@ export class Renderer {
     const n = graph.vertexCount;
     this.n = n;
     this.edgeCount = graph.edges.length / 2;
+    this.viewValues.arrows = graph.directed ? 1 : 0;
     this.linkLength = linkLength;
     this.forceSpacing = 1;
     const slots = n + 1;
@@ -1083,9 +1088,13 @@ export class Renderer {
         [this.viewValues.stride, this.viewValues.treeStride] = stride;
         this.view.set(this.viewValues);
         frame.pass({ target: layer, clear: [0, 0, 0, 0] }, (pass) => {
-          pass.draw(this.edges, { vertices: Math.ceil(this.edgeCount / stride[0]) * 2 });
+          // An arc is three segments (shaft and head), an edge one.
+          const perEdge = this.viewValues.arrows ? 6 : 2;
+          pass.draw(this.edges, { vertices: Math.ceil(this.edgeCount / stride[0]) * perEdge });
           if (this.viewValues.mode !== 0) {
-            pass.draw(this.treeEdges, { vertices: Math.ceil(this.edgeCount / stride[1]) * 2 });
+            pass.draw(this.treeEdges, {
+              vertices: Math.ceil(this.edgeCount / stride[1]) * perEdge,
+            });
           }
           if (this.selectedDegree > 0) {
             pass.draw(this.extraEdges, { vertices: this.selectedDegree * 2 });

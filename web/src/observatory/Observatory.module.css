@@ -1399,6 +1399,18 @@
   transform: translateX(200%);
 }
 
+.segmented[data-count='4'] {
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+}
+
+.segmented[data-count='4'] .thumb {
+  width: calc((100% - 4px) / 4);
+}
+
+.segmented[data-active='fourth'] .thumb {
+  transform: translateX(300%);
+}
+
 /* The path of a distance query, floating over the canvas: one ball per
    vertex, coloured from the origin's blue to the destination's green. */
 .path {

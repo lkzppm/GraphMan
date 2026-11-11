@@ -30,6 +30,7 @@ struct View {
   mute: u32,          // 1: only the path keeps its colours, the rest of the search goes grey
   walk: f32,          // >= 0: the path is walked to this step (vertex index along it, fractional while moving); < 0: it follows the wave
   marked: u32,        // 1: only the marked vertices (and the edges between them) keep their colour; 2: the marked edges and their ends; the rest goes ghostly
+  arrows: u32,        // 1: the graph is directed, every edge [a, b] is the arc a -> b and gets a head at b
   base: vec4f,        // node colour without a search
   dim: vec4f,         // node not (yet) reached
   colorA: vec4f,      // level 0
@@ -303,14 +304,18 @@ fn cull() -> VOut {
 @vertex fn vs_main(@builtin(vertex_index) vi: u32) -> VOut {
   let stride = select(view.stride, view.treeStride, kind.tree != 0u);
   let count = arrayLength(&edges) / 2u;
-  let sampled = (count + stride - 1u) / stride;
-  let segment = vi / 2u;
-  var a = 0u;
-  var b = 0u;
   // The edges at the selected vertex are the extras draw's segments (the
   // CPU fills the extras buffer), so no stride can drop one and they sit
   // on top; the samples skip them.
   let incident = kind.tree == 2u;
+  // An arc is three segments: its shaft, then the two barbs of its head.
+  let arrows = view.arrows != 0u && !incident;
+  let perEdge = select(2u, 6u, arrows);
+  let segment = vi / perEdge;
+  let piece = (vi % perEdge) / 2u;
+  let end = (vi & 1u) == 1u;
+  var a = 0u;
+  var b = 0u;
   var e = 0u;
   if (incident) {
     if (segment >= view.incident) { return cull(); }
@@ -323,9 +328,9 @@ fn cull() -> VOut {
     b = edges[2u * e + 1u];
     if (view.selected != 0u && (a == view.selected || b == view.selected)) { return cull(); }
   }
-  let v = select(a, b, (vi & 1u) == 1u);
   var out: VOut;
-  var world = positions[v];
+  var wa = positions[a];
+  var wb = positions[b];
   var color = view.edge;
   var tree = false;
   var drawn = 1.0;
@@ -340,7 +345,8 @@ fn cull() -> VOut {
       // the rank before the child is discovered, then brightens briefly.
       tree = true;
       drawn = clamp(view.reveal - (f32(rc) - 1.0), 0.0, 1.0);
-      if (v == child) { world = mix(positions[parent], positions[child], drawn); }
+      let grown = mix(positions[parent], positions[child], drawn);
+      if (child == a) { wa = grown; } else { wb = grown; }
       let fresh = freshness(rc, 0.7);
       color = mix(view.edgeTree * levelColor(levels[child]), view.colorA, 0.6 * fresh);
       color.a = color.a * step(0.001, drawn);
@@ -357,8 +363,24 @@ fn cull() -> VOut {
     if (!lit) { color = color * 0.12; }
   }
   if (view.mute != 0u && view.dest != 0u && !incident) { color = view.edgeDim; }
+  let pa = (wa - view.offset) * view.scale;
+  let pb = (wb - view.offset) * view.scale;
+  var px = select(pa, pb, end);
+  if (piece > 0u) {
+    // A barb, in device pixels: from the tip (just short of b's disc) back
+    // along the arc and out to one side.
+    let d = pb - pa;
+    let len = length(d);
+    if (len < 1e-3) { return cull(); }
+    let dir = d / len;
+    let perp = vec2f(-dir.y, dir.x);
+    let tip = pb - dir * min(view.radius + 1.0, 0.5 * len);
+    let size = min(1.6 * view.radius + 5.0, 0.4 * len);
+    let side = select(-1.0, 1.0, piece == 1u);
+    px = select(tip, tip - dir * size + perp * (side * 0.55 * size), end);
+  }
   if (incident) {
-    out.pos = toClip((world - view.offset) * view.scale);
+    out.pos = toClip(px);
     out.color = vec4f(view.colorA.rgb, 0.85 * step(0.001, drawn));
     return out;
   }
@@ -372,7 +394,7 @@ fn cull() -> VOut {
   // but never stronger than an unfaded edge (at a zoom where single edges
   // are visible the sample is simply thinner).
   color.a = min(color.a * f32(stride), full);
-  out.pos = toClip((world - view.offset) * view.scale);
+  out.pos = toClip(px);
   out.color = color;
   return out;
 }

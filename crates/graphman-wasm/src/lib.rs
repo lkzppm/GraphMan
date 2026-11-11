@@ -15,14 +15,15 @@
 
 use graphman::algo::{
     self, Components, Control, DegreeStats, DiameterMethod, Frontier, FrontierEntry, FrontierKind,
-    HeapFrontier, LazyHeapFrontier, PairingHeapFrontier, QuadHeapFrontier, RadialLayout,
-    RadixHeapFrontier, SearchTree, ShortestPathTree, UNREACHED, VectorFrontier, Visitor,
-    WeightStats, bfs_into, dfs_into, dfs_recursive_into, dijkstra_into, tree_layout,
+    HeapFrontier, LazyHeapFrontier, MeasuredSchedule, PairingHeapFrontier, QuadHeapFrontier,
+    RadialLayout, RadixHeapFrontier, ScheduleKind, SearchTree, ShortestPathTree, Start, UNREACHED,
+    VectorFrontier, Visitor, WeightStats, bellman_ford_into, bfs_into, dfs_into,
+    dfs_recursive_into, dijkstra_into, tree_layout,
 };
 use graphman::io::write_summary;
 use graphman::{
     AdjacencyList, AdjacencyMatrix, AnyGraph, Build, BuildError, Csr, EdgeList, Graph,
-    MemoryBudget, NO_VERTEX, Representation, Vertex, VertexNames, Weighted, dispatch,
+    MemoryBudget, NO_VERTEX, Orientation, Representation, Vertex, VertexNames, Weighted, dispatch,
 };
 use std::f64::consts::TAU;
 use wasm_bindgen::prelude::*;
@@ -135,6 +136,38 @@ impl From<FrontierType> for FrontierKind {
     }
 }
 
+/// The order in which Bellman-Ford re-examines vertices (the library's
+/// `ScheduleKind`).
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScheduleType {
+    /// `n - 1` passes over every vertex, the textbook.
+    Rounds = 0,
+    /// Passes until one changes nothing.
+    EarlyStop = 1,
+    /// A queue of the vertices whose estimate went down.
+    Queue = 2,
+    /// Yen's sweeps up and down the ids.
+    Yen = 3,
+    /// Yen's sweeps over a random order.
+    RandomYen = 4,
+    /// Small Label First.
+    Slf = 5,
+}
+
+impl From<ScheduleType> for ScheduleKind {
+    fn from(kind: ScheduleType) -> Self {
+        match kind {
+            ScheduleType::Rounds => ScheduleKind::Rounds,
+            ScheduleType::EarlyStop => ScheduleKind::EarlyStop,
+            ScheduleType::Queue => ScheduleKind::Queue,
+            ScheduleType::Yen => ScheduleKind::Yen,
+            ScheduleType::RandomYen => ScheduleKind::RandomYen,
+            ScheduleType::Slf => ScheduleKind::Slf,
+        }
+    }
+}
+
 /// Which storage strategy backs the graph (the library's `Representation`).
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,15 +245,16 @@ pub struct MemoryReport {
 impl MemoryReport {
     /// What a graph of this size costs in each representation.
     fn of(edges: &EdgeList) -> Self {
-        let (n, m, w) = (
+        let (n, m, w, o) = (
             edges.vertex_count(),
             edges.edge_count(),
             edges.is_weighted(),
+            edges.orientation(),
         );
         Self {
-            list: AdjacencyList::required_bytes(n, m, w) as f64,
-            matrix: AdjacencyMatrix::required_bytes(n, m, w) as f64,
-            csr: Csr::required_bytes(n, m, w) as f64,
+            list: AdjacencyList::required_bytes_oriented(n, m, w, o) as f64,
+            matrix: AdjacencyMatrix::required_bytes_oriented(n, m, w, o) as f64,
+            csr: Csr::required_bytes_oriented(n, m, w, o) as f64,
             budget: BUDGET_BYTES as f64,
         }
     }
@@ -239,12 +273,20 @@ pub struct WasmEdges {
 #[wasm_bindgen(js_class = Parsed)]
 impl WasmEdges {
     /// Parses the text format (`n`, then one `u v` or `u v weight` edge per
-    /// line), dropping self-loops and duplicates. Throws with the parser's
-    /// message (line number included) on malformed input.
+    /// line), dropping self-loops and duplicates; with `directed`, every
+    /// line is the arc from its first vertex to its second. Throws with the
+    /// parser's message (line number included) on malformed input.
     #[wasm_bindgen(constructor)]
-    pub fn new(bytes: &[u8]) -> Result<WasmEdges, JsError> {
-        let edges = EdgeList::parse(bytes).map_err(|e| JsError::new(&e.to_string()))?;
+    pub fn new(bytes: &[u8], directed: bool) -> Result<WasmEdges, JsError> {
+        let edges = EdgeList::parse_with(bytes, Orientation::from_directed(directed))
+            .map_err(|e| JsError::new(&e.to_string()))?;
         Ok(Self { edges })
+    }
+
+    /// Whether the lines were read as arcs.
+    #[wasm_bindgen(getter)]
+    pub fn directed(&self) -> bool {
+        self.edges.is_directed()
     }
 
     /// Number of vertices `n`.
@@ -468,11 +510,30 @@ pub struct ShortestPathResult {
     frontier: FrontierType,
     tree: ShortestPathTree,
     elapsed_ms: f64,
+    /// Bellman-Ford's passes (0 for Dijkstra).
+    passes: u32,
+    /// Bellman-Ford only: the reached vertices with every parent before its
+    /// children (the tree walked breadth-first from the root), which the
+    /// replay animates. With negative arcs a child can be closer than its
+    /// parent, so the tree's order by distance would draw it first.
+    replay: Option<Vec<u32>>,
 }
 
 #[wasm_bindgen]
 impl ShortestPathResult {
-    /// Which frontier ran.
+    /// The order the replay animates: the settle order, or Bellman-Ford's
+    /// tree walked breadth-first.
+    fn replay_order(&self) -> &[u32] {
+        self.replay.as_deref().unwrap_or(self.tree.order())
+    }
+
+    /// Bellman-Ford's passes over its schedule (0 for a Dijkstra run).
+    #[wasm_bindgen(getter)]
+    pub fn passes(&self) -> u32 {
+        self.passes
+    }
+
+    /// Which frontier ran (meaningless for a Bellman-Ford run).
     #[wasm_bindgen(getter)]
     pub fn frontier(&self) -> FrontierType {
         self.frontier
@@ -520,13 +581,13 @@ impl ShortestPathResult {
 
     /// Settled vertices in settle order (non-decreasing distance).
     pub fn order(&self) -> Vec<u32> {
-        self.tree.order().to_vec()
+        self.replay_order().to_vec()
     }
 
     /// Settle index of every vertex, indexed by vertex (`0xFFFFFFFF` = unreached).
     pub fn ranks(&self) -> Vec<u32> {
         let mut ranks = vec![UNREACHED; self.tree.vertex_count() + 1];
-        for (rank, &v) in self.tree.order().iter().enumerate() {
+        for (rank, &v) in self.replay_order().iter().enumerate() {
             ranks[v as usize] = rank as u32;
         }
         ranks
@@ -722,7 +783,13 @@ impl WasmGraph {
     /// the representation does not fit [`BUDGET_BYTES`].
     #[wasm_bindgen(constructor)]
     pub fn new(bytes: &[u8], representation: RepresentationKind) -> Result<WasmGraph, JsError> {
-        WasmEdges::new(bytes)?.build(representation)
+        WasmEdges::new(bytes, false)?.build(representation)
+    }
+
+    /// Whether the graph is directed: its edges are arcs.
+    #[wasm_bindgen(getter)]
+    pub fn directed(&self) -> bool {
+        self.graph.is_directed()
     }
 
     /// Builds `representation` over edges that are already parsed.
@@ -854,8 +921,10 @@ impl WasmGraph {
     pub fn edges(&self) -> Vec<u32> {
         dispatch!(&self.graph, g => {
             let mut edges = Vec::with_capacity(2 * g.edge_count());
+            // Each edge once, from its smaller end; each arc from its tail.
+            let directed = g.is_directed();
             for v in g.vertices() {
-                for w in g.neighbors(v).filter(|&w| w > v) {
+                for w in g.neighbors(v).filter(|&w| directed || w > v) {
                     edges.push(v);
                     edges.push(w);
                 }
@@ -869,8 +938,13 @@ impl WasmGraph {
     pub fn weights(&self) -> Vec<f64> {
         dispatch!(&self.graph, g => {
             let mut weights = Vec::with_capacity(g.edge_count());
+            let directed = g.is_directed();
             for v in g.vertices() {
-                weights.extend(g.weighted_neighbors(v).filter(|&(w, _)| w > v).map(|(_, x)| x));
+                weights.extend(
+                    g.weighted_neighbors(v)
+                        .filter(|&(w, _)| directed || w > v)
+                        .map(|(_, x)| x),
+                );
             }
             weights
         })
@@ -1015,6 +1089,72 @@ impl WasmGraph {
             frontier,
             tree,
             elapsed_ms,
+            passes: 0,
+            replay: None,
+        })
+    }
+
+    /// Runs Bellman-Ford from `root` with the chosen schedule and returns
+    /// the tree in the shape Dijkstra's has (its order lists the reached
+    /// vertices by distance), timed with `performance.now()`. Negative
+    /// weights are fine; throws the library's message when a negative cycle
+    /// is reachable ([`negativeCycle`](Self::negative_cycle) returns it).
+    #[wasm_bindgen(js_name = bellmanFord)]
+    pub fn bellman_ford(
+        &mut self,
+        root: u32,
+        schedule: ScheduleType,
+    ) -> Result<ShortestPathResult, JsError> {
+        self.check(root)?;
+        let n = self.graph.vertex_count();
+        let mut tree = ShortestPathTree::new(n);
+        let mut measured = MeasuredSchedule::new(ScheduleKind::from(schedule).schedule());
+        let start = now();
+        let run = dispatch!(&self.graph, g => {
+            bellman_ford_into(g, Start::Vertex(root), &mut measured, &mut tree, &mut ())
+        });
+        let elapsed_ms = now() - start;
+        run.map_err(|e| JsError::new(&e.to_string()))?;
+        let replay = tree_order(&tree, root);
+        Ok(ShortestPathResult {
+            frontier: FrontierType::Heap,
+            tree,
+            elapsed_ms,
+            passes: measured.counts().passes as u32,
+            replay: Some(replay),
+        })
+    }
+
+    /// The weight of the edge `u v` (the arc u → v when directed);
+    /// `undefined` when there is none. `1` for every edge when unweighted.
+    #[wasm_bindgen(js_name = edgeWeight)]
+    pub fn edge_weight(&self, u: u32, v: u32) -> Option<f64> {
+        let n = self.graph.vertex_count() as u32;
+        if !(1..=n).contains(&u) || !(1..=n).contains(&v) {
+            return None;
+        }
+        self.graph.weight(u, v)
+    }
+
+    /// The negative cycle reachable from `root`, in arc order from its
+    /// smallest vertex and closed (its first vertex repeated at the end, so
+    /// it draws as a path); empty when there is none.
+    #[wasm_bindgen(js_name = negativeCycle)]
+    pub fn negative_cycle(&self, root: u32, schedule: ScheduleType) -> Result<Vec<u32>, JsError> {
+        self.check(root)?;
+        let n = self.graph.vertex_count();
+        let mut tree = ShortestPathTree::new(n);
+        let mut schedule = ScheduleKind::from(schedule).schedule();
+        let run = dispatch!(&self.graph, g => {
+            bellman_ford_into(g, Start::Vertex(root), &mut schedule, &mut tree, &mut ())
+        });
+        Ok(match run {
+            Ok(()) => Vec::new(),
+            Err(cycle) => {
+                let mut closed = cycle.cycle.clone();
+                closed.push(cycle.cycle[0]);
+                closed
+            }
         })
     }
 
@@ -1708,8 +1848,57 @@ fn parse_vertex(field: &[u8]) -> Option<Vertex> {
     Vertex::try_from(value).ok()
 }
 
+/// The reached vertices of `tree`, every parent before its children: the
+/// tree walked breadth-first from `root`, children by distance.
+fn tree_order(tree: &ShortestPathTree, root: u32) -> Vec<u32> {
+    let n = tree.vertex_count();
+    let mut children: Vec<Vec<u32>> = vec![Vec::new(); n + 1];
+    for &v in tree.order() {
+        if let Some(p) = tree.parent(v) {
+            children[p as usize].push(v);
+        }
+    }
+    let mut order = vec![root];
+    let mut at = 0;
+    while at < order.len() {
+        let v = order[at];
+        at += 1;
+        order.extend_from_slice(&children[v as usize]);
+    }
+    order
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_directed_file_gives_arcs_and_its_negative_cycle() {
+        use super::*;
+        // 1 → 2 costs 4, 1 → 3 → 2 costs 3 - 2 = 1.
+        let parsed = WasmEdges::new(b"3\n1 2 4\n1 3 3\n3 2 -2\n", true).expect("parses");
+        assert!(parsed.directed());
+        let graph = parsed.build(RepresentationKind::Csr).expect("fits");
+        assert!(graph.directed());
+        assert_eq!(graph.edges(), vec![1, 2, 1, 3, 3, 2]);
+        assert_eq!(graph.weights(), vec![4.0, 3.0, -2.0]);
+        // (`bellmanFord` is timed with the browser's clock: the library's
+        // tests cover the run itself.)
+        assert!(
+            graph
+                .negative_cycle(1, ScheduleType::Yen)
+                .expect("in range")
+                .is_empty()
+        );
+
+        let cyclic = WasmEdges::new(b"3\n1 2 1\n2 3 -3\n3 2 1\n", true).expect("parses");
+        let graph = cyclic.build(RepresentationKind::List).expect("fits");
+        assert_eq!(
+            graph
+                .negative_cycle(1, ScheduleType::Queue)
+                .expect("in range"),
+            vec![2, 3, 2]
+        );
+    }
+
     use super::*;
 
     /// A triangle, a duplicate edge line, a self-loop and an isolated vertex.
@@ -1750,6 +1939,8 @@ mod tests {
             frontier: FrontierType::Heap,
             tree,
             elapsed_ms: 0.0,
+            passes: 0,
+            replay: None,
         };
         let shortest = g.layered_tree(&run, LayerDirection::Vertical);
         assert!(y(&shortest, 1) < y(&shortest, 2));
@@ -1855,8 +2046,8 @@ mod tests {
 
     #[test]
     fn weighted_memory_reports_count_the_weights() {
-        let weighted = WasmEdges::new(WEIGHTED).expect("parses");
-        let plain = WasmEdges::new(b"5\n1 2\n2 5\n5 3\n3 4\n4 5\n1 5\n").expect("parses");
+        let weighted = WasmEdges::new(WEIGHTED, false).expect("parses");
+        let plain = WasmEdges::new(b"5\n1 2\n2 5\n5 3\n3 4\n4 5\n1 5\n", false).expect("parses");
         assert!(weighted.weighted() && !plain.weighted());
         let (w, p) = (weighted.memory_report(), plain.memory_report());
         assert_eq!(w.csr - p.csr, (2 * 6 * 8) as f64);
