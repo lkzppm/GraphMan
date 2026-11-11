@@ -9,6 +9,8 @@
 //! * [`bellman_ford`] / [`bellman_ford_to`] — shortest paths with negative weights, one
 //!   algorithm over six interchangeable [`Schedule`]s, and the [`NegativeCycle`] when
 //!   there is one ([`negative_cycle`] asks the whole graph).
+//! * [`floyd_warshall`] — shortest paths between all pairs in one `n × n` table updated in
+//!   place ([`AllPairs`]), over four [`SweepKind`]s, refused past the memory budget.
 //! * [`Components`] — connected components, largest first (weakly connected when directed).
 //! * [`diameter`] — exact (brute force or iFUB) and approximate (4-sweep) diameter.
 //! * [`degree_stats`] / [`weight_stats`] — min, max, mean (and median) degree and weight.
@@ -20,6 +22,7 @@ mod bellman_ford;
 mod components;
 mod diameter;
 mod distance;
+mod floyd_warshall;
 mod frontier;
 mod layout;
 mod schedule;
@@ -35,6 +38,9 @@ pub use bellman_ford::{
 pub use components::Components;
 pub use diameter::{Diameter, DiameterError, DiameterMethod, diameter, diameter_with_progress};
 pub use distance::{distance, distance_into, eccentricity, eccentricity_into};
+pub use floyd_warshall::{
+    AllPairs, FloydError, SweepKind, floyd_warshall, floyd_warshall_with_progress,
+};
 pub use frontier::{
     DaryHeapFrontier, Frontier, FrontierCounts, FrontierEntry, FrontierKind, HeapFrontier,
     LazyHeapFrontier, Measured, PairingHeapFrontier, QuadHeapFrontier, RadixHeapFrontier,

@@ -42,6 +42,8 @@ enum Command {
     Dijkstra(commands::dijkstra::Args),
     /// Distances to one target with negative weights (Bellman-Ford), or the graph's negative cycle.
     BellmanFord(commands::bellman_ford::Args),
+    /// Distances between all pairs in one table (Floyd-Warshall), printed for chosen vertices.
+    FloydWarshall(commands::floyd_warshall::Args),
     /// Distance between pairs of vertices (weighted when the graph is).
     Distance(commands::distance::Args),
     /// Diameter: exact (brute force or iFUB) or a 4-sweep lower bound.
@@ -75,6 +77,7 @@ fn main() -> Result<()> {
         Command::Dijkstra(args) => commands::dijkstra::run(args, &ui),
         Command::BellmanFord(args) => commands::bellman_ford::run(args, &ui),
         Command::Distance(args) => commands::distance::run(args, &ui),
+        Command::FloydWarshall(args) => commands::floyd_warshall::run(args, &ui),
         Command::Diameter(args) => commands::diameter::run(args, &ui),
         Command::Components(args) => commands::components::run(args, &ui),
         Command::Bench(args) => commands::bench::run(args, &ui),
