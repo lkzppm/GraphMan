@@ -252,8 +252,26 @@ impl AllPairs {
     fn write_tree_to(&self, i, w);            // the same `vertex parent distance` file as Dijkstra
 }
 pub fn floyd_warshall<G: Weighted>(g: &G, sweep: SweepKind, budget: MemoryBudget)
-    -> Result<AllPairs, FloydError>;          // NegativeCycle, TooLarge { required_bytes }
+    -> Result<AllPairs, FloydError>;          // NegativeCycle, TooLarge, AllocationFailed, Cancelled
+pub fn floyd_warshall_with_progress(g, sweep, budget, progress: &dyn Fn(rounds) -> Control);
 ```
+
+- **Implemented** (`algo/floyd_warshall.rs`, `tests/floyd_warshall.rs`
+  against `petgraph` and Bellman-Ford). `tree(i)` returns a
+  `ShortestPathTree` (the type Dijkstra and Bellman-Ford build, so
+  `path_to` and the tree file come for free) rather than a borrowed view;
+  `path(i, j)`, `row(i)`, `parent(i, j)`. A negative loop is refused before
+  the first round. `Cancelled { rounds, of }` lets the study time a run cut
+  short and scale it to `n` rounds.
+- **Zero-weight cycles.** Every predecessor the rule sets is tight, but a
+  row's predecessors can still go round a cycle of weight exactly 0. The
+  blocked sweep does it on most random graphs with zero-weight arcs and two
+  tiles or more (its tiles read values out of the plain order); the plain
+  order did not on any graph tried. After the sweep, each row is checked
+  for a loop (`O(n)` a row, `O(n²)` in all) and a looping row is regrown by
+  one Bellman-Ford from its vertex, whose parent graph cannot loop. No
+  extra memory (the alternative, a hop count to break ties, costs 4 bytes a
+  cell and slows the inner loop).
 
 - **The memory optimisation.** The recurrence `D_k[i][j] = min(D_{k-1}[i][j],
   D_{k-1}[i][k] + D_{k-1}[k][j])` needs `n + 1` tables (`n³`). Round `k`
@@ -426,7 +444,8 @@ graphman generate -n 1000 -m 5000 --directed --weights -1:10 --potential -o g.tx
    `early-stop`, `queue`; `petgraph` oracle. **Done**, with `yen`,
    `random-yen` and `slf` from step 6 (the trait shaped them, a few dozen
    lines each), `graphman bellman-ford` and `MeasuredSchedule`.
-4. `AllPairs`, `floyd_warshall` (`plain`, `pruned`), the budget.
+4. `AllPairs`, `floyd_warshall` (`plain`, `pruned`), the budget. **Done**,
+   with `parallel` and `blocked` from step 6 and `graphman floyd-warshall`.
 5. The study runner (questions 1 to 4) with `queue` and `plain`: this is
    everything the handout grades.
 6. The plus: `yen`, `random-yen`, `slf`, `parallel`, `blocked`, Johnson,
