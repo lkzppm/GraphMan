@@ -2707,6 +2707,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     walkTo,
     component,
     selectComponent,
+    floydRound: null as number | null,
+    floydN: 0,
   });
   keysRef.current = {
     search,
@@ -2716,6 +2718,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     walkTo,
     component,
     selectComponent,
+    floydRound,
+    floydN,
   };
 
   useEffect(() => {
@@ -2730,11 +2734,28 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
             ? -1
             : 0;
       const count = metaRef.current?.componentSizes.length ?? 0;
-      if (arrow && k.component && (keysTarget.current === 'components' || !k.search)) {
+      if (
+        arrow &&
+        k.component &&
+        (keysTarget.current === 'components' || (!k.search && k.floydRound === null))
+      ) {
         // Components are ranked by size: → / ↓ go to the next smaller one.
         event.preventDefault();
         const dir = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
         k.selectComponent(Math.max(1, Math.min(count, k.component + dir)));
+        return;
+      }
+      if (arrow && k.floydRound !== null && !k.search) {
+        // Floyd-Warshall's table: ← / → a round (ten with shift), ↑ / ↓ ten.
+        event.preventDefault();
+        const vertical = event.key === 'ArrowUp' || event.key === 'ArrowDown';
+        const dir = event.key === 'ArrowRight' || event.key === 'ArrowUp' ? 1 : -1;
+        const round = Math.max(
+          0,
+          Math.min(k.floydN, k.floydRound + dir * (vertical || event.shiftKey ? 10 : 1)),
+        );
+        setFloydPlaying(false);
+        setFloyd((f) => (f ? { ...f, round } : f));
         return;
       }
       if (arrow && k.search?.path) {
@@ -2772,6 +2793,9 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       } else if (event.key === ' ' && search) {
         event.preventDefault();
         setPlaying((p) => !p);
+      } else if (event.key === ' ' && k.floydRound !== null) {
+        event.preventDefault();
+        setFloydPlaying((p) => !p);
       } else if (event.key === 'f' && meta) {
         fit();
       }
@@ -4703,43 +4727,47 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                 )}
               </div>
 
-              <div className={styles.legend}>
-                {search?.target ? (
-                  <>
-                    <span className={styles.swatchOrigin} /> {t.origin.toLowerCase()}
-                    <span className={styles.legendSep} />
-                    <span className={styles.swatchTarget} /> {t.target.toLowerCase()}
-                    <span className={styles.legendSep} />
-                    <span className={styles.swatchDim} /> {t.notReached}
-                  </>
-                ) : search ? (
-                  <>
-                    <span className={styles.swatchA} />{' '}
-                    {search.distances ? t.distanceAt('0') : t.level(0)}
-                    <span className={styles.swatchBar} />
-                    <span className={styles.swatchB} />{' '}
-                    {search.distances
-                      ? t.distanceAt(formatWeight(search.depth * search.bandWidth))
-                      : t.level(search.depth)}
-                    <span className={styles.legendSep} />
-                    <span className={styles.swatchDim} /> {t.notReached}
-                  </>
-                ) : component ? (
-                  <>
-                    <span className={styles.swatchLit} /> {t.component(component)}
-                    <span className={styles.legendSep} />
-                    <span className={styles.swatchDim} /> {t.theRest}
-                  </>
-                ) : selected ? (
-                  nameOf(selected) ? (
-                    t.originNamed(nameOf(selected) ?? '')
+              {/* Floyd-Warshall has no origin: with no row read off its
+                  table, the legend has nothing to say. */}
+              {(search || component || kind !== 'floyd_warshall') && (
+                <div className={styles.legend}>
+                  {search?.target ? (
+                    <>
+                      <span className={styles.swatchOrigin} /> {t.origin.toLowerCase()}
+                      <span className={styles.legendSep} />
+                      <span className={styles.swatchTarget} /> {t.target.toLowerCase()}
+                      <span className={styles.legendSep} />
+                      <span className={styles.swatchDim} /> {t.notReached}
+                    </>
+                  ) : search ? (
+                    <>
+                      <span className={styles.swatchA} />{' '}
+                      {search.distances ? t.distanceAt('0') : t.level(0)}
+                      <span className={styles.swatchBar} />
+                      <span className={styles.swatchB} />{' '}
+                      {search.distances
+                        ? t.distanceAt(formatWeight(search.depth * search.bandWidth))
+                        : t.level(search.depth)}
+                      <span className={styles.legendSep} />
+                      <span className={styles.swatchDim} /> {t.notReached}
+                    </>
+                  ) : component ? (
+                    <>
+                      <span className={styles.swatchLit} /> {t.component(component)}
+                      <span className={styles.legendSep} />
+                      <span className={styles.swatchDim} /> {t.theRest}
+                    </>
+                  ) : selected ? (
+                    nameOf(selected) ? (
+                      t.originNamed(nameOf(selected) ?? '')
+                    ) : (
+                      t.originVertex(selected)
+                    )
                   ) : (
-                    t.originVertex(selected)
-                  )
-                ) : (
-                  t.chooseOrigin
-                )}
-              </div>
+                    t.chooseOrigin
+                  )}
+                </div>
+              )}
             </>
           )}
 

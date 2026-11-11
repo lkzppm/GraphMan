@@ -335,14 +335,16 @@ origin: its panel holds the sweep with the run button beside it (no origin
 or destination fields, no mode), then
 the table's numbers (pairs with a path, the longest distance, the time),
 the farthest pair as a link to its path, and a timeline over the rounds
-`k = 0…n` (play, slider, `k = 3` in mono). While no row is picked the
+`k = 0…n` (play, slider, `k = 3` in mono; ← / → a round, ten with shift,
+↑ / ↓ ten, space plays). While no row is picked the
 canvas shows the round: the vertices 1 to k (the ones allowed in between)
 in the accent, the rest grey, the pivot k selected (its out-arcs solid,
 its in-arcs dashed: row k and column k of the table), and the strip's
 matrix follows the pivot. A click on a vertex reads its row (its
 shortest-path tree, replayed as any search's), a double click on another
 the path between them, both off the same tables; clearing the row goes
-back to the table. Closed by default, the choice remembered;
+back to the table. No legend shows while no row is picked: there is no
+origin to name. Closed by default, the choice remembered;
 not on phones. Its top
 edge resizes it like the sidebar's (a horizontal grip pill in the middle,
 `row-resize`, 120–560 px and at least 220 px of canvas left, remembered,
