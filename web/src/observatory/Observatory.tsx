@@ -2767,11 +2767,12 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     const rank = shown.ranks;
     const pairs = current.edgeList;
     const weights = current.edgeWeights;
-    /** The weight of the edge `u v` (`u < v`): a binary search of the
-        sorted pairs, which the names of a tree edge are not. */
+    /** The weight of the edge `u v`: a binary search of the sorted pairs
+        (`u < v` on an undirected graph, which the ends of a tree edge need
+        not be; the arc u → v itself on a directed one). */
     const weightOf = (u: number, v: number): number => {
       if (!weights) return 1;
-      const [a, b] = u < v ? [u, v] : [v, u];
+      const [a, b] = current.directed || u < v ? [u, v] : [v, u];
       let lo = 0;
       let hi = pairs.length / 2;
       while (lo < hi) {
@@ -2800,7 +2801,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     const bytes = encoder.encode(lines.join('\n') + '\n');
     let parsed: Parsed;
     try {
-      parsed = new wasm.Parsed(bytes, false);
+      // A directed graph's tree is directed too: its arcs go parent → child.
+      parsed = new wasm.Parsed(bytes, current.directed);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
       return;
@@ -2821,7 +2823,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         vertices: parsed.vertexCount,
         edges: parsed.edgeCount,
         source: bytes,
-        directed: false,
+        directed: current.directed,
         parseMs: 0,
         memory: readMemory(parsed.memoryReport()),
         parsed,
