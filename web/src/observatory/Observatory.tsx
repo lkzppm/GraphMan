@@ -765,7 +765,11 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   const searchRef = useRef<Search | null>(null);
   searchRef.current = search;
   /** The last click on a vertex, and the origin it replaced. */
-  const lastClick = useRef<{ vertex: number; at: number; origin: string } | null>(null);
+  /** The last click on a vertex: when, the origin it replaced, and the
+      Floyd-Warshall row on screen before it (0: none), for a double click. */
+  const lastClick = useRef<{ vertex: number; at: number; origin: string; row: number } | null>(
+    null,
+  );
   const [helpOpen, setHelpOpen] = useState(false);
   /** The find field, top left: a vertex typed is selected and framed. */
   const [findOpen, setFindOpen] = useState(false);
@@ -2067,18 +2071,16 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         // The search picture is the tree: no selection ring or neighbourhood on the origin.
         setSelected(0);
         renderer.setSelected(0);
-        if (which === 'floyd_warshall') {
+        if (which === 'floyd_warshall' && !path) {
           // A row read off Floyd-Warshall's table: nothing ran, so nothing
-          // replays; the tree (and the path, if any) shows whole at once.
+          // replays; the tree shows whole at once. A path (a double click)
+          // is walked like any other.
           const end = span - 1;
           revealRef.current = end;
           setReveal(end);
           renderer.setRevealRate(1e-3);
           renderer.setReveal(end);
-          const last = path ? path.length - 1 : -1;
-          walkRef.current = Math.max(last, 0);
-          setWalk(Math.max(last, 0));
-          renderer.setWalk(last);
+          renderer.setWalk(-1);
           setPlaying(false);
           return;
         }
@@ -2678,7 +2680,12 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       const second =
         last !== null && last.vertex === g.vertex && event.timeStamp - last.at < DOUBLE_CLICK_MS;
       if (!second) {
-        lastClick.current = { vertex: g.vertex, at: event.timeStamp, origin: rootInput };
+        lastClick.current = {
+          vertex: g.vertex,
+          at: event.timeStamp,
+          origin: rootInput,
+          row: searchRef.current?.sweep ? searchRef.current.root : 0,
+        };
         setRootInput(vertexLabel(g.vertex));
         // Floyd-Warshall's table is already there: a click reads the row.
         if (floydReady()) runSearch('floyd_warshall', g.vertex);
@@ -3362,9 +3369,16 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     const s = searchRef.current;
     if (kind === 'floyd_warshall' && floydRef.current) {
       // The first click of the double click read v's row: the path comes
-      // from the row before it, read off the same table.
-      const from = last?.vertex === v ? resolveVertex(last.origin) : (s?.root ?? 0);
-      if (from >= 1 && from !== v) runSearch('floyd_warshall', from, v);
+      // from the row on screen before it, read off the same table. With no
+      // row before it there is no other end: v's tree stays, no path.
+      const from = last?.vertex === v ? last.row : s?.sweep ? s.root : 0;
+      if (from >= 1 && from !== v) {
+        runSearch('floyd_warshall', from, v);
+        return;
+      }
+      setMode('search');
+      setTargetInput('');
+      setRootInput(vertexLabel(v));
       return;
     }
     if (!s) return;
