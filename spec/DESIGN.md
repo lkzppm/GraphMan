@@ -52,6 +52,7 @@ drawn for.
 | `--level-0` (level ramp start)                   | `#002f66`                             |
 | `--node` / `--node-dim`                          | `#8f8f8f` / `#d6d6d6`                 |
 | `--edge` / `--edge-dim`                          | ink at 14 % / 6 %                     |
+| `--canvas-edge` / `--canvas-edge-dim`            | ink at 34 % / 12 % (dark: 32 % / 12 %), the observatory canvas |
 | Radii                                            | 2 / 4 / 6 px                          |
 | `--tracking`                                     | `0.1em` (labels), `0.3em` (eyebrows)  |
 | `--glow`                                         | `0 6px 24px -6px var(--accent-muted)` |

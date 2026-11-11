@@ -31,6 +31,7 @@ struct View {
   walk: f32,          // >= 0: the path is walked to this step (vertex index along it, fractional while moving); < 0: it follows the wave
   marked: u32,        // 1: only the marked vertices (and the edges between them) keep their colour; 2: the marked edges and their ends; the rest goes ghostly
   arrows: u32,        // 1: the graph is directed, every edge [a, b] is the arc a -> b and gets a head at b
+  incidentOut: u32,   // directed: the first incidentOut extras are the selected vertex's out-arcs (dashed)
   base: vec4f,        // node colour without a search
   dim: vec4f,         // node not (yet) reached
   colorA: vec4f,      // level 0
@@ -283,7 +284,8 @@ ${VIEW}
 struct Kind { tree: u32 }
 @group(0) @binding(6) var<uniform> kind: Kind;
 @group(0) @binding(7) var<storage, read> labels: array<u32>;
-// The edges at the selected vertex as [a, b] pairs (view.incident of them).
+// The edges at the selected vertex as [a, b] pairs (view.incident of them;
+// on a directed graph its out-arcs first, view.incidentOut of them).
 @group(0) @binding(8) var<storage, read> extras: array<u32>;
 // 1 per vertex, then per edge (from slot n + 1), a distribution column lit
 // (see view.marked); one buffer, as the vertex stage binds eight at most.
@@ -292,43 +294,56 @@ struct Kind { tree: u32 }
 struct VOut {
   @builtin(position) pos: vec4f,
   @location(0) color: vec4f,
+  // Device pixels from the start of the segment, for the dashes.
+  @location(1) along: f32,
+  // 1: drawn dashed (an out-arc of the selected vertex).
+  @location(2) dashed: f32,
 }
 
 fn cull() -> VOut {
   var out: VOut;
   out.pos = vec4f(0.0, 0.0, 2.0, 1.0);
   out.color = vec4f(0.0);
+  out.along = 0.0;
+  out.dashed = 0.0;
   return out;
 }
 
-@vertex fn vs_main(@builtin(vertex_index) vi: u32) -> VOut {
+// One edge of this draw, as both of its draws (the line and, on a directed
+// graph, the head) see it: its ends in device pixels and its colour.
+struct Arc {
+  pa: vec2f,
+  pb: vec2f,
+  color: vec4f,
+  dashed: f32,
+  ok: bool,
+}
+
+fn arc(segment: u32) -> Arc {
+  var r: Arc;
+  r.ok = false;
+  r.dashed = 0.0;
   let stride = select(view.stride, view.treeStride, kind.tree != 0u);
   let count = arrayLength(&edges) / 2u;
   // The edges at the selected vertex are the extras draw's segments (the
   // CPU fills the extras buffer), so no stride can drop one and they sit
   // on top; the samples skip them.
   let incident = kind.tree == 2u;
-  // An arc is three segments: its shaft, then the two barbs of its head.
-  let arrows = view.arrows != 0u && !incident;
-  let perEdge = select(2u, 6u, arrows);
-  let segment = vi / perEdge;
-  let piece = (vi % perEdge) / 2u;
-  let end = (vi & 1u) == 1u;
   var a = 0u;
   var b = 0u;
   var e = 0u;
   if (incident) {
-    if (segment >= view.incident) { return cull(); }
+    if (segment >= view.incident) { return r; }
     a = extras[2u * segment];
     b = extras[2u * segment + 1u];
+    if (segment < view.incidentOut) { r.dashed = 1.0; }
   } else {
     e = segment * stride;
-    if (e >= count) { return cull(); }
+    if (e >= count) { return r; }
     a = edges[2u * e];
     b = edges[2u * e + 1u];
-    if (view.selected != 0u && (a == view.selected || b == view.selected)) { return cull(); }
+    if (view.selected != 0u && (a == view.selected || b == view.selected)) { return r; }
   }
-  var out: VOut;
   var wa = positions[a];
   var wb = positions[b];
   var color = view.edge;
@@ -363,30 +378,16 @@ fn cull() -> VOut {
     if (!lit) { color = color * 0.12; }
   }
   if (view.mute != 0u && view.dest != 0u && !incident) { color = view.edgeDim; }
-  let pa = (wa - view.offset) * view.scale;
-  let pb = (wb - view.offset) * view.scale;
-  var px = select(pa, pb, end);
-  if (piece > 0u) {
-    // A barb, in device pixels: from the tip (just short of b's disc) back
-    // along the arc and out to one side.
-    let d = pb - pa;
-    let len = length(d);
-    if (len < 1e-3) { return cull(); }
-    let dir = d / len;
-    let perp = vec2f(-dir.y, dir.x);
-    let tip = pb - dir * min(view.radius + 1.0, 0.5 * len);
-    let size = min(1.6 * view.radius + 5.0, 0.4 * len);
-    let side = select(-1.0, 1.0, piece == 1u);
-    px = select(tip, tip - dir * size + perp * (side * 0.55 * size), end);
-  }
+  r.pa = (wa - view.offset) * view.scale;
+  r.pb = (wb - view.offset) * view.scale;
   if (incident) {
-    out.pos = toClip(px);
-    out.color = vec4f(view.colorA.rgb, 0.85 * step(0.001, drawn));
-    return out;
+    r.color = vec4f(view.colorA.rgb, 0.85 * step(0.001, drawn));
+    r.ok = true;
+    return r;
   }
   if (tree != (kind.tree != 0u)) {
     // The other draw's kind of edge.
-    return cull();
+    return r;
   }
   let full = color.a;
   color.a = color.a * select(view.edgeFade, view.treeFade, tree);
@@ -394,12 +395,54 @@ fn cull() -> VOut {
   // but never stronger than an unfaded edge (at a zoom where single edges
   // are visible the sample is simply thinner).
   color.a = min(color.a * f32(stride), full);
+  r.color = color;
+  r.ok = true;
+  return r;
+}
+
+// The line of each edge: two vertices an edge.
+@vertex fn vs_main(@builtin(vertex_index) vi: u32) -> VOut {
+  let r = arc(vi / 2u);
+  if (!r.ok) { return cull(); }
+  let end = (vi & 1u) == 1u;
+  var out: VOut;
+  out.pos = toClip(select(r.pa, r.pb, end));
+  out.color = r.color;
+  out.along = select(0.0, length(r.pb - r.pa), end);
+  out.dashed = r.dashed;
+  return out;
+}
+
+// The head of each arc of a directed graph: a small filled triangle, three
+// vertices an arc, its tip just short of the head's disc. Sized in device
+// pixels, so it reads the same at every zoom.
+@vertex fn vs_head(@builtin(vertex_index) vi: u32) -> VOut {
+  if (view.arrows == 0u) { return cull(); }
+  let r = arc(vi / 3u);
+  if (!r.ok) { return cull(); }
+  let d = r.pb - r.pa;
+  let len = length(d);
+  if (len < 1e-3) { return cull(); }
+  let dir = d / len;
+  let perp = vec2f(-dir.y, dir.x);
+  let tip = r.pb - dir * min(view.radius + 1.0, 0.5 * len);
+  let size = min(view.radius + 4.0, 0.35 * len);
+  let corner = vi % 3u;
+  var px = tip;
+  if (corner == 1u) { px = tip - dir * size + perp * (0.42 * size); }
+  if (corner == 2u) { px = tip - dir * size - perp * (0.42 * size); }
+  var out: VOut;
   out.pos = toClip(px);
-  out.color = color;
+  // A filled head reads lighter than a line of the same alpha: a little more.
+  out.color = vec4f(r.color.rgb, min(1.0, r.color.a * 1.5));
+  out.along = 0.0;
+  out.dashed = 0.0;
   return out;
 }
 
 @fragment fn fs_main(in: VOut) -> @location(0) vec4f {
+  // Dashes of 6 device pixels, as long as the gaps.
+  if (in.dashed > 0.5 && fract(in.along / 12.0) > 0.5) { discard; }
   return vec4f(in.color.rgb * in.color.a, in.color.a);
 }
 `;
