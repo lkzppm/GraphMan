@@ -810,8 +810,8 @@ export class Renderer {
     let pairs = new Uint32Array(Math.max(1, degree) * 2);
     let outgoing = 0;
     if (v && this.viewValues.arrows && v + 1 < this.outOffsets.length) {
-      // A directed graph: the out-arcs [v, w] first (drawn dashed), then
-      // the in-arcs [u, v].
+      // A directed graph: the out-arcs [v, w] first, then the in-arcs
+      // [u, v] (drawn dashed).
       const outs = this.outTargets.subarray(this.outOffsets[v], this.outOffsets[v + 1]);
       const ins = this.inTargets.subarray(this.inOffsets[v], this.inOffsets[v + 1]);
       outgoing = outs.length;
