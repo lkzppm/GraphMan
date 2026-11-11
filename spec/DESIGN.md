@@ -437,7 +437,7 @@ component bar; the summary, the memory view and the components browser
 swap in place without a jump: the old view fades out, the next rises in,
 and the panel eases its height between them; on a directed graph the
 components browser holds a "Fortemente conexas" switch, the Directed one's
-look: on, the browser, the canvas, the arrow keys and the legend go
+look, centred under the component's measurements: on, the browser, the canvas, the arrow keys and the legend go
 through the strong components instead of the weak ones, ranked by size
 the same way, the header saying "fortemente conexo" or "acíclico" when
 there is one, or one per vertex; a component's density counts arcs both

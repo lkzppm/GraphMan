@@ -6322,21 +6322,7 @@ function ComponentsView({
         </span>
         <span className={styles.tileHint}>{hint}</span>
       </div>
-      {meta.directed && (
-        <button
-          type="button"
-          role="switch"
-          aria-checked={strong}
-          className={styles.toggle}
-          title={t.strongHint}
-          onClick={() => onStrong(!strong)}
-        >
-          <span className={styles.toggleTrack} aria-hidden="true">
-            <span className={styles.toggleKnob} />
-          </span>
-          {t.strongToggle}
-        </button>
-      )}
+
       <div className={styles.segments} role="group" aria-label={t.pickComponent}>
         {Array.from({ length: shown }, (_, i) => (
           <button
@@ -6424,6 +6410,24 @@ function ComponentsView({
             }
             hint={t.ofPossible}
           />
+        </div>
+      )}
+      {meta.directed && (
+        // Under the component's measurements, centred.
+        <div className={styles.componentsSwitch}>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={strong}
+            className={styles.toggle}
+            title={t.strongHint}
+            onClick={() => onStrong(!strong)}
+          >
+            <span className={styles.toggleTrack} aria-hidden="true">
+              <span className={styles.toggleKnob} />
+            </span>
+            {t.strongToggle}
+          </button>
         </div>
       )}
     </div>
