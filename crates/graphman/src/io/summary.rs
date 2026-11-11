@@ -1,12 +1,16 @@
 //! The summary file required by the assignment ("Saída").
 
-use crate::algo::{Components, DegreeStats, weight_stats};
+use crate::algo::{Components, DegreeStats, in_degree_stats, weight_stats};
 use crate::graph::Weighted;
 use std::io::{self, Write};
 
 /// Writes vertex/edge counts, degree statistics and the connected components;
 /// for a weighted graph also the smallest, largest and mean weight and the
 /// number of negative edges.
+///
+/// A directed graph adds a first line `directed`, counts `arcs`, gives the
+/// out-degree (`degrees`) and the in-degree statistics and calls its
+/// components `weak_components`. An undirected summary is unchanged.
 ///
 /// ```text
 /// vertices 5
@@ -25,19 +29,40 @@ pub fn write_summary<W: Write, G: Weighted>(
     degrees: &DegreeStats,
     components: &Components,
 ) -> io::Result<()> {
+    let directed = graph.is_directed();
+    if directed {
+        writeln!(w, "directed")?;
+    }
     writeln!(w, "vertices {}", graph.vertex_count())?;
-    writeln!(w, "edges {}", graph.edge_count())?;
-    writeln!(w, "degree_min {}", degrees.min)?;
-    writeln!(w, "degree_max {}", degrees.max)?;
-    writeln!(w, "degree_mean {:.3}", degrees.mean)?;
-    writeln!(w, "degree_median {:.1}", degrees.median)?;
+    let (edges, degree) = match directed {
+        true => ("arcs", "out_degree"),
+        false => ("edges", "degree"),
+    };
+    writeln!(w, "{edges} {}", graph.edge_count())?;
+    let mut write_degrees = |name: &str, stats: &DegreeStats| -> io::Result<()> {
+        writeln!(w, "{name}_min {}", stats.min)?;
+        writeln!(w, "{name}_max {}", stats.max)?;
+        writeln!(w, "{name}_mean {:.3}", stats.mean)?;
+        writeln!(w, "{name}_median {:.1}", stats.median)
+    };
+    write_degrees(degree, degrees)?;
+    if directed {
+        write_degrees("in_degree", &in_degree_stats(graph))?;
+    }
     if let Some(weights) = weight_stats(graph) {
         writeln!(w, "weight_min {}", weights.min)?;
         writeln!(w, "weight_max {}", weights.max)?;
         writeln!(w, "weight_mean {:.6}", weights.mean)?;
         writeln!(w, "weight_negative {}", weights.negative)?;
     }
-    writeln!(w, "components {}", components.count())?;
+    let components_name = match directed {
+        true => "weak_components",
+        false => "components",
+    };
+    writeln!(w, "{components_name} {}", components.count())?;
+    for edge in graph.negative_loops() {
+        writeln!(w, "# negative loop {} {}", edge.u, edge.weight)?;
+    }
     writeln!(w, "# component size vertices...")?;
     let mut w = io::BufWriter::new(w);
     for (index, members) in components.iter().enumerate() {

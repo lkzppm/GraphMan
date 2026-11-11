@@ -114,8 +114,8 @@ Build      + transpose(&self)   the same representation with every arc reversed
 | Dijkstra on a negative arc | still refused, `NegativeWeight`, but the message now points to Bellman-Ford instead of "not implemented yet" |
 | `Components` | **weakly** connected components, by a union-find over the arcs (generic over `Graph`, `O(m α(n))`); the BFS version stays for undirected graphs |
 | strongly connected components | new, §6 |
-| diameter | refused with a typed `DiameterError::Directed` (iFUB and the bounds need symmetry); the report says so |
-| degree statistics, the summary file | out-degree and in-degree columns |
+| diameter | the largest finite `d(u, v)` over ordered pairs. `diameter` returns `Result<Diameter, DiameterError>`: brute force and the 4-sweep still run (every BFS level is a real distance, and a weak component of `s` vertices still bounds it by `s − 1`); iFUB and the bounds are refused with `DiameterError::Directed { method }` (they need `d(u, v) = d(v, u)`). `DiameterMethod::supports(orientation)` |
+| degree statistics, the summary file | `degree_stats` is the out-degree (mean `m / n`), `in_degree_stats` the in-degree; `weight_stats` counts each arc once. The summary opens with `directed`, counts `arcs`, writes `out_degree_*`, `in_degree_*`, `weak_components` and a `# negative loop v w` line per negative loop; an undirected summary is unchanged |
 
 ## 3. BFS, DFS and Dijkstra on directed graphs
 
@@ -393,7 +393,8 @@ graphman generate -n 1000 -m 5000 --directed --weights -1:10 --potential -o g.tx
    `transpose` for the three representations; tests that the undirected
    paths are byte-for-byte unchanged. **Done** (`tests/directed.rs`).
 2. Directed BFS/DFS/Dijkstra tests, weak components, the diameter refusal,
-   `--directed` in the CLI.
+   `--directed` in the CLI. **Done** (`-D`/`--directed` on every command
+   that reads a graph; `info` shows out- and in-degrees).
 3. `Schedule`, `bellman_ford_into`, `NegativeCycle`, `rounds`,
    `early-stop`, `queue`; `petgraph` oracle.
 4. `AllPairs`, `floyd_warshall` (`plain`, `pruned`), the budget.

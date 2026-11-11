@@ -23,11 +23,18 @@
 //!
 //! Every method can be cancelled through the progress callback; the result
 //! is then the best lower bound found so far, flagged as not exact.
+//!
+//! On a directed graph the diameter is the largest finite distance
+//! `d(u, v)` over ordered pairs. The brute force and the sweep still apply
+//! (every BFS level is a real distance, and a weak component of `s`
+//! vertices still has no shortest path longer than `s - 1`), but iFUB and
+//! the bounds rest on `d(u, v) = d(v, u)`, so they refuse a directed graph
+//! with [`DiameterError::Directed`] instead of certifying a wrong value.
 
 use super::components::Components;
 use super::distance::eccentricity_into;
 use super::traversal::{Control, SearchTree};
-use crate::graph::{Graph, NO_VERTEX, Vertex};
+use crate::graph::{Graph, NO_VERTEX, Orientation, Vertex};
 use core::fmt;
 use core::str::FromStr;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -73,6 +80,30 @@ impl DiameterMethod {
     pub fn is_exact(self) -> bool {
         self != DiameterMethod::Sweep
     }
+
+    /// Whether the method runs on a graph of this orientation: iFUB and the
+    /// bounds need symmetric distances, so they are undirected only.
+    pub fn supports(self, orientation: Orientation) -> bool {
+        match self {
+            DiameterMethod::Exact | DiameterMethod::Sweep => true,
+            DiameterMethod::IFub | DiameterMethod::Bounds => !orientation.is_directed(),
+        }
+    }
+}
+
+/// Why a diameter could not be computed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum DiameterError {
+    /// iFUB and the eccentricity bounds were asked for on a directed graph,
+    /// where `d(u, v)` and `d(v, u)` differ and their bounds do not hold.
+    #[error(
+        "{method} needs an undirected graph (its bounds rest on d(u, v) = d(v, u)); \
+         on a directed graph use exact or sweep"
+    )]
+    Directed {
+        /// The method that was asked for.
+        method: DiameterMethod,
+    },
 }
 
 impl fmt::Display for DiameterMethod {
@@ -121,8 +152,13 @@ pub type Progress<'a> = &'a (dyn Fn(usize) -> Control + Sync);
 /// Computes the diameter with the given method.
 ///
 /// On a disconnected graph this is the largest diameter over all components
-/// (distances between components are infinite and ignored).
-pub fn diameter<G: Graph + Sync>(graph: &G, method: DiameterMethod) -> Diameter {
+/// (distances between components are infinite and ignored). On a directed
+/// graph it is the largest finite distance, and only
+/// [`DiameterMethod::supports`] methods run.
+pub fn diameter<G: Graph + Sync>(
+    graph: &G,
+    method: DiameterMethod,
+) -> Result<Diameter, DiameterError> {
     diameter_with_progress(graph, method, &|_| Control::Continue)
 }
 
@@ -132,7 +168,10 @@ pub fn diameter_with_progress<G: Graph + Sync>(
     graph: &G,
     method: DiameterMethod,
     progress: Progress<'_>,
-) -> Diameter {
+) -> Result<Diameter, DiameterError> {
+    if !method.supports(graph.orientation()) {
+        return Err(DiameterError::Directed { method });
+    }
     let components = Components::compute(graph);
     let mut ctx = Context {
         graph,
@@ -194,14 +233,14 @@ pub fn diameter_with_progress<G: Graph + Sync>(
         }
     }
     let cancelled = ctx.is_cancelled();
-    Diameter {
+    Ok(Diameter {
         value,
         endpoints,
         method,
         bfs_count: ctx.bfs_count.into_inner(),
         is_exact: method.is_exact() && !cancelled,
         cancelled,
-    }
+    })
 }
 
 /// Shared state of one diameter run.

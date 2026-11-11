@@ -47,6 +47,7 @@ pub fn study(
         graph: input.path.clone(),
         repr: args.dijkstra_repr,
         force: false,
+        directed: false,
     };
     let edges = &input.edges;
     let graph = load.build(edges, ui)?;

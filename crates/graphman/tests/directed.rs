@@ -305,3 +305,221 @@ fn unweighted_arcs_weigh_one() {
         assert_eq!(transpose.weight(1, 2), None);
     }
 }
+
+// Part 3, item 2: the searches already written run on directed graphs.
+
+/// Distances by hops along the arcs, from `root`: a textbook BFS on the rows.
+fn oracle_bfs(rows: &[Vec<(Vertex, Weight)>], root: Vertex) -> Vec<Option<(Vertex, u32)>> {
+    let mut seen = vec![None; rows.len() + 1];
+    seen[root as usize] = Some((0, 0));
+    let mut queue = std::collections::VecDeque::from([root]);
+    while let Some(v) = queue.pop_front() {
+        let level = seen[v as usize].unwrap().1;
+        for &(w, _) in &rows[v as usize - 1] {
+            if seen[w as usize].is_none() {
+                seen[w as usize] = Some((v, level + 1));
+                queue.push_back(w);
+            }
+        }
+    }
+    seen
+}
+
+/// The textbook recursive DFS on the rows: `(parent, level)` per vertex.
+fn oracle_dfs(rows: &[Vec<(Vertex, Weight)>], root: Vertex) -> Vec<Option<(Vertex, u32)>> {
+    fn visit(rows: &[Vec<(Vertex, Weight)>], v: Vertex, seen: &mut [Option<(Vertex, u32)>]) {
+        let level = seen[v as usize].unwrap().1;
+        for &(w, _) in &rows[v as usize - 1] {
+            if seen[w as usize].is_none() {
+                seen[w as usize] = Some((v, level + 1));
+                visit(rows, w, seen);
+            }
+        }
+    }
+    let mut seen = vec![None; rows.len() + 1];
+    seen[root as usize] = Some((0, 0));
+    visit(rows, root, &mut seen);
+    seen
+}
+
+/// `(parent, level)` per vertex of a search tree, `0` as the root's parent.
+fn tree_of(tree: &graphman::SearchTree) -> Vec<Option<(Vertex, u32)>> {
+    (0..=tree.vertex_count() as Vertex)
+        .map(|v| match v {
+            0 => None,
+            v => tree
+                .level(v)
+                .map(|level| (tree.parent(v).unwrap_or(0), level)),
+        })
+        .collect()
+}
+
+/// Bellman-Ford over the arcs: the slow, obviously right oracle.
+fn oracle_distances(edges: &EdgeList, root: Vertex) -> Vec<Weight> {
+    let mut distance = vec![Weight::INFINITY; edges.vertex_count() + 1];
+    distance[root as usize] = 0.0;
+    for _ in 1..edges.vertex_count() {
+        for WeightedEdge { u, v, weight } in edges.weighted_edges() {
+            if distance[u as usize] + weight < distance[v as usize] {
+                distance[v as usize] = distance[u as usize] + weight;
+            }
+        }
+    }
+    distance
+}
+
+/// A random digraph with non-negative weights, for Dijkstra.
+fn random_positive_digraph(seed: u64, n: u32, m: usize) -> EdgeList {
+    let mut rng = Rng(seed);
+    let arcs: Vec<(Vertex, Vertex, Weight)> = (0..m)
+        .map(|_| (rng.below(n) + 1, rng.below(n) + 1, rng.below(9) as Weight))
+        .collect();
+    EdgeList::from_weighted_edges_with(n as usize, arcs, DIRECTED).unwrap()
+}
+
+#[test]
+fn bfs_and_dfs_follow_the_arcs() {
+    use graphman::algo;
+    for seed in 0..10 {
+        let edges = random_digraph(seed, 40, 90);
+        let rows = expected_rows(&edges);
+        for r in Representation::ALL {
+            let graph = r.build(&edges).unwrap();
+            for root in [1, 7, 23] {
+                let (bfs, dfs, recursive) = dispatch!(&graph, g => (
+                    algo::bfs(g, root),
+                    algo::dfs(g, root),
+                    algo::dfs_recursive(g, root, 100).unwrap(),
+                ));
+                assert_eq!(tree_of(&bfs), oracle_bfs(&rows, root), "{r} bfs {root}");
+                assert_eq!(tree_of(&dfs), oracle_dfs(&rows, root), "{r} dfs {root}");
+                assert_eq!(dfs, recursive, "{r} {root}");
+            }
+        }
+    }
+}
+
+#[test]
+fn reachability_is_one_way() {
+    use graphman::algo;
+    // 1 → 2 → 3, and 4 → 1.
+    let edges = EdgeList::parse_with(b"4\n1 2\n2 3\n4 1\n", DIRECTED).unwrap();
+    let graph = Csr::build(&edges).unwrap();
+    assert_eq!(algo::bfs(&graph, 1).reached_count(), 3);
+    assert_eq!(algo::bfs(&graph, 3).reached_count(), 1);
+    assert_eq!(algo::bfs(&graph, 4).level(3), Some(3));
+    assert_eq!(algo::distance(&graph, 1, 3), Some(2));
+    assert_eq!(algo::distance(&graph, 3, 1), None);
+    assert!(!algo::dfs(&graph, 2).is_reached(1));
+    // On the transpose the arcs point back.
+    let back = graph.transpose().unwrap();
+    assert_eq!(algo::distance(&back, 3, 1), Some(2));
+    assert_eq!(algo::bfs(&back, 1).order(), &[1, 4]);
+}
+
+#[test]
+fn dijkstra_follows_the_arcs_with_every_frontier() {
+    use graphman::algo::{self, FrontierKind};
+    for seed in 0..10 {
+        let edges = random_positive_digraph(seed, 40, 160);
+        for root in [1, 13, 40] {
+            let oracle = oracle_distances(&edges, root);
+            let mut trees = Vec::new();
+            for r in Representation::ALL {
+                let graph = r.build(&edges).unwrap();
+                for frontier in FrontierKind::ALL {
+                    let tree = dispatch!(&graph, g => algo::dijkstra(g, root, frontier)).unwrap();
+                    for v in 1..=40 {
+                        let expected = oracle[v as usize];
+                        let found = tree.distance(v).unwrap_or(Weight::INFINITY);
+                        assert_eq!(found, expected, "{r} {frontier:?} {root}->{v}");
+                        // The parent of v is a tail of an arc into v.
+                        if let Some(p) = tree.parent(v) {
+                            let weight = graph.weight(p, v).expect("an arc p -> v");
+                            assert_eq!(tree.distance(p).unwrap() + weight, expected);
+                        }
+                    }
+                    trees.push(tree);
+                }
+            }
+            // Every representation and frontier builds the same tree.
+            assert!(trees.windows(2).all(|pair| pair[0] == pair[1]));
+        }
+    }
+}
+
+#[test]
+fn components_of_a_digraph_are_weakly_connected() {
+    use graphman::algo::Components;
+    for seed in 0..10 {
+        let arcs = random_digraph(seed, 60, 45);
+        // The same lines read as edges: the components of the underlying graph.
+        let mut text = Vec::new();
+        arcs.write_to(&mut text).unwrap();
+        let undirected = EdgeList::parse(&text).unwrap();
+        for r in Representation::ALL {
+            let a = dispatch!(&r.build(&arcs).unwrap(), g => Components::compute(g));
+            let b = dispatch!(&r.build(&undirected).unwrap(), g => Components::compute(g));
+            assert_eq!(a, b, "{r} seed {seed}");
+        }
+    }
+    // 1 → 2 ← 3: one weak component, although no vertex reaches all three.
+    let edges = EdgeList::parse_with(b"4\n1 2\n3 2\n", DIRECTED).unwrap();
+    let components = Components::compute(&Csr::build(&edges).unwrap());
+    assert_eq!(components.count(), 2);
+    assert_eq!(components.members(1), &[1, 2, 3]);
+    assert_eq!(components.members(2), &[4]);
+}
+
+#[test]
+fn the_diameter_of_a_digraph_is_its_longest_finite_distance() {
+    use graphman::algo::{self, DiameterError, DiameterMethod};
+    for seed in 0..10 {
+        let edges = random_digraph(seed, 50, 120);
+        let graph = Csr::build(&edges).unwrap();
+        let rows = expected_rows(&edges);
+        let oracle = (1..=50)
+            .flat_map(|root| oracle_bfs(&rows, root))
+            .filter_map(|seen| seen.map(|(_, level)| level))
+            .max()
+            .unwrap();
+        let exact = algo::diameter(&graph, DiameterMethod::Exact).unwrap();
+        assert_eq!(exact.value, oracle, "seed {seed}");
+        let (from, to) = exact.endpoints;
+        assert_eq!(algo::distance(&graph, from, to), Some(oracle));
+        let sweep = algo::diameter(&graph, DiameterMethod::Sweep).unwrap();
+        assert!(sweep.value <= oracle);
+        // iFUB and the bounds need d(u, v) = d(v, u): refused, not wrong.
+        for method in [DiameterMethod::IFub, DiameterMethod::Bounds] {
+            assert_eq!(
+                algo::diameter(&graph, method),
+                Err(DiameterError::Directed { method })
+            );
+            assert!(!method.supports(DIRECTED));
+            assert!(method.supports(Orientation::Undirected));
+        }
+    }
+}
+
+#[test]
+fn degree_statistics_count_each_arc_once() {
+    use graphman::algo::{degree_stats, in_degree_stats, weight_stats};
+    // Out-degrees 3, 1, 0, 0; in-degrees 0, 1, 2, 1.
+    let edges = EdgeList::parse_with(b"4\n1 2 1\n1 3 -2\n1 4 3\n2 3 4\n", DIRECTED).unwrap();
+    let graph = AdjacencyList::build(&edges).unwrap();
+    let out = degree_stats(&graph);
+    assert_eq!((out.min, out.max, out.mean, out.median), (0, 3, 1.0, 0.5));
+    let inn = in_degree_stats(&graph);
+    assert_eq!((inn.min, inn.max, inn.mean, inn.median), (0, 2, 1.0, 1.0));
+    let weights = weight_stats(&graph).unwrap();
+    assert_eq!((weights.min, weights.max, weights.negative), (-2.0, 4.0, 1));
+    assert_eq!(weights.mean, 1.5);
+
+    let mut summary = Vec::new();
+    let components = graphman::Components::compute(&graph);
+    graphman::io::write_summary(&mut summary, &graph, &out, &components).unwrap();
+    let summary = String::from_utf8(summary).unwrap();
+    assert!(summary.starts_with("directed\nvertices 4\narcs 4\nout_degree_min 0\n"));
+    assert!(summary.contains("\nin_degree_max 2\n"));
+    assert!(summary.contains("\nweak_components 1\n"));
+}

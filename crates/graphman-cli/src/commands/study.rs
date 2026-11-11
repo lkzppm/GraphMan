@@ -187,6 +187,7 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
             graph: path.clone(),
             repr: Representation::Csr,
             force: false,
+            directed: false,
         }
         .edges(ui)?;
         let input = Input {
@@ -278,6 +279,7 @@ fn study_graph(
         graph: path.to_path_buf(),
         repr: Representation::Csr,
         force: false,
+        directed: false,
     };
     let n = edges.vertex_count();
     let (self_loops_dropped, duplicates_dropped) =
@@ -337,6 +339,7 @@ fn study_graph(
                 graph: path.to_path_buf(),
                 repr,
                 force: false,
+                directed: false,
             }
             .build(&edges, ui)?;
             for (search, slot) in [
@@ -491,7 +494,7 @@ fn study_graph(
                     Control::Continue
                 }
             };
-            let d = dispatch!(&graph, g => diameter_with_progress(g, method, &progress));
+            let d = dispatch!(&graph, g => diameter_with_progress(g, method, &progress))?;
             bar.finish_and_clear();
             let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
             let note = match (d.is_exact, d.cancelled) {
