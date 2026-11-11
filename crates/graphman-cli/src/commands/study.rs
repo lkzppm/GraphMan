@@ -11,13 +11,20 @@
 //! from one source to a few targets, the mean time of one Dijkstra per
 //! frontier, and the memory each frontier holds during one.
 //!
-//! A weighted file gets the Part 2 study and an unweighted one the Part 1
-//! study, unless `--only` names the sections. Sections left out keep the
+//! Part 3 (`--directed`, [`directed`]): Bellman-Ford's distances to one
+//! target, Floyd-Warshall's table of a few pairs, the mean time of each
+//! algorithm, and all pairs by `n` Bellman-Fords against Floyd-Warshall.
+//!
+//! With `--directed` a file gets the Part 3 study; otherwise a weighted file
+//! gets the Part 2 study and an unweighted one the Part 1 study, unless
+//! `--only` names the sections. Sections left out keep the
 //! graph's previous answers, so refreshing one timing never repeats an
-//! hour of diameter. Results go to `<out>/<graph>.json` (Part 1) and
-//! `<out>/weighted/<graph>.json` (Part 2); each directory's JSON is merged
-//! into its `results.json`, and both into `<out>/RESULTS.md`.
+//! hour of diameter. Results go to `<out>/<graph>.json` (Part 1),
+//! `<out>/weighted/<graph>.json` (Part 2) and `<out>/directed/<graph>.json`
+//! (Part 3); each directory's JSON is merged into its `results.json`, and
+//! all of them into `<out>/RESULTS.md`.
 
+mod directed;
 mod weighted;
 
 use super::bench::{Search, time_searches};
@@ -29,8 +36,8 @@ use crate::rng::SplitMix64;
 use crate::ui::{self, Ui};
 use anyhow::{Context, Result};
 use graphman::algo::{
-    Components, Control, DfsKind, DiameterMethod, FrontierKind, bfs, degree_stats, dfs,
-    dfs_recursive, diameter_with_progress, distance_into,
+    Components, Control, DfsKind, DiameterMethod, FrontierKind, ScheduleKind, SweepKind, bfs,
+    degree_stats, dfs, dfs_recursive, diameter_with_progress, distance_into,
 };
 use graphman::{EdgeList, Representation, SearchTree, Vertex, dispatch};
 use serde::de::DeserializeOwned;
@@ -121,9 +128,55 @@ pub struct Args {
     #[arg(long, default_value_t = 5)]
     memory_runs: usize,
 
-    /// Part 2: the representation Dijkstra runs on.
+    /// Part 2: the representation Dijkstra runs on (Part 3's algorithms too).
     #[arg(long, default_value = "csr")]
     dijkstra_repr: Representation,
+
+    /// Part 3: read every line `u v w` as the arc from u to v, and run the
+    /// Part 3 sections by default.
+    #[arg(short = 'D', long)]
+    directed: bool,
+
+    /// Part 3, question 1: the vertex every distance is to.
+    #[arg(long, default_value_t = 100)]
+    target: Vertex,
+
+    /// Part 3, question 1: the vertices whose distance to the target is asked.
+    #[arg(long, value_delimiter = ',', default_values = ["10", "20", "30"])]
+    sources: Vec<Vertex>,
+
+    /// Part 3, question 2: the vertices whose pairwise distances are asked.
+    #[arg(long, value_delimiter = ',', default_values = ["10", "20", "30", "40", "50"])]
+    pairs_of: Vec<Vertex>,
+
+    /// Part 3: the Bellman-Ford schedules to time, comma separated.
+    #[arg(
+        long,
+        value_delimiter = ',',
+        default_value = "rounds,early-stop,queue,yen,random-yen,slf"
+    )]
+    schedules: Vec<ScheduleKind>,
+
+    /// Part 3: the Floyd-Warshall sweeps to time, comma separated.
+    #[arg(
+        long,
+        value_delimiter = ',',
+        default_value = "plain,pruned,parallel,blocked"
+    )]
+    sweeps: Vec<SweepKind>,
+
+    /// Part 3: runs per algorithm (the handout asks for the mean of 10).
+    #[arg(long, default_value_t = 10)]
+    repeats: usize,
+
+    /// Part 3, question 3: wall-clock budget in seconds per timing cell.
+    #[arg(long, default_value_t = 600.0)]
+    part3_budget: f64,
+
+    /// Part 3, question 4: wall-clock budget in seconds per all-pairs cell;
+    /// when it runs out the targets done are scaled to all `n`.
+    #[arg(long, default_value_t = 600.0)]
+    apsp_budget: f64,
 }
 
 /// One part of the case study, for `--only`.
@@ -147,6 +200,14 @@ pub enum Section {
     Frontiers,
     /// Part 2: the memory each frontier holds during a Dijkstra.
     FrontierMemory,
+    /// Part 3, question 1: Bellman-Ford's distances to the target.
+    BellmanFord,
+    /// Part 3, question 2: Floyd-Warshall's table of pairs.
+    FloydWarshall,
+    /// Part 3, question 3: the mean time of every algorithm.
+    Timings,
+    /// Part 3, question 4: all pairs by n Bellman-Fords against Floyd-Warshall.
+    AllPairs,
 }
 
 impl Section {
@@ -159,6 +220,12 @@ impl Section {
         Section::Diameter,
     ];
     const PART2: [Section; 3] = [Section::Paths, Section::Frontiers, Section::FrontierMemory];
+    const PART3: [Section; 4] = [
+        Section::BellmanFord,
+        Section::FloydWarshall,
+        Section::Timings,
+        Section::AllPairs,
+    ];
 }
 
 /// A parsed graph file, shared by both parts.
@@ -187,7 +254,7 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
             graph: path.clone(),
             repr: Representation::Csr,
             force: false,
-            directed: false,
+            directed: args.directed,
         }
         .edges(ui)?;
         let input = Input {
@@ -198,6 +265,7 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
         };
         let mut sections = match (args.only.is_empty(), input.edges.is_weighted()) {
             (false, _) => args.only.clone(),
+            (true, _) if args.directed => Section::PART3.to_vec(),
             (true, false) => Section::PART1.to_vec(),
             (true, true) => Section::PART2.to_vec(),
         };
@@ -205,6 +273,15 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
             sections.retain(|&s| s != Section::Diameter);
         }
 
+        if sections.iter().any(|s| Section::PART3.contains(s)) {
+            let dir = args.out.join("directed");
+            std::fs::create_dir_all(&dir)?;
+            let json_path = dir.join(format!("{}.json", input.name));
+            let previous = previous_study(&json_path, &sections, &Section::PART3, ui);
+            let study = directed::study(&input, &args, &sections, previous, ui)?;
+            std::fs::write(&json_path, serde_json::to_string_pretty(&study)?)?;
+            ui.done(&format!("wrote {}", json_path.display()));
+        }
         if sections.iter().any(|s| Section::PART2.contains(s)) {
             let dir = args.out.join("weighted");
             std::fs::create_dir_all(&dir)?;
@@ -572,12 +649,26 @@ fn merge(out: &Path, ui: &Ui) -> Result<()> {
     if !weighted.is_empty() {
         weighted::markdown(&mut md, &weighted);
     }
+    let directed_dir = out.join("directed");
+    let mut part3: Vec<DirectedStudy> = match directed_dir.is_dir() {
+        true => collect(&directed_dir)?,
+        false => Vec::new(),
+    };
+    part3.sort_by_key(|s| (s.vertices, s.edges, s.name.clone()));
+    if !part3.is_empty() {
+        std::fs::write(
+            directed_dir.join("results.json"),
+            serde_json::to_string_pretty(&part3)?,
+        )?;
+        directed::markdown(&mut md, &part3);
+    }
     std::fs::write(out.join("RESULTS.md"), md)
         .with_context(|| format!("writing {}", out.join("RESULTS.md").display()))?;
     ui.done(&format!(
-        "merged {} unweighted and {} weighted studies into {}",
+        "merged {} unweighted, {} weighted and {} directed studies into {}",
         studies.len(),
         weighted.len(),
+        part3.len(),
         out.join("RESULTS.md").display()
     ));
     Ok(())

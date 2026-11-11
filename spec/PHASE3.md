@@ -447,7 +447,12 @@ graphman generate -n 1000 -m 5000 --directed --weights -1:10 --potential -o g.tx
 4. `AllPairs`, `floyd_warshall` (`plain`, `pruned`), the budget. **Done**,
    with `parallel` and `blocked` from step 6 and `graphman floyd-warshall`.
 5. The study runner (questions 1 to 4) with `queue` and `plain`: this is
-   everything the handout grades.
+   everything the handout grades. **Done** (`study/directed.rs`, every
+   schedule and sweep; `--part3-budget` per timing cell, `--repeats`;
+   refused Floyd-Warshall cells estimated on a 1024-vertex stand-in; see
+   `spec/WORKFLOW.md`). A trial on `grafo_W_3` read as a digraph: queue
+   Bellman-Ford to 100 in 0.05 s, 100,000 of them ≈ 1.6 h, Floyd-Warshall
+   ≈ 4.5 days (1.3 on all cores) and 120 GB.
 6. The plus: `yen`, `random-yen`, `slf`, `parallel`, `blocked`, Johnson,
    SCC, the generator options.
 7. Web: directed switch and arrows, Bellman-Ford in the observatory, the

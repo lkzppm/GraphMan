@@ -64,6 +64,7 @@ cargo clippy --all-targets -- -D warnings   # must be clean (CI enforces)
 cargo fmt --all
 cargo build --release                       # binary at target/release/graphman
 graphman study graphs/grafo_1.txt --out studies   # case studies → JSON + RESULTS.md
+graphman study G --directed --out studies         # Part 3: Bellman-Ford, Floyd-Warshall, all pairs
 graphman dijkstra samples/weighted_100.txt --from 10 --to 20 30 --frontier vector
 graphman bellman-ford G --directed --to 100 --from 10 20 30 --schedule queue   # Part 3: distances to a target
 graphman bellman-ford G --directed --negative-cycle                            # the whole-graph question
