@@ -54,6 +54,7 @@ export interface Theme {
   edgeDim: Rgba;
   /** The destination of a distance query. */
   target: Rgba;
+  cycle: Rgba;
 }
 
 /** A graph needs a larger buffer than this GPU allows. */
@@ -154,6 +155,7 @@ type ViewValues = {
   marked: number;
   arrows: number;
   incidentOut: number;
+  cycle: number;
   base: Rgba;
   dim: Rgba;
   colorA: Rgba;
@@ -163,6 +165,7 @@ type ViewValues = {
   edgeDim: Rgba;
   edgeTree: Rgba;
   colorTarget: Rgba;
+  colorCycle: Rgba;
 };
 
 const EMPTY_VIEW: ViewValues = {
@@ -190,6 +193,7 @@ const EMPTY_VIEW: ViewValues = {
   marked: 0,
   arrows: 0,
   incidentOut: 0,
+  cycle: 0,
   walk: -1,
   base: [0.5, 0.5, 0.5, 1],
   dim: [0.5, 0.5, 0.5, 1],
@@ -200,6 +204,7 @@ const EMPTY_VIEW: ViewValues = {
   edgeDim: [0.5, 0.5, 0.5, 0.05],
   edgeTree: [1, 1, 1, 0.9],
   colorTarget: [0.09, 0.64, 0.29, 1],
+  colorCycle: [0.9, 0.28, 0.3, 1],
 };
 
 /** WebGPU is missing or refused to give us a device. */
@@ -435,6 +440,7 @@ export class Renderer {
       edgeDim: theme.edgeDim,
       edgeTree: [1, 1, 1, 0.95],
       colorTarget: theme.target,
+      colorCycle: theme.cycle,
     });
   }
 
@@ -509,6 +515,7 @@ export class Renderer {
     this.viewValues.pathLength = 0;
     this.viewValues.incident = 0;
     this.viewValues.dest = 0;
+    this.viewValues.cycle = 0;
     this.viewValues.marked = 0;
     this.pathVertices = null;
     this.touch(true);
@@ -778,15 +785,25 @@ export class Renderer {
    * origin in the accent, everything off the path shrinks, and the path
    * (vertex ids in order, `null` when the target is not reached) grows
    * with a ring, its edges drawn in the ring colour, never dropped by the
-   * sampling. The path's edges must be edges of the graph.
+   * sampling. The path's edges must be edges of the graph. With `cycle`
+   * the path is a closed walk (a negative cycle, first vertex repeated
+   * last): drawn whole in the cycle's red, everything else greyed and shrunk.
    */
-  setPath(target: number, path: Uint32Array | null) {
+  setPath(target: number, path: Uint32Array | null, cycle = false) {
     if (!this.path) return;
     const length = path?.length ?? 0;
-    if (length === 0 && this.viewValues.pathLength === 0 && target === this.viewValues.dest) {
+    const ring = cycle && length > 0 ? 1 : 0;
+    if (
+      length === 0 &&
+      this.viewValues.pathLength === 0 &&
+      target === this.viewValues.dest &&
+      ring === this.viewValues.cycle
+    ) {
       return;
     }
     this.viewValues.dest = target;
+    this.viewValues.cycle = ring;
+    if (ring) this.viewValues.walk = -1;
     if (length > 0 && path) {
       if (this.path.size < length * 4) this.path = storage(this.gpu, length * 4, 'read');
       this.path.write(bytes(path));
@@ -1306,6 +1323,7 @@ export function readTheme(): Theme {
     edge: get('--canvas-edge', [0.09, 0.09, 0.09, 0.34]),
     edgeDim: get('--canvas-edge-dim', [0.09, 0.09, 0.09, 0.12]),
     target: get('--target', [0.09, 0.64, 0.29, 1]),
+    cycle: get('--cycle', [0.9, 0.28, 0.3, 1]),
   };
 }
 

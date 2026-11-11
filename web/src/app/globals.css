@@ -111,6 +111,12 @@
   initial-value: #16a34a;
 }
 
+@property --cycle {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #e5484d;
+}
+
 @property --queue-vector {
   syntax: '<color>';
   inherits: true;
@@ -216,6 +222,8 @@
     --on-ramp-far: #ffffff;
     /* The one green: the destination of a distance query. */
     --target: #16a34a;
+    /* The one red: a negative cycle, on the canvas and in its balls. */
+    --cycle: #e5484d;
     --warning: var(--accent);
     /* The priority queues, wherever they are compared side by side: six
      hues told apart by colour-blind readers too (validated in this order,
@@ -283,6 +291,7 @@
     --on-ramp-near: #0a0a0a;
     --on-ramp-far: #ffffff;
     --target: #009342;
+    --cycle: #e5484d;
 
     --queue-vector: #e0622e;
     --queue-lazy-heap: #c48600;
@@ -323,6 +332,7 @@
       --on-ramp-near 0.6s cubic-bezier(0.4, 0, 0.2, 1),
       --on-ramp-far 0.6s cubic-bezier(0.4, 0, 0.2, 1),
       --target 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --cycle 0.6s cubic-bezier(0.4, 0, 0.2, 1),
       --queue-vector 0.6s cubic-bezier(0.4, 0, 0.2, 1),
       --queue-lazy-heap 0.6s cubic-bezier(0.4, 0, 0.2, 1),
       --queue-quad-heap 0.6s cubic-bezier(0.4, 0, 0.2, 1),
