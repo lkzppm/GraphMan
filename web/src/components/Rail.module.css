@@ -61,8 +61,12 @@
   transform-origin: top;
 }
 
+/* The grey edge grows down with the stops, reaching each one as it eases
+   in: it starts at the first stop's entrance and takes one stagger step
+   (0.06 s) per stop, at a steady pace, so a long rail (the library's
+   nineteen chapters) forms as one motion instead of the line racing ahead. */
 .rail ol::before {
-  animation: edgeIn 0.6s var(--ease) 0.35s backwards;
+  animation: edgeIn calc((var(--stops) - 1) * 0.06s) linear 0.4s backwards;
 }
 
 .rail ol::after {
