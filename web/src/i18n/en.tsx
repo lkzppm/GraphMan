@@ -660,8 +660,10 @@ export const en = {
       `A negative cycle, weighing ${w}, reached from this origin: no shortest paths, every lap makes a walk shorter.`,
     passes: 'Passes',
     negativeWeights: (n: number) => (n === 1 ? '1 negative weight' : `${n} negative weights`),
-    refusal: (u: number, v: number, w: string) =>
-      `Dijkstra refuses this graph: the edge ${u} ${v} weighs ${w}, and Dijkstra needs weights of at least 0. Bellman-Ford takes negative weights.`,
+    refusal: (n: number, count: string) =>
+      `Dijkstra refuses this graph: it has ${n === 1 ? 'a negative weight' : `${count} negative weights`}, drawn in red, and Dijkstra needs every weight to be at least 0. Bellman-Ford takes negative weights.`,
+    refusalMore: (count: string) => `and ${count} more`,
+    runBellmanFord: 'Run Bellman-Ford instead',
     distanceAt: (d: string) => `distance ${d}`,
     mode: 'Mode',
     modeSearch: 'Max',
@@ -681,6 +683,9 @@ export const en = {
     cycle: 'Negative cycle',
     fitCycle: 'Fit the cycle to the view',
     clearCycle: 'Clear the cycle',
+    negativeEdges: 'Negative weights',
+    fitNegative: 'Fit the negative weights to the view',
+    clearRefusal: 'Clear the negative weights',
     reached: 'Reached',
     eccentricity: 'Eccentricity',
     depth: 'Depth',

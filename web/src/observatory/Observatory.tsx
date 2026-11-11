@@ -490,6 +490,10 @@ function spacingStretch(
 const MORPH_MS = 700;
 /** Share of the view a framed path fills (the path label floats over the top). */
 const PATH_FILL = 0.62;
+/** Dijkstra's refusal frames the negative edges up to this many; past it they are the graph. */
+const NEGATIVE_FIT = 64;
+/** The negative edges named in the refusal's card; the rest are counted. */
+const NEGATIVE_SHOWN = 3;
 /** Pointer travel (CSS px) under which a press is a click, not a drag or a pan. */
 const CLICK_SLOP = 4;
 /** Two clicks on one vertex closer than this are a double click. */
@@ -641,6 +645,14 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   const [notice, setNotice] = useState<string | null>(null);
   /** The negative cycle Bellman-Ford found instead of distances (closed: first vertex last too). */
   const [cycle, setCycle] = useState<{ vertices: Uint32Array; weight: number } | null>(null);
+  /** Dijkstra's refusal: every negative edge as `[u, v]` pairs (drawn in red) and
+      its weight, with the search that was asked, for running Bellman-Ford instead. */
+  const [refusal, setRefusal] = useState<{
+    pairs: Uint32Array;
+    weights: Float64Array;
+    root: number;
+    target: number;
+  } | null>(null);
   /** The loaded graph's names, if a names file came with it. */
   const [names, setNames] = useState<NamesInfo | null>(null);
   /** Names beside the vertices; the toggle only exists once names are loaded. */
@@ -1244,6 +1256,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     searchRef.current?.result.free();
     setSearch(null);
     setCycle(null);
+    setRefusal(null);
     graphRef.current?.free();
     graphRef.current = null;
     // A tree's parent goes with it: there is nothing to return to.
@@ -1393,6 +1406,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         setLayout(willSimulate ? 'force' : 'radial');
         setSearch(null);
         setCycle(null);
+        setRefusal(null);
         setDiameterResults({});
         setSelected(0);
         setHovered(0);
@@ -1750,12 +1764,45 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       const renderer = rendererRef.current;
       if (!wasm || !graph || !renderer) return;
       keysTarget.current = 'search';
-      const refused = metaRef.current?.negativeEdge;
-      if (which === 'dijkstra' && refused) {
-        // The library refuses too; saying it here keeps the words the visitor's.
-        setNotice(tRef.current.refusal(refused.u, refused.v, formatWeight(refused.weight)));
+      const current = metaRef.current;
+      if (which === 'dijkstra' && current?.negativeEdge && current.edgeWeights) {
+        // The library refuses too; saying it here keeps the words the
+        // visitor's. Every negative edge goes red on the plain graph (only
+        // those are uploaded), framed while they are few, and the card at
+        // the top says why.
+        const { edgeList, edgeWeights } = current;
+        let count = 0;
+        for (const w of edgeWeights) if (w < 0) count += 1;
+        const pairs = new Uint32Array(2 * count);
+        const weights = new Float64Array(count);
+        for (let e = 0, i = 0; e < edgeWeights.length; e++) {
+          if (!(edgeWeights[e] < 0)) continue;
+          pairs[2 * i] = edgeList[2 * e];
+          pairs[2 * i + 1] = edgeList[2 * e + 1];
+          weights[i++] = edgeWeights[e];
+        }
+        search?.result.free();
+        setSearch(null);
+        searchRef.current = null;
+        setCycle(null);
+        setPlaying(false);
+        setSelected(0);
+        renderer.setSelected(0);
+        renderer.setSearch(null);
+        renderer.setPath(0, null);
+        renderer.setNegative(pairs);
+        setRefusal({ pairs, weights, root, target });
+        setNotice(null);
+        if (count <= NEGATIVE_FIT) {
+          const ends = new Set(pairs);
+          autoFit.current = false;
+          fitVertices((v) => ends.has(v), PATH_FILL);
+        }
         return;
       }
+      // Any other search takes the refusal's red away.
+      setRefusal(null);
+      renderer.setNegative(null);
       try {
         // The recursive DFS may refuse a tree too deep for the browser's
         // stack; ask first, so a refusal keeps the current search on screen.
@@ -2841,6 +2888,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     searchRef.current?.result.free();
     setSearch(null);
     setCycle(null);
+    setRefusal(null);
     graphRef.current?.free();
     graphRef.current = null;
     restoreRef.current(parked);
@@ -3880,6 +3928,79 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                     )}
                     <p className={`${styles.pathNames} ${styles.cycleNote}`} role="status">
                       {t.cycleNote(formatWeight(cycle.weight))}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Dijkstra's refusal, top centre: the negative edges, in the cycle's red */}
+              {refusal && !search && (
+                <div className={`${styles.floating} ${styles.floatingTopCenter}`}>
+                  <div className={styles.cluster}>
+                    <IconButton
+                      label={t.fitNegative}
+                      onClick={() => {
+                        const ends = new Set(refusal.pairs);
+                        autoFit.current = false;
+                        fitVertices((v) => ends.has(v), PATH_FILL);
+                      }}
+                    >
+                      <Scan size={15} />
+                    </IconButton>
+                    <IconButton
+                      label={t.clearRefusal}
+                      onClick={() => {
+                        setRefusal(null);
+                        rendererRef.current?.setNegative(null);
+                      }}
+                    >
+                      <X size={15} />
+                    </IconButton>
+                  </div>
+                  <div className={styles.pathStack}>
+                    <p className={`mono ${styles.path}`} aria-label={t.negativeEdges}>
+                      {Array.from(
+                        refusal.weights.subarray(0, NEGATIVE_SHOWN),
+                        (w, i) => [refusal.pairs[2 * i], refusal.pairs[2 * i + 1], w] as const,
+                      ).map(([u, v, w], i) => (
+                        <Fragment key={i}>
+                          {i > 0 && <span className={styles.pathGap}>·</span>}
+                          {[u, v].map((end, j) => (
+                            <Fragment key={j}>
+                              {j > 0 && (
+                                <span className={styles.pathArrow}>
+                                  {meta.directed ? '→' : '–'}
+                                </span>
+                              )}
+                              <span
+                                className={`${styles.pathBall} ${styles.cycleBall}`}
+                                title={nameOf(end) ?? undefined}
+                              >
+                                {end}
+                              </span>
+                            </Fragment>
+                          ))}
+                          <span className={styles.refusalWeight}>{formatWeight(w)}</span>
+                        </Fragment>
+                      ))}
+                      {refusal.weights.length > NEGATIVE_SHOWN && (
+                        <span className={styles.pathGap}>
+                          {t.refusalMore(formatInt(refusal.weights.length - NEGATIVE_SHOWN))}
+                        </span>
+                      )}
+                    </p>
+                    <p className={`${styles.pathNames} ${styles.cycleNote}`} role="status">
+                      {t.refusal(refusal.weights.length, formatInt(refusal.weights.length))}{' '}
+                      <button
+                        type="button"
+                        className={styles.refusalSwitch}
+                        onClick={() => {
+                          setKind('bellman_ford');
+                          runSearch('bellman_ford', refusal.root, refusal.target);
+                        }}
+                      >
+                        {t.runBellmanFord}
+                      </button>
                     </p>
                   </div>
                 </div>
