@@ -454,7 +454,12 @@ graphman generate -n 1000 -m 5000 --directed --weights -1:10 --potential -o g.tx
    Bellman-Ford to 100 in 0.05 s, 100,000 of them ≈ 1.6 h, Floyd-Warshall
    ≈ 4.5 days (1.3 on all cores) and 120 GB.
 6. The plus: `yen`, `random-yen`, `slf`, `parallel`, `blocked`, Johnson,
-   SCC, the generator options.
+   SCC, the generator options. **Done**: `algo::johnson` over a
+   `Reweighted` view (any frontier) and `potentials`; `StrongComponents`
+   (iterative Tarjan, numbered in topological order), `condensation`,
+   `topological_order`, `dag_shortest_path`; `graphman johnson`,
+   `graphman scc`; `graphman generate -D -w -1:10 --potential
+   [--plant-cycle]`; Johnson is a column of the study's question 4.
 7. Web: directed switch and arrows, Bellman-Ford in the observatory, the
    Part 3 sheet and slides.
 

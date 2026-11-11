@@ -5,10 +5,10 @@ use crate::load::{GraphArgs, NamesArgs, display_vertex, resolve_vertex};
 use crate::ui::{self, Ui};
 use anyhow::{Context, Result, bail};
 use graphman::algo::{AllPairs, Control, FloydError, SweepKind, floyd_warshall_with_progress};
-use graphman::{Vertex, dispatch};
+use graphman::{Vertex, VertexNames, dispatch};
 use serde::Serialize;
 use std::fs::{self, File};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 #[derive(clap::Args)]
@@ -90,21 +90,46 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
         ui::duration(start.elapsed())
     ));
 
+    let stem = format!("{}.floyd-warshall", args.graph.stem());
+    report(
+        &all,
+        &vertices,
+        names.as_ref(),
+        args.json,
+        args.trees.as_deref(),
+        &stem,
+        ui,
+    )
+}
+
+/// Prints the table of the chosen vertices' pairs and, with `trees`, writes
+/// the tree from every vertex as `<prefix>-<vertex>.txt`. Shared with
+/// `graphman johnson`.
+pub fn report(
+    all: &AllPairs,
+    vertices: &[Vertex],
+    names: Option<&VertexNames>,
+    json: bool,
+    trees: Option<&Path>,
+    prefix: &str,
+    ui: &Ui,
+) -> Result<()> {
+    let n = all.vertex_count();
     let table = Table {
         distances: vertices
             .iter()
             .map(|&i| vertices.iter().map(|&j| all.distance(i, j)).collect())
             .collect(),
-        vertices: vertices.clone(),
+        vertices: vertices.to_vec(),
     };
     for (&i, row) in vertices.iter().zip(&table.distances) {
         let shown: Vec<String> = row
             .iter()
             .map(|d| d.map_or("∞".into(), ui::weight))
             .collect();
-        ui.kv(&display_vertex(i, names.as_ref()), shown.join("  "));
+        ui.kv(&display_vertex(i, names), shown.join("  "));
     }
-    if args.json {
+    if json {
         println!("{}", serde_json::to_string_pretty(&table)?);
     } else {
         let header: Vec<String> = vertices.iter().map(Vertex::to_string).collect();
@@ -118,11 +143,10 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
         }
     }
 
-    if let Some(dir) = &args.trees {
+    if let Some(dir) = trees {
         fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-        let stem = args.graph.stem();
         for i in 1..=n as Vertex {
-            let path = dir.join(format!("{stem}.floyd-warshall-{i}.txt"));
+            let path = dir.join(format!("{prefix}-{i}.txt"));
             let file =
                 File::create(&path).with_context(|| format!("creating {}", path.display()))?;
             all.write_tree_to(i, file)?;

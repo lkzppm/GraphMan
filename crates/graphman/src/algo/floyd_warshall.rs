@@ -295,20 +295,11 @@ pub fn floyd_warshall_with_progress<G: Weighted>(
     progress: &(dyn Fn(usize) -> Control + Sync),
 ) -> Result<AllPairs, FloydError> {
     let n = graph.vertex_count();
-    let required_bytes = AllPairs::required_bytes(n);
-    if let Some(limit_bytes) = budget.limit_bytes()
-        && required_bytes > limit_bytes
-    {
-        return Err(FloydError::TooLarge {
-            vertex_count: n,
-            required_bytes,
-            limit_bytes,
-        });
-    }
+    AllPairs::check_budget(n, budget)?;
     if let Some(edge) = graph.negative_loops().first() {
         return Err(NegativeCycle::new(vec![edge.u], edge.weight).into());
     }
-    let mut all = initial(graph, required_bytes)?;
+    let mut all = initial(graph, budget)?;
     let mut table = Table {
         n,
         distance: &mut all.distance,
@@ -380,19 +371,57 @@ impl AllPairs {
     }
 }
 
+impl AllPairs {
+    /// The bytes the tables need, or the refusal when over `budget`.
+    fn check_budget(n: usize, budget: MemoryBudget) -> Result<usize, FloydError> {
+        let required_bytes = AllPairs::required_bytes(n);
+        match budget.limit_bytes() {
+            Some(limit_bytes) if required_bytes > limit_bytes => Err(FloydError::TooLarge {
+                vertex_count: n,
+                required_bytes,
+                limit_bytes,
+            }),
+            _ => Ok(required_bytes),
+        }
+    }
+
+    /// Tables of `n × n` cells, every distance `+∞` and no predecessor,
+    /// within `budget`.
+    pub(super) fn empty(n: usize, budget: MemoryBudget) -> Result<Self, FloydError> {
+        let required_bytes = Self::check_budget(n, budget)?;
+        let failed = |_| FloydError::AllocationFailed { required_bytes };
+        let cells = n
+            .checked_mul(n)
+            .ok_or(FloydError::AllocationFailed { required_bytes })?;
+        let mut distance: Vec<Weight> = Vec::new();
+        distance.try_reserve_exact(cells).map_err(failed)?;
+        distance.resize(cells, Weight::INFINITY);
+        let mut parent: Vec<Vertex> = Vec::new();
+        parent.try_reserve_exact(cells).map_err(failed)?;
+        parent.resize(cells, NO_VERTEX);
+        Ok(Self {
+            vertex_count: n,
+            distance,
+            parent,
+        })
+    }
+
+    /// Row `i` of both tables, indexed by `j - 1`.
+    pub(super) fn row_mut(&mut self, i: Vertex) -> (&mut [Weight], &mut [Vertex]) {
+        let n = self.vertex_count;
+        let start = (i as usize - 1) * n;
+        (
+            &mut self.distance[start..start + n],
+            &mut self.parent[start..start + n],
+        )
+    }
+}
+
 /// The tables before the first round: 0 on the diagonal, the arcs, `+∞`.
-fn initial<G: Weighted>(graph: &G, required_bytes: usize) -> Result<AllPairs, FloydError> {
+fn initial<G: Weighted>(graph: &G, budget: MemoryBudget) -> Result<AllPairs, FloydError> {
     let n = graph.vertex_count();
-    let failed = |_| FloydError::AllocationFailed { required_bytes };
-    let cells = n
-        .checked_mul(n)
-        .ok_or(FloydError::AllocationFailed { required_bytes })?;
-    let mut distance: Vec<Weight> = Vec::new();
-    distance.try_reserve_exact(cells).map_err(failed)?;
-    distance.resize(cells, Weight::INFINITY);
-    let mut parent: Vec<Vertex> = Vec::new();
-    parent.try_reserve_exact(cells).map_err(failed)?;
-    parent.resize(cells, NO_VERTEX);
+    let mut all = AllPairs::empty(n, budget)?;
+    let (distance, parent) = (&mut all.distance, &mut all.parent);
     for i in graph.vertices() {
         let row = (i as usize - 1) * n;
         distance[row + i as usize - 1] = 0.0;
@@ -401,11 +430,7 @@ fn initial<G: Weighted>(graph: &G, required_bytes: usize) -> Result<AllPairs, Fl
             parent[row + j as usize - 1] = i;
         }
     }
-    Ok(AllPairs {
-        vertex_count: n,
-        distance,
-        parent,
-    })
+    Ok(all)
 }
 
 /// The two tables while a sweep runs.

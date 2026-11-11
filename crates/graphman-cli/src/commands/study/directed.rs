@@ -12,7 +12,8 @@
 //!    Bellman-Ford schedule, every Floyd-Warshall sweep, and BFS, DFS and
 //!    Dijkstra on the same digraph for scale;
 //! 4. all pairs by `n` Bellman-Fords (one per target) against
-//!    Floyd-Warshall, and `n` Dijkstras when no arc is negative.
+//!    Floyd-Warshall, Johnson (one Bellman-Ford and `n` Dijkstras), and
+//!    `n` plain Dijkstras when no arc is negative.
 //!
 //! Timings exclude parsing, building the representation and its transpose
 //! (built once, like the representation) and writing. Every cell has a
@@ -28,10 +29,10 @@ use crate::rng::SplitMix64;
 use crate::ui::{self, Ui};
 use anyhow::{Context, Result};
 use graphman::algo::{
-    AllPairs, Control, DfsKind, FloydError, FrontierKind, HeapFrontier, MeasuredSchedule, Schedule,
-    ScheduleCounts, ScheduleKind, ShortestPathTree, Start, SweepKind, bellman_ford,
-    bellman_ford_to_into, dijkstra_into, floyd_warshall, floyd_warshall_with_progress,
-    negative_cycle, weight_stats,
+    AllPairs, Control, DfsKind, FloydError, FrontierKind, HeapFrontier, MeasuredSchedule,
+    Reweighted, Schedule, ScheduleCounts, ScheduleKind, ShortestPathTree, Start, SweepKind,
+    bellman_ford, bellman_ford_to_into, dijkstra_into, floyd_warshall,
+    floyd_warshall_with_progress, negative_cycle, potentials, weight_stats,
 };
 use graphman::{AnyGraph, Build, MemoryBudget, Vertex, Weight, dispatch};
 use std::fmt::Write as _;
@@ -341,6 +342,11 @@ fn question_four(
     }
     show(ui, &dijkstra);
     all.push(dijkstra);
+    let bar = ui.progress(None, "johnson: potentials, then dijkstra from every source");
+    let johnson = time_all_sources(graph, runs, budget, AllPairsKind::Johnson, &|| bar.inc(1));
+    bar.finish_and_clear();
+    show(ui, &johnson);
+    all.push(johnson);
     all
 }
 
@@ -606,6 +612,9 @@ enum AllPairsKind {
     BellmanFord,
     /// One Dijkstra (heap) from each source.
     Dijkstra,
+    /// Johnson: the potentials (one Bellman-Ford from everywhere), then one
+    /// Dijkstra (heap) from each source on the reweighted view.
+    Johnson,
 }
 
 /// All pairs by one single-source run per vertex, `runs` times. When the
@@ -623,6 +632,7 @@ fn time_all_sources(
     let (algorithm, variant) = match kind {
         AllPairsKind::BellmanFord => ("bellman-ford-all", "queue"),
         AllPairsKind::Dijkstra => ("dijkstra-all", "heap"),
+        AllPairsKind::Johnson => ("johnson", "heap"),
     };
     let mut timing = cell(algorithm, variant, runs, budget.as_secs_f64());
     let deadline = Instant::now() + budget;
@@ -634,8 +644,26 @@ fn time_all_sources(
     let (mut scans, mut lowered, mut targets) = (0usize, 0usize, 0usize);
     'runs: for _ in 0..runs {
         let start = Instant::now();
+        // Johnson's potentials are part of its time.
+        let h = match kind {
+            AllPairsKind::Johnson => {
+                match dispatch!(graph, g => potentials(g, ScheduleKind::Queue)) {
+                    Ok(h) => h,
+                    Err(cycle) => {
+                        timing.note = Some(format!("stops at a {cycle}"));
+                        samples.push(start.elapsed().as_secs_f64() * 1000.0);
+                        continue;
+                    }
+                }
+            }
+            _ => Vec::new(),
+        };
         for v in 1..=n as Vertex {
             match kind {
+                AllPairsKind::Johnson => {
+                    dispatch!(graph, g => dijkstra_into(&Reweighted::new(g, &h), v, &mut frontier, &mut tree, &mut ()))
+                        .expect("reweighted arcs are non-negative");
+                }
                 AllPairsKind::BellmanFord => {
                     let result = dispatch!(graph, g => bellman_ford_to_into(g, v, &mut schedule, &mut tree, &mut ()));
                     cycles += usize::from(result.is_err());
