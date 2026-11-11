@@ -149,6 +149,10 @@ interface Pending {
   memory: Memory;
   /** The wasm edge list; `build` consumes it, so it is used exactly once. */
   parsed: Parsed;
+  /** The file itself, to read it again with the other orientation. */
+  source: Uint8Array;
+  /** Whether its lines were read as arcs. */
+  directed: boolean;
   /** A names file that came with the graph, read once the graph is built. */
   names: NamesFile | null;
 }
@@ -182,7 +186,9 @@ interface GraphMeta {
   name: string;
   bytes: number;
   vertices: number;
+  /** Arcs when `directed`. */
   edges: number;
+  directed: boolean;
   selfLoops: number;
   duplicates: number;
   /** The storage strategy backing the graph; switched from the memory panel. */
@@ -269,6 +275,12 @@ type DfsName = 'iterative' | 'recursive';
     the timeline, exactly like a BFS level, and the level chart, the arrow
     keys and the colour ramp work on it unchanged. */
 const BANDS = 12;
+
+/** Greatest common divisor. */
+function gcd(a: number, b: number): number {
+  while (b) [a, b] = [b, a % b];
+  return a;
+}
 
 function distanceBands(
   distances: Float64Array,
@@ -1337,6 +1349,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           bytes: waiting.bytes,
           vertices: graph.vertexCount,
           edges: graph.edgeCount,
+          directed: graph.directed,
           selfLoops: graph.selfLoopsDropped,
           duplicates: graph.duplicatesDropped,
           representation: REPRESENTATIONS[graph.representation],
@@ -1429,6 +1442,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           parseMs,
           memory,
           parsed,
+          source: bytes,
+          directed,
           names,
         };
         setPending(waiting);
@@ -2497,7 +2512,9 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           stroke: style.getPropertyValue('--accent'),
           text: style.getPropertyValue('--accent'),
         };
-        const pill = (e: number, colors: typeof plain) => {
+        /** Where the pill of edge `e` goes: the middle of the edge, if it is
+            on screen and long enough to hold the pill between its discs. */
+        const box = (e: number) => {
           const u = edges[2 * e];
           const v = edges[2 * e + 1];
           const x1 = sx(u);
@@ -2506,11 +2523,13 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           const y2 = sy(v);
           const x = (x1 + x2) / 2;
           const y = (y1 + y2) / 2;
-          if (x < -30 || y < -30 || x > rect.width + 30 || y > rect.height + 30) return false;
-          const label = weightText[e];
-          const width = ctx.measureText(label).width + 8;
-          // Room for the pill between the two discs, or no label.
-          if (Math.hypot(x2 - x1, y2 - y1) < width + 28) return false;
+          if (x < -30 || y < -30 || x > rect.width + 30 || y > rect.height + 30) return null;
+          const width = ctx.measureText(weightText[e]).width + 8;
+          if (Math.hypot(x2 - x1, y2 - y1) < width + 28) return null;
+          return { e, x, y, width };
+        };
+        type Box = NonNullable<ReturnType<typeof box>>;
+        const paint = ({ e, x, y, width }: Box, colors: typeof plain) => {
           ctx.beginPath();
           ctx.roundRect(x - width / 2, y - 7.5, width, 15, 4);
           ctx.fillStyle = background;
@@ -2523,7 +2542,27 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           ctx.lineWidth = 1;
           ctx.stroke();
           ctx.fillStyle = colors.text;
-          ctx.fillText(label, x, y + 0.5);
+          ctx.fillText(weightText[e], x, y + 0.5);
+        };
+        // Labels never overlap: each pill claims the cells of a coarse
+        // screen grid it covers (with a margin), and a pill whose cells are
+        // taken is not drawn. Zoomed out, a readable sample of the weights
+        // shows; zooming in makes room for the rest.
+        const CELL = 6;
+        const cols = Math.ceil(rect.width / CELL) + 2;
+        const rows = Math.ceil(rect.height / CELL) + 2;
+        const taken = new Uint8Array(cols * rows);
+        const claim = ({ x, y, width }: Box, force: boolean) => {
+          const c0 = Math.max(0, Math.floor((x - width / 2 - 2) / CELL));
+          const c1 = Math.min(cols - 1, Math.floor((x + width / 2 + 2) / CELL));
+          const r0 = Math.max(0, Math.floor((y - 9.5) / CELL));
+          const r1 = Math.min(rows - 1, Math.floor((y + 9.5) / CELL));
+          if (!force) {
+            for (let r = r0; r <= r1; r++) {
+              for (let c = c0; c <= c1; c++) if (taken[r * cols + c]) return false;
+            }
+          }
+          for (let r = r0; r <= r1; r++) taken.fill(1, r * cols + c0, r * cols + c1 + 1);
           return true;
         };
         const selectedVertex = selectedRef.current;
@@ -2538,18 +2577,36 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           const rank = run.ranks[child];
           return rank !== UNREACHED && rank <= revealed;
         };
-        const mine: number[] = [];
-        let drawn = 0;
-        for (let e = 0; e < weights.length; e++) {
+        // The blue ones claim their room first, then the rest in a scrambled
+        // order (a fixed step coprime with the count), so the sample that
+        // fits spreads over the whole picture instead of the first edges.
+        const mine: Box[] = [];
+        const m = weights.length;
+        for (let e = 0; e < m; e++) {
           const u = edges[2 * e];
           const v = edges[2 * e + 1];
           if ((selectedVertex && (u === selectedVertex || v === selectedVertex)) || used(u, v)) {
-            mine.push(e);
-          } else if (drawn < 1500 && pill(e, plain)) {
-            drawn += 1;
+            const b = box(e);
+            if (b) {
+              claim(b, true);
+              mine.push(b);
+            }
           }
         }
-        for (const e of mine) pill(e, chosen);
+        let step = 7919 % Math.max(m, 1) || 1;
+        while (m > 1 && gcd(step, m) !== 1) step += 1;
+        const shown: Box[] = [];
+        for (let k = 0, e = 0; k < m && shown.length < 1500; k++, e = (e + step) % m) {
+          const u = edges[2 * e];
+          const v = edges[2 * e + 1];
+          if ((selectedVertex && (u === selectedVertex || v === selectedVertex)) || used(u, v)) {
+            continue;
+          }
+          const b = box(e);
+          if (b && claim(b, false)) shown.push(b);
+        }
+        for (const b of shown) paint(b, plain);
+        for (const b of mine) paint(b, chosen);
       }
 
       const radius = Math.min(12, Math.max(1.5, 3.5 * Math.sqrt(camera.zoom)));
@@ -2709,6 +2766,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         bytes: bytes.byteLength,
         vertices: parsed.vertexCount,
         edges: parsed.edgeCount,
+        source: bytes,
+        directed: false,
         parseMs: 0,
         memory: readMemory(parsed.memoryReport()),
         parsed,
@@ -3073,7 +3132,10 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                   <>
                     <div className={styles.tiles}>
                       <Tile label={t.vertices} value={formatInt(meta.vertices)} />
-                      <Tile label={t.edges} value={formatInt(meta.edges)} />
+                      <Tile
+                        label={meta.directed ? t.arcs : t.edges}
+                        value={formatInt(meta.edges)}
+                      />
                       <Tile
                         label={t.components}
                         value={formatInt(meta.components)}
@@ -3608,6 +3670,9 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                   pending={pending}
                   leaving={status.kind === 'parsing'}
                   onChoose={(which) => void openPending(pending, which)}
+                  onDirected={(directed) =>
+                    void parseBytes(pending.name, pending.source, pending.names, directed)
+                  }
                 />
               ) : (
                 <div className={styles.dropCard}>
@@ -5179,12 +5244,15 @@ function RepresentationPicker({
   pending,
   leaving,
   onChoose,
+  onDirected,
 }: {
   t: Strings;
   pending: Pending;
   /** A strategy was picked and is being built: the card eases out. */
   leaving: boolean;
   onChoose: (which: Repr) => void;
+  /** The file read again with the other orientation (the format cannot say). */
+  onDirected: (directed: boolean) => void;
 }) {
   const { memory } = pending;
   return (
@@ -5194,10 +5262,22 @@ function RepresentationPicker({
           {pending.name}
         </span>
         <span className={styles.pickMeta}>
-          {t.memory.parsed(formatCompact(pending.vertices), formatCompact(pending.edges))} ·{' '}
-          {t.parsedIn(formatMs(pending.parseMs))}
+          {t.memory.parsed(
+            formatCompact(pending.vertices),
+            formatCompact(pending.edges),
+            pending.directed,
+          )}{' '}
+          · {t.parsedIn(formatMs(pending.parseMs))}
         </span>
       </div>
+      <Choice
+        label={t.orientation}
+        options={['undirected', 'directed'] as const}
+        value={pending.directed ? 'directed' : 'undirected'}
+        onChange={(which) => onDirected(which === 'directed')}
+        names={t.orientations}
+        hints={t.orientationHints}
+      />
       <p className={styles.pickTitle}>{t.memory.choose}</p>
       <div className={styles.reprCards} role="radiogroup" aria-label={t.memory.choose}>
         {REPRESENTATIONS.map((which) => (
@@ -5357,7 +5437,7 @@ function ComponentsView({
             hint={t.ofGraph(((size / total) * 100).toFixed(size === total ? 0 : 1))}
           />
           <Tile
-            label={t.edges}
+            label={meta.directed ? t.arcs : t.edges}
             value={formatInt(edges)}
             hint={t.ofEdges(
               ((edges / Math.max(meta.edges, 1)) * 100).toFixed(edges === meta.edges ? 0 : 1),

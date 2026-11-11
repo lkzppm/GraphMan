@@ -556,6 +556,13 @@ export const en = {
     parsedIn: (time: string) => `parsed in ${time}`,
     vertices: 'Vertices',
     edges: 'Edges',
+    arcs: 'Arcs',
+    orientation: 'Lines are',
+    orientations: { undirected: 'Edges', directed: 'Arcs' },
+    orientationHints: {
+      undirected: 'each line u v is the edge between u and v, both ways',
+      directed: 'each line u v is the arc from u to v: a directed graph',
+    },
     components: 'Components',
     browseComponents: 'Browse the components',
     meanDegree: 'Mean degree',
@@ -565,7 +572,8 @@ export const en = {
       title: 'Memory',
       open: 'Change the representation',
       choose: 'How should it be stored?',
-      parsed: (vertices: string, edges: string) => `${vertices} vertices, ${edges} edges`,
+      parsed: (vertices: string, edges: string, directed = false) =>
+        `${vertices} vertices, ${edges} ${directed ? 'arcs' : 'edges'}`,
       names: { list: 'Adjacency list', matrix: 'Bit matrix', csr: 'CSR' },
       hints: {
         list: 'one neighbour vector per vertex',

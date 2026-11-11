@@ -557,6 +557,13 @@ export const pt: Dictionary = {
     parsedIn: (time: string) => `lido em ${time}`,
     vertices: 'Vértices',
     edges: 'Arestas',
+    arcs: 'Arcos',
+    orientation: 'As linhas são',
+    orientations: { undirected: 'Arestas', directed: 'Arcos' },
+    orientationHints: {
+      undirected: 'cada linha u v é a aresta entre u e v, nos dois sentidos',
+      directed: 'cada linha u v é o arco de u para v: um grafo direcionado',
+    },
     components: 'Componentes',
     browseComponents: 'Navegar pelas componentes',
     meanDegree: 'Grau médio',
@@ -566,7 +573,8 @@ export const pt: Dictionary = {
       title: 'Memória',
       open: 'Trocar a representação',
       choose: 'Como guardar o grafo?',
-      parsed: (vertices: string, edges: string) => `${vertices} vértices, ${edges} arestas`,
+      parsed: (vertices: string, edges: string, directed = false) =>
+        `${vertices} vértices, ${edges} ${directed ? 'arcos' : 'arestas'}`,
       names: { list: 'Lista de adjacência', matrix: 'Matriz de bits', csr: 'CSR' },
       hints: {
         list: 'um vetor de vizinhos por vértice',
