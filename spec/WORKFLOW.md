@@ -108,6 +108,49 @@ Results go to `studies/weighted/<name>.json`, merged into
 `studies/weighted/results.json` and a "Part 2" block of `studies/RESULTS.md`.
 A file with a negative weight records the library's refusal instead.
 
+## Directed graphs (Part 3)
+
+The Part 3 files are not published yet (see `spec/ASSIGNMENT.md`). Any
+weighted file can be read as a digraph with `--directed` (`-D`): each line
+`u v w` is the arc from `u` to `v`. The mechanisms:
+
+```
+graphman bellman-ford G -D --to 100 --from 10 20 30 --schedule queue   # tree file + paths
+graphman bellman-ford G -D --negative-cycle                            # the whole graph
+graphman floyd-warshall G -D --pairs 10 20 30 40 50 --sweep parallel    # the 5 × 5 table
+```
+
+The study runner answers the four Part 3 questions (`--directed` selects
+the Part 3 sections by default; `--only` picks some):
+
+```
+./target/release/graphman study graphs/<file>.txt --directed --out studies \
+    --part3-budget 600 --apsp-budget 900
+```
+
+- `bellman-ford`: one queue Bellman-Ford to `--target` (100) on the
+  transpose, the distance and path from each of `--sources` (10,20,30),
+  and the negative-cycle verdicts (to the target, and anywhere).
+- `floyd-warshall`: the table of `--pairs-of` (10,...,50) by the parallel
+  sweep; when the `n × n` table does not fit, one Bellman-Ford per row, and
+  the table says so.
+- `timings`: the mean of `--repeats` (10) runs, in seconds, of every
+  `--schedules` (all six) and `--sweeps` (all four), and BFS, DFS and
+  Dijkstra (heap) for scale. Each cell has `--part3-budget` seconds; the
+  textbook `rounds` cut short is scaled from its passes, Floyd-Warshall
+  from its rounds, and a Floyd-Warshall whose table does not fit is timed
+  on a 1024-vertex random digraph of the same mean out-degree and scaled
+  by `(n / 1024)³`.
+- `all-pairs`: Bellman-Ford to every target (queue) against Floyd-Warshall
+  (the `timings` cells of `pruned` and `parallel`) and Dijkstra from every
+  source when no arc is negative. `--apsp-budget` per cell; the targets
+  done are scaled to `n` when it runs out. The Markdown states which was
+  faster and the measured scans per vertex behind the answer.
+
+Results go to `studies/directed/<name>.json`, merged into
+`studies/directed/results.json` and a "Part 3" block of
+`studies/RESULTS.md`. The transpose is built once and not timed.
+
 ## The DBLP collaboration network (monthly)
 
 `.github/workflows/dblp.yml` runs on the 6th of every month and on demand

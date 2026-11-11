@@ -59,7 +59,7 @@ enum Command {
     /// The DBLP XML dump as the course's collaboration network (weighted edge list + names).
     Dblp(commands::dblp::Args),
     /// Run the whole case study and write JSON + Markdown results.
-    Study(commands::study::Args),
+    Study(Box<commands::study::Args>),
 }
 
 fn main() -> Result<()> {
@@ -84,6 +84,6 @@ fn main() -> Result<()> {
         Command::Generate(args) => commands::generate::run(args, &ui),
         Command::Memory(args) => commands::memory::run(args, &ui),
         Command::Dblp(args) => commands::dblp::run(args, &ui),
-        Command::Study(args) => commands::study::run(args, &ui),
+        Command::Study(args) => commands::study::run(*args, &ui),
     }
 }

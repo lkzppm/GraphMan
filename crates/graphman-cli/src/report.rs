@@ -1,6 +1,8 @@
 //! Serialisable results of benchmarks and case studies.
 
-use graphman::algo::{DegreeStats, DiameterMethod, FrontierKind, WeightStats};
+use graphman::algo::{
+    DegreeStats, DiameterMethod, FrontierKind, NegativeCycle, ScheduleCounts, WeightStats,
+};
 use graphman::{Representation, Vertex, Weight, WeightedEdge};
 use serde::{Deserialize, Serialize};
 
@@ -311,6 +313,97 @@ pub struct WeightedStudy {
     /// `None` until the `frontier-memory` section has run.
     #[serde(default)]
     pub memory: Option<MemoryStudy>,
+    pub machine: MachineInfo,
+    pub generated_at_unix: u64,
+}
+
+/// One cell of a Part 3 timing table: the mean of the runs that finished
+/// within the budget, or why there is none (a refusal, or an estimate from
+/// the run the budget cut short).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlgorithmTiming {
+    /// `bellman-ford`, `floyd-warshall`, `bfs`, `dfs`, `dijkstra`, or for
+    /// all pairs `bellman-ford-all`, `dijkstra-all`.
+    pub algorithm: String,
+    /// The schedule, sweep or frontier (`queue`, `blocked`, `heap`...).
+    pub variant: String,
+    pub requested_runs: usize,
+    pub budget_s: f64,
+    /// The runs that finished; `None` when none did.
+    pub timing: Option<Timing>,
+    pub budget_exhausted: bool,
+    /// When no run finished: the time a whole run would take at the pace of
+    /// the one cut short (rounds done, or targets done, scaled to all).
+    pub estimated_ms: Option<f64>,
+    /// Why the cell was not measured (the table does not fit, Dijkstra
+    /// refuses a negative arc).
+    pub refusal: Option<String>,
+    /// Bellman-Ford's work in its last finished run (for all pairs, the mean
+    /// of one target's run).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counts: Option<ScheduleCounts>,
+    /// Set when the run stopped at a negative cycle instead of answering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+impl AlgorithmTiming {
+    /// The mean of the finished runs, or the estimate when none finished.
+    pub fn mean_or_estimate_ms(&self) -> Option<f64> {
+        self.timing
+            .as_ref()
+            .map(|t| t.mean_ms)
+            .or(self.estimated_ms)
+    }
+}
+
+/// Part 3, question 2: the distances between the pairs of a few vertices.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairsAnswer {
+    pub vertices: Vec<Vertex>,
+    /// `distances[a][b]` from `vertices[a]` to `vertices[b]`; `None` when unreachable.
+    pub distances: Vec<Vec<Option<Weight>>>,
+    /// The algorithm that produced the table: `floyd-warshall`, or
+    /// `bellman-ford` (one run per row) when the all-pairs table does not fit.
+    pub method: String,
+    /// Bytes Floyd-Warshall's tables need for this graph.
+    pub table_bytes: usize,
+    /// Why Floyd-Warshall did not run, when it did not.
+    pub refusal: Option<String>,
+    /// The negative cycle that leaves the distances undefined, if any.
+    pub negative_cycle: Option<NegativeCycle>,
+}
+
+/// Everything the Part 3 case study measures for one graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DirectedStudy {
+    pub name: String,
+    pub file: String,
+    pub directed: bool,
+    pub vertices: usize,
+    /// Arcs when directed, edges otherwise.
+    pub edges: usize,
+    pub self_loops_dropped: usize,
+    pub duplicates_dropped: usize,
+    pub negative_loops: usize,
+    pub parse_ms: f64,
+    pub weights: Option<WeightStats>,
+    pub representation: Representation,
+    /// Question 1: the target and the paths to it.
+    pub target: Vertex,
+    pub paths: Vec<PathAnswer>,
+    /// Bellman-Ford's work for question 1 (queue schedule).
+    pub counts: Option<ScheduleCounts>,
+    /// A negative cycle from which the target is reached (question 1 has no answer then).
+    pub cycle_to_target: Option<NegativeCycle>,
+    /// Whether the whole graph has a negative cycle, and one if so.
+    pub cycle_anywhere: Option<NegativeCycle>,
+    /// Question 2.
+    pub pairs: Option<PairsAnswer>,
+    /// Question 3: mean times per algorithm and variant.
+    pub timings: Vec<AlgorithmTiming>,
+    /// Question 4: all pairs by `n` Bellman-Fords, Floyd-Warshall and `n` Dijkstras.
+    pub all_pairs: Vec<AlgorithmTiming>,
     pub machine: MachineInfo,
     pub generated_at_unix: u64,
 }
