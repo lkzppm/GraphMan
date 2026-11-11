@@ -85,6 +85,16 @@ export const pt: Dictionary = {
 
   library: {
     contents: 'Conteúdo',
+    parts: {
+      library: {
+        title: 'A biblioteca',
+        body: 'Como ela é feita: o formato que lê, as representações em que guarda um grafo, a direção e os pesos como dados, os visitantes que as buscas avisam, os nomes, os cortes, o limite de memória e a linha de comando.',
+      },
+      algorithms: {
+        title: 'Algoritmos',
+        body: 'Todos os algoritmos, cada um escrito uma vez e genérico na representação: as buscas, distâncias, componentes e o diâmetro, o Dijkstra sobre suas filas de prioridade, o Bellman-Ford sobre suas ordens, o Floyd-Warshall sobre suas varreduras, o Johnson e as componentes fortes.',
+      },
+    },
     copy: 'Copiar',
     copied: 'Copiado',
     chapters: {
@@ -138,6 +148,11 @@ export const pt: Dictionary = {
         legend:
           'as pontas 1 e 5 em destaque, um caminho mais curto mais longo em azul: o diâmetro é 2',
       },
+      direction: {
+        title: 'Direção',
+        body: 'A direção é um dado, não um tipo: o mesmo arquivo lido com Orientation::Directed faz de cada linha u v o arco u → v, e toda representação guarda cada arco uma vez, na linha da sua cauda. Graph::is_directed diz qual é; neighbors são os vizinhos de saída, então BFS, DFS e Dijkstra seguem os arcos sem mudar nada. O que precisa dos arcos de entrada (um caminho mínimo até um alvo, os arcos que chegam a um vértice) roda sobre Build::transpose, construído uma vez em O(n + m) por uma ordenação por contagem, e um grafo não direcionado é o seu próprio transposto. Um laço negativo fica ao lado da adjacência: é um ciclo negativo de um arco.',
+        legend: 'a amostra lida como arcos: dois negativos, um ciclo 2 → 4 → 5 → 3 → 2',
+      },
       weights: {
         title: 'Pesos',
         body: 'Uma terceira coluna torna o grafo ponderado: o parser decide na primeira linha de aresta e exige o mesmo de todas as outras. Um peso é qualquer real finito, negativos inclusive. Os pesos ficam numa coluna ao lado da adjacência, nunca dentro dela: a CSR guarda um vetor paralelo aos alvos, a lista uma linha paralela por vértice, a matriz uma tabela de pesos ao lado do bitset. Graph::neighbors nunca lê a coluna, então BFS, DFS, componentes e diâmetro custam o mesmo de antes, e um arquivo sem pesos não guarda nenhum e responde 1 por aresta. Uma aresta repetida fica com o menor peso, o único que um caminho mínimo usaria.',
@@ -146,7 +161,7 @@ export const pt: Dictionary = {
       },
       dijkstra: {
         title: 'Dijkstra',
-        body: 'dijkstra devolve uma ShortestPathTree: a distância e o pai de cada vértice alcançado, a ordem em que foram fixados (por distância) e path_to; shortest_path responde um só par, parando assim que o alvo é fixado, com um Path que guarda a distância, os vértices e hops(), seu número de arestas. O algoritmo é escrito uma vez, como dijkstra_into sobre uma Frontier, a estrutura que guarda as estimativas de distância, escolhida em tempo de execução como a representação. O relaxamento é estrito e toda fila desempata pelo menor vértice, então todas constroem a mesma árvore. Um grafo com aresta negativa é recusado com NegativeWeight, cuja mensagem termina em "shortest paths with negative weights are not implemented yet": num grafo não direcionado, ir e voltar por uma aresta negativa deixa um caminho tão curto quanto se queira, então não há resposta a dar.',
+        body: 'dijkstra devolve uma ShortestPathTree: a distância e o pai de cada vértice alcançado, a ordem em que foram fixados (por distância) e path_to; shortest_path responde um só par, parando assim que o alvo é fixado, com um Path que guarda a distância, os vértices e hops(), seu número de arestas. O algoritmo é escrito uma vez, como dijkstra_into sobre uma Frontier, a estrutura que guarda as estimativas de distância, escolhida em tempo de execução como a representação. O relaxamento é estrito e toda fila desempata pelo menor vértice, então todas constroem a mesma árvore. Um grafo com peso negativo é recusado com NegativeWeight, cuja mensagem aponta para o Bellman-Ford: o Dijkstra fixa um vértice de vez, e um arco negativo achado depois ainda poderia baixá-lo.',
         bfs: 'BFS a partir de 1: o menor número de arestas, 1 → 3 → 5 pesa 3',
         dijkstra: 'Dijkstra a partir de 1: o caminho mais leve, 1 → 2 → 3 → 5 pesa 2,5',
       },
@@ -213,9 +228,60 @@ export const pt: Dictionary = {
         size: 'select(Ball, 1, 2) e induce: parado no tamanho, o 3 fica de fora',
         egonet: 'egonet(1, 1): o 1, seus vizinhos 2 e 3, e a aresta entre eles',
       },
+      bellman_ford: {
+        title: 'Bellman-Ford',
+        body: 'bellman_ford aceita pesos negativos. É escrito uma vez, como bellman_ford_into sobre uma Schedule (o próximo capítulo), e preenche a mesma ShortestPathTree do Dijkstra, então caminhos, arquivos e desenhos são os mesmos. bellman_ford_to responde à pergunta da disciplina, a distância de cada vértice até um alvo, pela mesma execução a partir do alvo no grafo transposto. Quando um ciclo negativo pode ser alcançado, não há caminho mínimo, e o erro não é um booleano mas o próprio ciclo (NegativeCycle: seus vértices a partir do menor, e seu peso), lido dos ponteiros de pai assim que um passeio de n arcos prova que ele existe. Num grafo não direcionado, uma aresta negativa percorrida ida e volta já é um ciclo assim.',
+        tree: 'Bellman-Ford a partir de 1: a árvore, cada distância ao lado do vértice',
+        cycle: 'com 5 → 3 em -1: o ciclo 2 → 4 → 5 → 3 → 2 pesa -2',
+      },
+      schedules: {
+        title: 'Ordens',
+        body: 'Uma Schedule diz qual vértice reexaminar em seguida e quando uma passada termina; uma ordem nova é uma Schedule nova, nunca um segundo Bellman-Ford. Toda ordem dá as mesmas distâncias, só o trabalho muda, e MeasuredSchedule o conta (vértices examinados, estimativas baixadas, passadas). A disciplina pede a versão do livro e suas duas otimizações; outras três precisam de menos passadas.',
+        table: [
+          ['Ordem', 'Qual vértice em seguida', 'Passadas'],
+          ['rounds', 'todo vértice, n - 1 vezes, e uma passada para confirmar', 'n'],
+          ['early-stop', 'todo vértice, até uma passada não mudar nada', '≤ n'],
+          ['queue', 'só os vértices cuja estimativa baixou, numa fila', '≤ n'],
+          ['yen', 'os vértices que baixaram, por número, subindo e descendo', '⌈n / 2⌉'],
+          ['random-yen', 'Yen numa ordem aleatória dos vértices', '≈ n / 3, em média'],
+          [
+            'slf',
+            'a fila como deque: um vértice mais perto que o da frente passa na frente',
+            '≤ n',
+          ],
+        ],
+      },
+      floyd_warshall: {
+        title: 'Floyd-Warshall',
+        body: 'floyd_warshall responde a todos os pares de uma vez. A recorrência D_k[i][j] = min(D_k−1[i][j], D_k−1[i][k] + D_k−1[k][j]) se lê como n + 1 tabelas, mas a rodada k nunca muda a linha k nem a coluna k, então uma só tabela n × n é atualizada no lugar: a otimização de memória que a disciplina pede. Os predecessores seguem a mesma regra, então a linha i da tabela é a árvore a partir de i, sem memória extra. A 12 bytes por célula, a tabela é orçada e recusada além do limite de memória, como a matriz (1,2 GB com 10 000 vértices). Um ciclo negativo aparece na diagonal e volta como o ciclo. FloydRounds roda a mesma tabela uma rodada por vez e diz quais células cada rodada baixou: o observatório a reproduz.',
+        matrix: 'D_n, a tabela depois de todas as rodadas: a linha 1 é a árvore a partir de 1',
+        table: [
+          ['Varredura', 'Como o laço triplo percorre a tabela'],
+          ['plain', 'para k, para i, para j na tabela plana, a linha k separada: a do livro'],
+          ['pruned', 'pula as linhas com D[i][k] = ∞: as primeiras rodadas tocam poucas linhas'],
+          [
+            'parallel',
+            'as linhas de uma rodada em todos os núcleos (independentes depois de ler a linha k)',
+          ],
+          [
+            'blocked',
+            'blocos que cabem no cache: o bloco da diagonal, sua linha e coluna, depois o resto',
+          ],
+        ],
+      },
+      johnson: {
+        title: 'Johnson',
+        body: 'johnson responde a todos os pares com n Dijkstras em vez de n³ atualizações. Um Bellman-Ford a partir de todos os vértices de uma vez dá potenciais h (h(v) = min(0, mínimo sobre u de d(u, v))); todo arco repesado para w + h(u) − h(v) é não negativo, então o Dijkstra, com qualquer fila, roda sobre a visão Reweighted como ela é, e cada distância é recuperada desfazendo os potenciais. Ele preenche a mesma tabela do Floyd-Warshall, no mesmo limite de memória, e num grafo esparso é o mais rápido dos dois.',
+        reweighted: 'a amostra repesada por h (ao lado de cada vértice): todo arco pelo menos 0',
+      },
+      strong_components: {
+        title: 'Componentes fortes',
+        body: 'StrongComponents::compute é o algoritmo de Tarjan com pilha explícita, O(n + m). As componentes são numeradas numa ordem topológica da condensação, então todo arco entre duas delas vai de um id menor a um maior; condensation constrói esse grafo acíclico, e topological_order ordena os vértices de um grafo acíclico. dag_shortest_path relaxa os arcos nessa ordem: caminhos mínimos em O(n + m) num grafo acíclico, com pesos negativos, já que sem ciclo não há ciclo negativo.',
+        legend: 'duas componentes fortes: {1} e o ciclo {2, 3, 4, 5}',
+      },
       cli: {
         title: 'A linha de comando',
-        body: 'O binário graphman embrulha a biblioteca: todo comando recebe um arquivo de grafo, um --repr (list, matrix ou csr) e escreve os arquivos de saída da disciplina. dijkstra escreve a árvore de caminhos mínimos e mostra os caminhos até os alvos. study roda o estudo de caso inteiro, das duas partes, e escreve JSON mais o RESULTS.md.',
+        body: 'O binário graphman embrulha a biblioteca: todo comando recebe um arquivo de grafo, um --repr (list, matrix ou csr) e escreve os arquivos de saída da disciplina. -D lê o arquivo como arcos. dijkstra e bellman-ford escrevem a árvore de caminhos mínimos e mostram os caminhos até os alvos; floyd-warshall e johnson respondem pares a partir de uma tabela de todos os pares; scc escreve as componentes fortes. study roda o estudo de caso inteiro, todas as partes, e escreve JSON mais o RESULTS.md.',
         flow: [
           'um grafo no formato da disciplina',
           'um comando',
@@ -227,6 +293,9 @@ export const pt: Dictionary = {
           'distâncias entre pares de vértices',
           'o diâmetro pelos limites de Takes-Kosters, desistindo após 60 s',
           'uma árvore de caminhos mínimos a partir de 10 com o heap, e os caminhos até 20 e 30',
+          'a distância de 10, 20 e 30 até 100 nos arcos, com a ordem de fila',
+          'todos os pares numa tabela, as distâncias entre 10 e 50, pela varredura em blocos',
+          'as componentes fortes de um grafo direcionado',
           'o estudo de caso de um grafo, em studies/',
         ],
       },

@@ -378,3 +378,171 @@ fn subgraphs() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(file, b"3\n1 2\n1 3\n2 3\n");
     Ok(())
 }
+
+// ---- Part 3: direction, Bellman-Ford, Floyd-Warshall, Johnson, SCC ----------
+//
+// The directed sample: the sample's six edges read as arcs, two of them
+// negative, around one cycle 2 → 4 → 5 → 3 → 2 of weight 1 (no negative
+// cycle). The page draws it with the sample's positions.
+
+#[test]
+fn direction() -> Result<(), Box<dyn std::error::Error>> {
+    // wiki:start direction
+    use graphman::{Build, Csr, EdgeList, Graph, Orientation};
+
+    // The same format, read as arcs: the line `u v w` is the arc u → v.
+    let text = b"5\n1 2 4\n1 3 2\n3 2 -1\n2 4 2\n4 5 -2\n5 3 2\n";
+    let arcs = EdgeList::parse_with(text, Orientation::Directed)?;
+    let graph = Csr::build(&arcs)?;
+    let directed = graph.is_directed(); // true
+    let out: Vec<_> = graph.neighbors(3).collect(); // [2]: neighbors are out-neighbours
+
+    // Whatever needs the in-arcs runs on the transpose, built once
+    // (an undirected graph is its own).
+    let reverse = graph.transpose()?;
+    let into: Vec<_> = reverse.neighbors(3).collect(); // [1, 5]
+    // wiki:end
+    assert!(directed);
+    assert_eq!(out, vec![2]);
+    assert_eq!(into, vec![1, 5]);
+    Ok(())
+}
+
+#[test]
+fn bellman_ford() -> Result<(), Box<dyn std::error::Error>> {
+    // wiki:start bellman_ford
+    use graphman::{Build, Csr, EdgeList, Orientation, algo, algo::ScheduleKind};
+
+    let text = b"5\n1 2 4\n1 3 2\n3 2 -1\n2 4 2\n4 5 -2\n5 3 2\n";
+    let graph = Csr::build(&EdgeList::parse_with(text, Orientation::Directed)?)?;
+
+    // Negative arcs are fine: 1 → 3 → 2 costs 2 - 1 = 1, less than 1 → 2.
+    let tree = algo::bellman_ford(&graph, 1, ScheduleKind::Queue)?;
+    let to_5 = tree.distance(5); // Some(1.0): 1 → 3 → 2 → 4 → 5
+    let path = tree.path_to(5); // Some([1, 3, 2, 4, 5])
+
+    // To one target from everywhere: the same run on the transpose.
+    let toward_5 = algo::bellman_ford_to(&graph, 5, ScheduleKind::Queue)?;
+    let from_3 = toward_5.distance(3); // Some(-1.0): 3 → 2 → 4 → 5
+
+    // Make 5 → 3 weigh -1 and the cycle 2 → 4 → 5 → 3 → 2 weighs -2:
+    // no shortest path exists, and the error is the cycle itself.
+    let worse = b"5\n1 2 4\n1 3 2\n3 2 -1\n2 4 2\n4 5 -2\n5 3 -1\n";
+    let graph = Csr::build(&EdgeList::parse_with(worse, Orientation::Directed)?)?;
+    let cycle = algo::bellman_ford(&graph, 1, ScheduleKind::Queue).unwrap_err();
+    let (around, weight) = (cycle.cycle, cycle.weight); // [2, 4, 5, 3], -2.0
+    // wiki:end
+    assert_eq!(to_5, Some(1.0));
+    assert_eq!(path, Some(vec![1, 3, 2, 4, 5]));
+    assert_eq!(from_3, Some(-1.0));
+    assert_eq!((around, weight), (vec![2, 4, 5, 3], -2.0));
+    Ok(())
+}
+
+#[test]
+fn schedules() -> Result<(), Box<dyn std::error::Error>> {
+    // wiki:start schedules
+    use graphman::algo::{MeasuredSchedule, ScheduleKind};
+    use graphman::{Build, Csr, EdgeList, Orientation, algo};
+
+    let text = b"5\n1 2 4\n1 3 2\n3 2 -1\n2 4 2\n4 5 -2\n5 3 2\n";
+    let graph = Csr::build(&EdgeList::parse_with(text, Orientation::Directed)?)?;
+
+    // One Bellman-Ford, many orders: a schedule says which vertex to
+    // re-examine next. Every one gives the same distances; the work differs.
+    let mut work = Vec::new();
+    for kind in [
+        ScheduleKind::Rounds,
+        ScheduleKind::EarlyStop,
+        ScheduleKind::Queue,
+    ] {
+        let mut measured = MeasuredSchedule::new(kind.schedule());
+        let tree = algo::bellman_ford_with(&graph, 1, &mut measured, &mut ())?;
+        work.push((kind, measured.counts().scans, tree.distance(5)));
+    }
+    // Rounds: n - 1 passes over every vertex, then one to confirm;
+    // early stop: until a pass changes nothing; queue: only what went down.
+    // wiki:end
+    let scans: Vec<usize> = work.iter().map(|w| w.1).collect();
+    assert!(work.iter().all(|w| w.2 == Some(1.0)));
+    assert!(scans[0] >= scans[1] && scans[1] >= scans[2], "{scans:?}");
+    Ok(())
+}
+
+#[test]
+fn floyd_warshall() -> Result<(), Box<dyn std::error::Error>> {
+    // wiki:start floyd_warshall
+    use graphman::algo::{FloydRounds, SweepKind};
+    use graphman::{Build, Csr, EdgeList, MemoryBudget, Orientation, algo};
+
+    let text = b"5\n1 2 4\n1 3 2\n3 2 -1\n2 4 2\n4 5 -2\n5 3 2\n";
+    let graph = Csr::build(&EdgeList::parse_with(text, Orientation::Directed)?)?;
+
+    // Every pair at once, in one n × n table updated in place: 12 bytes a
+    // cell, priced and refused past the budget like the matrix.
+    let all = algo::floyd_warshall(&graph, SweepKind::Plain, MemoryBudget::Machine)?;
+    let d = all.distance(4, 2); // Some(-1.0): 4 → 5 → 3 → 2
+    let path = all.path(4, 2); // Some([4, 5, 3, 2])
+    let row = all.tree(1); // row 1 is the tree from 1, no extra memory
+
+    // The same run one round at a time: D_k after each k, and what changed.
+    let mut rounds = FloydRounds::new(&graph, MemoryBudget::Machine)?;
+    let mut lowered = Vec::new();
+    rounds.step(&mut lowered)?; // k = 1: nothing goes through 1 (no arc enters it)
+    let first = lowered.len(); // 0
+    // wiki:end
+    assert_eq!(d, Some(-1.0));
+    assert_eq!(path, Some(vec![4, 5, 3, 2]));
+    assert_eq!(row.distance(5), Some(1.0));
+    assert_eq!(first, 0);
+    Ok(())
+}
+
+#[test]
+fn johnson() -> Result<(), Box<dyn std::error::Error>> {
+    // wiki:start johnson
+    use graphman::algo::ScheduleKind;
+    use graphman::{Build, Csr, EdgeList, FrontierKind, MemoryBudget, Orientation, algo};
+
+    let text = b"5\n1 2 4\n1 3 2\n3 2 -1\n2 4 2\n4 5 -2\n5 3 2\n";
+    let graph = Csr::build(&EdgeList::parse_with(text, Orientation::Directed)?)?;
+
+    // One Bellman-Ford from everywhere gives potentials h; every arc
+    // reweighted to w + h(u) - h(v) is non-negative, so n Dijkstras finish.
+    let h = algo::potentials(&graph, ScheduleKind::Queue)?; // h[2] = -1, h[5] = -2
+    let all = algo::johnson(&graph, FrontierKind::Heap, MemoryBudget::Machine)?;
+    let d = all.distance(4, 2); // Some(-1.0), as Floyd-Warshall
+    // wiki:end
+    assert_eq!((h[2], h[5]), (-1.0, -2.0));
+    assert_eq!(d, Some(-1.0));
+    Ok(())
+}
+
+#[test]
+fn strong_components() -> Result<(), Box<dyn std::error::Error>> {
+    // wiki:start strong_components
+    use graphman::algo::StrongComponents;
+    use graphman::{Build, Csr, EdgeList, Orientation, algo};
+
+    let text = b"5\n1 2 4\n1 3 2\n3 2 -1\n2 4 2\n4 5 -2\n5 3 2\n";
+    let graph = Csr::build(&EdgeList::parse_with(text, Orientation::Directed)?)?;
+
+    // Iterative Tarjan, numbered in a topological order of the condensation.
+    let scc = StrongComponents::compute(&graph);
+    let count = scc.count(); // 2: {1} and the cycle {2, 3, 4, 5}
+    let cycle = scc.members(scc.component_of(2)); // [2, 3, 4, 5]
+    let order = scc.topological_order(); // None: there is a cycle
+
+    // Without the arc 5 → 3 the graph is acyclic, and a topological order
+    // gives shortest paths in O(n + m), negative arcs and all.
+    let dag = b"5\n1 2 4\n1 3 2\n3 2 -1\n2 4 2\n4 5 -2\n";
+    let graph = Csr::build(&EdgeList::parse_with(dag, Orientation::Directed)?)?;
+    let tree = algo::dag_shortest_path(&graph, 1)?;
+    let to_5 = tree.distance(5); // Some(1.0)
+    // wiki:end
+    assert_eq!(count, 2);
+    assert_eq!(cycle, &[2, 3, 4, 5]);
+    assert_eq!(order, None);
+    assert_eq!(to_5, Some(1.0));
+    Ok(())
+}

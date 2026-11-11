@@ -88,6 +88,16 @@ export const en = {
   // words live here.
   library: {
     contents: 'Contents',
+    parts: {
+      library: {
+        title: 'The library',
+        body: 'How it is built: the format it reads, the representations it stores a graph in, direction and weights as data, the visitors searches report to, names, cuts, the memory budget and the command line.',
+      },
+      algorithms: {
+        title: 'Algorithms',
+        body: 'Every algorithm, each written once and generic over the representation: the searches, distances, components and the diameter, Dijkstra over its priority queues, Bellman-Ford over its schedules, Floyd-Warshall over its sweeps, Johnson and the strong components.',
+      },
+    },
     copy: 'Copy',
     copied: 'Copied',
     chapters: {
@@ -140,6 +150,11 @@ export const en = {
         body: 'Four strategies share one driver that walks the components from largest to smallest and skips any too small to beat the best value found. Exact is one BFS per vertex; iFUB (Crescenzi et al., 2013) and the Takes-Kosters bounds (2011) are exact with far fewer searches on real graphs; the 4-sweep is a cheap lower bound. Every run can be cancelled through a progress callback and then reports its best bound, flagged as not exact.',
         legend: 'the endpoints 1 and 5 ringed, a longest shortest path in blue: the diameter is 2',
       },
+      direction: {
+        title: 'Direction',
+        body: "Direction is data, not a type: the same file read with Orientation::Directed makes each line u v the arc u → v, and every representation stores each arc once, in its tail's row. Graph::is_directed says which; neighbors means the out-neighbours, so BFS, DFS and Dijkstra follow the arcs unchanged. Whatever needs the in-arcs (a shortest path to one target, the arcs into a vertex) runs on Build::transpose, built once in O(n + m) by a counting sort, and an undirected graph is its own transpose. A negative self-loop is kept beside the adjacency: it is a negative cycle of one arc.",
+        legend: 'the sample read as arcs: two negative, one cycle 2 → 4 → 5 → 3 → 2',
+      },
       weights: {
         title: 'Weights',
         body: 'A third column makes a graph weighted: the parser decides on the first edge line and holds every other line to it. A weight is any finite real, negatives included. Weights live in a column beside the adjacency, never inside it: CSR keeps an array parallel to its targets, the list a parallel row per vertex, the matrix a weight table beside its bitset. Graph::neighbors never reads the column, so BFS, DFS, components and the diameter cost what they did, and a file without weights stores none and answers 1 per edge. A repeated edge keeps its smallest weight, the only one a shortest path would use.',
@@ -148,7 +163,7 @@ export const en = {
       },
       dijkstra: {
         title: 'Dijkstra',
-        body: 'dijkstra returns a ShortestPathTree: the distance and parent of every reached vertex, the settle order (by distance) and path_to; shortest_path answers one pair, stopping as soon as the target is settled, with a Path that holds the distance, the vertices and hops(), its number of edges. It is written once, as dijkstra_into over a Frontier, the structure that keeps the distance estimates, chosen at runtime like the representation. Relaxation is strict and every frontier breaks ties on the smaller vertex, so all of them build the same tree. A graph with a negative edge is refused with NegativeWeight, whose message ends "shortest paths with negative weights are not implemented yet": in an undirected graph, walking one negative edge back and forth makes a path as short as one likes, so there is no answer to give.',
+        body: 'dijkstra returns a ShortestPathTree: the distance and parent of every reached vertex, the settle order (by distance) and path_to; shortest_path answers one pair, stopping as soon as the target is settled, with a Path that holds the distance, the vertices and hops(), its number of edges. It is written once, as dijkstra_into over a Frontier, the structure that keeps the distance estimates, chosen at runtime like the representation. Relaxation is strict and every frontier breaks ties on the smaller vertex, so all of them build the same tree. A graph with a negative weight is refused with NegativeWeight, whose message points to Bellman-Ford: Dijkstra settles a vertex for good, and a negative arc found later could still lower it.',
         bfs: 'BFS from 1: the fewest edges, 1 → 3 → 5 weighs 3',
         dijkstra: 'Dijkstra from 1: the lightest path, 1 → 2 → 3 → 5 weighs 2.5',
       },
@@ -215,9 +230,56 @@ export const en = {
         size: 'select(Ball, 1, 2) and induce: stopped at the size, 3 is left out',
         egonet: 'egonet(1, 1): 1, its neighbours 2 and 3, and the edge between them',
       },
+      bellman_ford: {
+        title: 'Bellman-Ford',
+        body: "bellman_ford takes negative weights. It is written once, as bellman_ford_into over a Schedule (the next chapter), and fills the same ShortestPathTree as Dijkstra, so paths, files and drawings are shared. bellman_ford_to answers the course's question, every vertex's distance to one target, by the same run from the target on the transpose. When a negative cycle can be reached, there is no shortest path, and the error is not a boolean but the cycle itself (NegativeCycle: its vertices from the smallest, and its weight), read off the parent pointers once a walk of n arcs proves there is one. On an undirected graph a negative edge walked back and forth is already such a cycle.",
+        tree: 'Bellman-Ford from 1: the tree, each distance beside its vertex',
+        cycle: 'with 5 → 3 at -1: the cycle 2 → 4 → 5 → 3 → 2 weighs -2',
+      },
+      schedules: {
+        title: 'Schedules',
+        body: 'A Schedule says which vertex to re-examine next and when a pass ends; a new order is a new Schedule, never a second Bellman-Ford. Every schedule gives the same distances, only the work differs, and MeasuredSchedule counts it (scans, lowered estimates, passes). The course asks for the textbook and its two optimisations; three more need fewer passes.',
+        table: [
+          ['Schedule', 'Which vertex next', 'Passes'],
+          ['rounds', 'every vertex, n - 1 times, then a pass to confirm', 'n'],
+          ['early-stop', 'every vertex, until a pass changes nothing', '≤ n'],
+          ['queue', 'only the vertices whose estimate went down, first in, first out', '≤ n'],
+          ['yen', 'the lowered vertices by number, up then down', '⌈n / 2⌉'],
+          ['random-yen', 'Yen over a random order of the vertices', '≈ n / 3, expected'],
+          ['slf', 'the queue as a deque: a vertex closer than the front goes first', '≤ n'],
+        ],
+      },
+      floyd_warshall: {
+        title: 'Floyd-Warshall',
+        body: 'floyd_warshall answers every pair at once. The recurrence D_k[i][j] = min(D_k−1[i][j], D_k−1[i][k] + D_k−1[k][j]) reads as n + 1 tables, but round k never changes row k or column k, so one n × n table is updated in place: the memory optimisation the course asks for. Predecessors follow the same rule, so row i of the table is the tree from i, with no extra memory. At 12 bytes a cell, the table is priced and refused past the memory budget like the matrix (1.2 GB at 10 000 vertices). A negative cycle shows on the diagonal and comes back as the cycle. FloydRounds runs the same table one round at a time and says which cells each round lowered: the observatory replays it.',
+        matrix: 'D_n, the table once every round is done: row 1 is the tree from 1',
+        table: [
+          ['Sweep', 'How the triple loop walks the table'],
+          ['plain', 'for k, for i, for j on the flat table, row k hoisted: the textbook'],
+          ['pruned', 'the rows with D[i][k] = ∞ skipped: early rounds touch few rows'],
+          [
+            'parallel',
+            'the rows of a round on every core (they are independent once row k is read)',
+          ],
+          [
+            'blocked',
+            'tiles that stay in cache: the diagonal tile, its row and column, then the rest',
+          ],
+        ],
+      },
+      johnson: {
+        title: 'Johnson',
+        body: 'johnson answers every pair with n Dijkstras instead of n³ updates. One Bellman-Ford from every vertex at once gives potentials h (h(v) = min(0, min over u of d(u, v))); every arc reweighted to w + h(u) − h(v) is non-negative, so Dijkstra, over any frontier, runs on the Reweighted view as it is, and each distance is read back by undoing the potentials. It fills the same table as Floyd-Warshall, within the same budget, and on a sparse graph it is the faster of the two.',
+        reweighted: 'the sample reweighted by h (beside each vertex): every arc at least 0',
+      },
+      strong_components: {
+        title: 'Strong components',
+        body: "StrongComponents::compute is Tarjan's algorithm with an explicit stack, O(n + m). The components are numbered in a topological order of the condensation, so every arc between two of them goes from a smaller id to a larger one; condensation builds that acyclic graph, and topological_order orders an acyclic graph's vertices. dag_shortest_path relaxes the arcs in that order: shortest paths in O(n + m) on an acyclic graph, negative weights included, since without a cycle there is no negative cycle.",
+        legend: 'two strong components: {1} and the cycle {2, 3, 4, 5}',
+      },
       cli: {
         title: 'The command line',
-        body: "The graphman binary wraps the library: every command takes a graph file, a --repr (list, matrix or csr) and writes the assignment's output files. dijkstra writes the shortest-path tree and prints the paths to the targets. study runs the whole case study, both parts, and writes JSON plus RESULTS.md.",
+        body: "The graphman binary wraps the library: every command takes a graph file, a --repr (list, matrix or csr) and writes the assignment's output files. -D reads the file as arcs. dijkstra and bellman-ford write the shortest-path tree and print the paths to the targets; floyd-warshall and johnson answer pairs from one all-pairs table; scc writes the strong components. study runs the whole case study, every part, and writes JSON plus RESULTS.md.",
         flow: ['a graph in the course format', 'one command', "the assignment's output file"],
         commands: [
           'the summary file: counts, degree statistics, components',
@@ -225,6 +287,9 @@ export const en = {
           'distances for pairs of vertices',
           'the diameter by Takes-Kosters bounds, giving up after 60 s',
           'a shortest-path tree from 10 with the heap, and the paths to 20 and 30',
+          'the distance from 10, 20 and 30 to 100 on the arcs, with the queue schedule',
+          'all pairs in one table, the distances among 10 to 50, by the blocked sweep',
+          'the strong components of a directed graph',
           'the case study of one graph, into studies/',
         ],
       },

@@ -487,7 +487,10 @@ graphman generate -n 1000 -m 5000 --directed --weights -1:10 --potential -o g.tx
    table (`FloydRounds` in the library: the plain sweep one round at a time,
    reporting the cells each round lowered; `bellmanFordTrace`, `floydTrace`
    in wasm); the level layouts drawing the search's own tree. Still to
-   come: SCC colouring, the Part 3 sheet, slides and library chapters.
+   come: SCC colouring, the Part 3 sheet and slides. The library page now
+   has its Part 3 chapters (direction, Bellman-Ford, schedules,
+   Floyd-Warshall, Johnson, strong components; examples in `tests/wiki.rs`)
+   and is split into the library's workings and its algorithms.
 
 ## References
 

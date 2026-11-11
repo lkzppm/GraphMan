@@ -21,7 +21,8 @@ drawn for.
    query, on the canvas and in the path balls. One red (`--cycle`,
    `#e5484d`) exists for exactly one thing too: negative weights that stop
    an algorithm, a negative cycle that Bellman-Ford returns or the negative
-   edges Dijkstra refuses a graph for, on the canvas and in their balls.
+   edges Dijkstra refuses a graph for, on the canvas, in their balls and in
+   the library's figure of a negative cycle.
    No amber.
 3. **Light first, dark on request.** White paper is the default (it is
    what the icon was drawn for); a dark theme redefines the same tokens on
@@ -181,14 +182,25 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   focus squashes flat, stretches tall and settles (0.6 s, about its own
   centre). The focus walks the vertices every 1.8 s and follows the
   pointer while the figure is hovered.
-- **Library** (`components/Wiki.tsx`): a manual in eight chapters on the
-  sample graph (the pentagon with one chord the home draws three ways,
-  `lib/sample.ts`), more minimal than the home. A rail fixed on the left
-  and centred on the viewport lists the eight chapters as vertices on one
-  vertical edge; the edge is drawn in blue down to the current stop, whose
+- **Library** (`components/Wiki.tsx`): a manual in nineteen chapters on
+  the sample graph (the pentagon with one chord the home draws three ways,
+  `lib/sample.ts`; the Part 3 chapters read its six edges as arcs, two
+  negative, around one cycle), more minimal than the home, in two parts:
+  **the library** (how it is built: start, the format, representations,
+  direction, weights, visitors, names, cuts, the command line) and
+  **algorithms** (every one: traversals, distance and components, the
+  diameter, Dijkstra and its priority queues, Bellman-Ford and its
+  schedules, Floyd-Warshall, Johnson, strong components). Each part opens
+  with a mono number in the accent, a 34 px title and one grey paragraph;
+  the chapters are numbered across both. A rail fixed on the left
+  and centred on the viewport lists the chapters as vertices on one
+  vertical edge (34 px a stop, less when nineteen would not fit the
+  viewport); the edge is drawn in blue down to the current stop, whose
   vertex is filled and larger (hidden below 1240 px; it fades out when the
   footer scrolls up to it and returns when the footer leaves). One 760 px column,
-  centred, with no head of its own: the first chapter opens the page.
+  centred, with no head of its own: the first part opens the page. The
+  figures draw arcs with small filled heads, a negative cycle in the
+  `--cycle` red, and Floyd-Warshall's table as a table.
   Each chapter: mono index, title, a link to the source file
   it documents, one paragraph, the Rust example (plain usage with results
   in comments, never tests) and a fixed drawing of what it computes. Code
