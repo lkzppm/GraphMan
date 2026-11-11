@@ -73,6 +73,6 @@ pub use algo::{
 };
 pub use graph::{
     AdjacencyList, AdjacencyMatrix, AnyGraph, Build, BuildError, Csr, Graph, MemoryBudget,
-    NO_VERTEX, Representation, UNIT_WEIGHT, Vertex, Weight, Weighted, WeightedEdge,
+    NO_VERTEX, Orientation, Representation, UNIT_WEIGHT, Vertex, Weight, Weighted, WeightedEdge,
 };
 pub use io::{EdgeList, ParseError, VertexNames};

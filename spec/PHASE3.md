@@ -60,13 +60,21 @@ EdgeList::from_path_with(path, orientation)
   out-rows, so every builder still produces ascending rows for free.
 - **Self-loops** are still dropped from the adjacency (a non-negative loop
   never shortens a path), but a **negative self-loop is a negative cycle
-  of one arc**: the first one is kept as `EdgeList::negative_loop`, and
-  Bellman-Ford and Floyd-Warshall report it as the cycle `[v]`. In Part 2
-  it was dropped silently; the undirected parse records it too.
+  of one arc**: every one is kept (one per vertex, its smallest weight,
+  sorted by vertex) as `EdgeList::negative_loops` and
+  `Weighted::negative_loops`, and Bellman-Ford and Floyd-Warshall report
+  it as the cycle `[v]`. All of them, not just the first: a Bellman-Ford
+  to `t` must see the loops that reach `t`, and the first one in vertex
+  order may not. In Part 2 they were dropped silently; the undirected
+  parse records them too (Dijkstra still ignores them, as in Part 2: a
+  loop is never on a shortest simple path).
 - `WeightedEdge { u, v, weight }` keeps its fields; on a directed list they
   mean tail and head (the doc comment changes, not the type).
-- `EdgeList::transpose()` swaps every arc and re-sorts (`O(m log m)`, or a
-  counting sort by head in `O(n + m)`): the input of the reverse graph.
+- `EdgeList::transpose()` swaps every arc and re-sorts (`O(m log m)`):
+  the input of the reverse graph. `EdgeList::in_degrees()` beside
+  `degrees()` (which is the row length, so the out-degree when directed).
+- `from_edges_with` / `from_weighted_edges_with` take an `Orientation`
+  like `parse_with`; the old names stay undirected.
 
 ### Traits
 
@@ -87,8 +95,14 @@ Build      + transpose(&self)   the same representation with every arc reversed
   is its own transpose: callers check `is_directed()` and skip the copy.
 - `Csr::transpose` is a counting sort of `targets` by head (`O(n + m)`,
   one pass, rows come out ascending); the list and the matrix transpose
-  the same way. The transpose doubles the memory; `required_bytes` prices
-  it so the budget can refuse it like any other build.
+  the same way. The transpose doubles the memory: `transpose_within`
+  refuses it when the graph and its transpose together exceed the budget,
+  like any other build. `Build::transpose_unchecked` does the work,
+  `transpose` uses the machine's memory.
+- **Sizes.** A directed list or CSR holds `m` row entries, not `2m`:
+  `required_bytes_oriented(n, m, weighted, orientation)` on `Build` and
+  `Representation`; `required_bytes(n, m, weighted)` keeps meaning
+  undirected, so Parts 1 and 2 (and the library page) are unchanged.
 - `AnyGraph` and `dispatch!` are unchanged: direction is data, not a type,
   so it does not double the variants.
 
@@ -375,9 +389,9 @@ graphman generate -n 1000 -m 5000 --directed --weights -1:10 --potential -o g.tx
 
 ## 10. Order of work
 
-1. `Orientation`, directed normalisation, `negative_loop`, `is_directed`,
+1. `Orientation`, directed normalisation, `negative_loops`, `is_directed`,
    `transpose` for the three representations; tests that the undirected
-   paths are byte-for-byte unchanged.
+   paths are byte-for-byte unchanged. **Done** (`tests/directed.rs`).
 2. Directed BFS/DFS/Dijkstra tests, weak components, the diameter refusal,
    `--directed` in the CLI.
 3. `Schedule`, `bellman_ford_into`, `NegativeCycle`, `rounds`,

@@ -9,6 +9,14 @@
 //! All three keep neighbours in ascending order, so every algorithm produces
 //! bit-for-bit identical results regardless of the representation chosen.
 //!
+//! Direction is data, not a type: a graph built from an [`EdgeList`] parsed
+//! as [`Orientation::Directed`] stores each line `u v` as the arc `u → v`
+//! only, [`Graph::neighbors`] yields out-neighbours and
+//! [`Graph::is_directed`] says which kind it is, so every algorithm written
+//! against [`Graph`] runs on both. [`Build::transpose`] gives the same
+//! representation with every arc reversed, for the algorithms that need
+//! in-arcs (Bellman-Ford to a target).
+//!
 //! Weights are a column beside the adjacency, never inside it: a weighted
 //! [`Csr`] or [`AdjacencyList`] keeps one [`Weight`] per neighbour in a
 //! parallel array, a weighted [`AdjacencyMatrix`] keeps an `n × n` table
@@ -43,24 +51,75 @@ pub type Weight = f64;
 /// The weight every edge of an unweighted graph has.
 pub const UNIT_WEIGHT: Weight = 1.0;
 
-/// An undirected edge `{u, v}` and its weight.
+/// An edge `{u, v}` and its weight, or on a directed graph the arc `u → v`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WeightedEdge {
-    /// The smaller endpoint.
+    /// The smaller endpoint of an edge, the tail of an arc.
     pub u: Vertex,
-    /// The larger endpoint.
+    /// The larger endpoint of an edge, the head of an arc.
     pub v: Vertex,
     /// The weight of the edge.
     pub weight: Weight,
 }
 
-/// Read-only view of an undirected graph.
+/// Whether each line `u v` of a file is the edge `{u, v}` or the arc `u → v`.
+///
+/// The file format does not say: the user does (the course's Part 3 asks
+/// for "a parameter, given by the user, that says whether the graph is
+/// directed"). Parts 1 and 2 are undirected, the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+pub enum Orientation {
+    /// Each line is an edge, readable both ways.
+    #[default]
+    Undirected,
+    /// Each line is an arc from its first vertex to its second.
+    Directed,
+}
+
+impl Orientation {
+    /// `Directed` when `directed` is true.
+    pub fn from_directed(directed: bool) -> Self {
+        match directed {
+            true => Orientation::Directed,
+            false => Orientation::Undirected,
+        }
+    }
+
+    /// Whether this is [`Orientation::Directed`].
+    pub fn is_directed(self) -> bool {
+        self == Orientation::Directed
+    }
+
+    /// `undirected` or `directed`.
+    pub fn label(self) -> &'static str {
+        match self {
+            Orientation::Undirected => "undirected",
+            Orientation::Directed => "directed",
+        }
+    }
+}
+
+impl fmt::Display for Orientation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
+/// Read-only view of a graph, undirected or directed.
 ///
 /// The trait is deliberately tiny: a handful of accessors are enough to write
 /// every algorithm in [`crate::algo`], and being generic (rather than
 /// trait-object based) lets the compiler specialise each algorithm for each
 /// storage strategy at zero runtime cost.
+///
+/// On a directed graph every accessor reads the arcs leaving a vertex:
+/// [`neighbors`](Self::neighbors) are the out-neighbours,
+/// [`degree`](Self::degree) is the out-degree and
+/// [`edge_count`](Self::edge_count) counts arcs. A search written against
+/// the trait therefore follows the arcs, with no change to its code.
 pub trait Graph {
     /// Iterator over the neighbours of a vertex, in ascending order.
     type Neighbors<'a>: Iterator<Item = Vertex>
@@ -70,18 +129,27 @@ pub trait Graph {
     /// Number of vertices `n`.
     fn vertex_count(&self) -> usize;
 
-    /// Number of (unique, loop-free) undirected edges `m`.
+    /// Number of (unique, loop-free) edges `m`; arcs on a directed graph.
     fn edge_count(&self) -> usize;
 
-    /// Degree of `v`.
+    /// Degree of `v`; its out-degree on a directed graph.
     fn degree(&self, v: Vertex) -> usize;
 
-    /// Neighbours of `v` in ascending order.
+    /// Neighbours of `v` in ascending order; its out-neighbours (the heads
+    /// of the arcs leaving it) on a directed graph.
     fn neighbors(&self, v: Vertex) -> Self::Neighbors<'_>;
 
-    /// Whether the edge `{u, v}` exists.
+    /// Whether the edge `{u, v}` (the arc `u → v` when directed) exists.
     fn has_edge(&self, u: Vertex, v: Vertex) -> bool {
         self.neighbors(u).any(|w| w == v)
+    }
+
+    /// Whether the graph was built from arcs ([`Orientation::Directed`]).
+    fn is_directed(&self) -> bool;
+
+    /// The orientation the graph was built with.
+    fn orientation(&self) -> Orientation {
+        Orientation::from_directed(self.is_directed())
     }
 
     /// All vertices, `1..=n`.
@@ -123,10 +191,18 @@ pub trait Weighted: Graph {
             .map(|(_, weight)| weight)
     }
 
-    /// The first edge (in `[min, max]` order) with a negative weight, found
-    /// once when the graph was parsed. Algorithms that need non-negative
-    /// weights (Dijkstra) check it in `O(1)` and refuse the graph.
+    /// The first edge (in sorted order: `[min, max]`, or `(tail, head)` when
+    /// directed) with a negative weight, found once when the graph was
+    /// parsed. Algorithms that need non-negative weights (Dijkstra) check it
+    /// in `O(1)` and refuse the graph.
     fn negative_edge(&self) -> Option<WeightedEdge>;
+
+    /// The self-loops with a negative weight, one per vertex (its smallest),
+    /// by vertex, each as `u == v`. Loops are not part of the adjacency (a
+    /// loop of weight `≥ 0` never shortens a walk), but a negative one is a
+    /// negative cycle of one arc, which Bellman-Ford and Floyd-Warshall
+    /// report.
+    fn negative_loops(&self) -> &[WeightedEdge];
 }
 
 /// Iterator over a row of targets and the parallel row of weights (empty
@@ -204,18 +280,39 @@ impl Representation {
         }
     }
 
-    /// Heap bytes this representation needs for a graph with `vertex_count`
-    /// vertices and `edge_count` edges, with or without a weight per edge,
-    /// before building anything.
+    /// Heap bytes this representation needs for an undirected graph with
+    /// `vertex_count` vertices and `edge_count` edges, with or without a
+    /// weight per edge, before building anything.
     pub fn required_bytes(self, vertex_count: usize, edge_count: usize, weighted: bool) -> usize {
+        self.required_bytes_oriented(vertex_count, edge_count, weighted, Orientation::Undirected)
+    }
+
+    /// [`required_bytes`](Self::required_bytes) for either orientation: a
+    /// directed graph stores each arc once, an undirected one each edge in
+    /// both rows.
+    pub fn required_bytes_oriented(
+        self,
+        vertex_count: usize,
+        edge_count: usize,
+        weighted: bool,
+        orientation: Orientation,
+    ) -> usize {
         match self {
-            Representation::AdjacencyList => {
-                AdjacencyList::required_bytes(vertex_count, edge_count, weighted)
+            Representation::AdjacencyList => AdjacencyList::required_bytes_oriented(
+                vertex_count,
+                edge_count,
+                weighted,
+                orientation,
+            ),
+            Representation::AdjacencyMatrix => AdjacencyMatrix::required_bytes_oriented(
+                vertex_count,
+                edge_count,
+                weighted,
+                orientation,
+            ),
+            Representation::Csr => {
+                Csr::required_bytes_oriented(vertex_count, edge_count, weighted, orientation)
             }
-            Representation::AdjacencyMatrix => {
-                AdjacencyMatrix::required_bytes(vertex_count, edge_count, weighted)
-            }
-            Representation::Csr => Csr::required_bytes(vertex_count, edge_count, weighted),
         }
     }
 
@@ -320,13 +417,25 @@ pub enum BuildError {
     },
 }
 
-/// A representation that can be built from an [`EdgeList`], weighted or not.
+/// A representation that can be built from an [`EdgeList`], weighted or
+/// not, undirected or directed.
 pub trait Build: Weighted + Sized {
     /// The strategy implemented by this type.
     const REPRESENTATION: Representation;
 
-    /// Heap bytes needed for a graph of this size, with or without weights.
-    fn required_bytes(vertex_count: usize, edge_count: usize, weighted: bool) -> usize;
+    /// Heap bytes needed for an undirected graph of this size, with or
+    /// without weights.
+    fn required_bytes(vertex_count: usize, edge_count: usize, weighted: bool) -> usize {
+        Self::required_bytes_oriented(vertex_count, edge_count, weighted, Orientation::Undirected)
+    }
+
+    /// Heap bytes needed for a graph of this size and orientation.
+    fn required_bytes_oriented(
+        vertex_count: usize,
+        edge_count: usize,
+        weighted: bool,
+        orientation: Orientation,
+    ) -> usize;
 
     /// Build without checking any memory budget. Allocation failures are
     /// still reported as [`BuildError::AllocationFailed`] instead of aborting.
@@ -340,19 +449,58 @@ pub trait Build: Weighted + Sized {
     /// Build within an explicit budget.
     fn build_within(edges: &EdgeList, budget: MemoryBudget) -> Result<Self, BuildError> {
         let vertex_count = edges.vertex_count();
-        let required_bytes =
-            Self::required_bytes(vertex_count, edges.edge_count(), edges.is_weighted());
-        if let Some(limit_bytes) = budget.limit_bytes()
-            && required_bytes > limit_bytes
-        {
-            return Err(BuildError::OverBudget {
-                representation: Self::REPRESENTATION,
-                vertex_count,
-                required_bytes,
-                limit_bytes,
-            });
-        }
+        let required_bytes = Self::required_bytes_oriented(
+            vertex_count,
+            edges.edge_count(),
+            edges.is_weighted(),
+            edges.orientation(),
+        );
+        check_budget::<Self>(vertex_count, required_bytes, budget)?;
         Self::build_unchecked(edges)
+    }
+
+    /// The same representation with every arc reversed, without checking
+    /// any budget: row `v` of the transpose lists the tails of the arcs into
+    /// `v`, ascending, with their weights. An undirected graph is its own
+    /// transpose (this returns a copy; callers that only need in-arcs check
+    /// [`Graph::is_directed`] and skip it).
+    fn transpose_unchecked(&self) -> Result<Self, BuildError>;
+
+    /// [`transpose_unchecked`](Self::transpose_unchecked) within an explicit
+    /// budget. The transpose is built while the graph is still held, so it
+    /// is refused when both together exceed the budget.
+    fn transpose_within(&self, budget: MemoryBudget) -> Result<Self, BuildError> {
+        let required_bytes = Self::required_bytes_oriented(
+            self.vertex_count(),
+            self.edge_count(),
+            self.is_weighted(),
+            self.orientation(),
+        )
+        .saturating_add(self.heap_bytes());
+        check_budget::<Self>(self.vertex_count(), required_bytes, budget)?;
+        self.transpose_unchecked()
+    }
+
+    /// The transpose within the machine's memory ([`MemoryBudget::Machine`]).
+    fn transpose(&self) -> Result<Self, BuildError> {
+        self.transpose_within(MemoryBudget::default())
+    }
+}
+
+/// Refuses `required_bytes` when it is over the budget.
+fn check_budget<B: Build>(
+    vertex_count: usize,
+    required_bytes: usize,
+    budget: MemoryBudget,
+) -> Result<(), BuildError> {
+    match budget.limit_bytes() {
+        Some(limit_bytes) if required_bytes > limit_bytes => Err(BuildError::OverBudget {
+            representation: B::REPRESENTATION,
+            vertex_count,
+            required_bytes,
+            limit_bytes,
+        }),
+        _ => Ok(()),
     }
 }
 
@@ -420,9 +568,29 @@ impl AnyGraph {
         dispatch!(self, g => g.degree(v))
     }
 
-    /// Whether the edge `{u, v}` exists.
+    /// Whether the edge `{u, v}` (the arc `u → v` when directed) exists.
     pub fn has_edge(&self, u: Vertex, v: Vertex) -> bool {
         dispatch!(self, g => g.has_edge(u, v))
+    }
+
+    /// Whether the graph was built from arcs.
+    pub fn is_directed(&self) -> bool {
+        dispatch!(self, g => g.is_directed())
+    }
+
+    /// The orientation the graph was built with.
+    pub fn orientation(&self) -> Orientation {
+        dispatch!(self, g => g.orientation())
+    }
+
+    /// The same representation with every arc reversed (a copy when
+    /// undirected), within `budget`; see [`Build::transpose_within`].
+    pub fn transpose_within(&self, budget: MemoryBudget) -> Result<AnyGraph, BuildError> {
+        Ok(match self {
+            AnyGraph::List(g) => AnyGraph::List(g.transpose_within(budget)?),
+            AnyGraph::Matrix(g) => AnyGraph::Matrix(g.transpose_within(budget)?),
+            AnyGraph::Csr(g) => AnyGraph::Csr(g.transpose_within(budget)?),
+        })
     }
 
     /// Whether the edges carry weights from the input.
@@ -438,6 +606,11 @@ impl AnyGraph {
     /// The first edge with a negative weight, if any.
     pub fn negative_edge(&self) -> Option<WeightedEdge> {
         dispatch!(self, g => g.negative_edge())
+    }
+
+    /// The negative self-loops, one per vertex.
+    pub fn negative_loops(&self) -> &[WeightedEdge] {
+        dispatch!(self, g => g.negative_loops())
     }
 
     /// Accounted heap bytes.

@@ -1,8 +1,8 @@
 //! Adjacency list: one heap-allocated `Vec<Vertex>` per vertex.
 
 use super::{
-    Build, BuildError, Graph, Representation, UNIT_WEIGHT, Vertex, Weight, Weighted, WeightedEdge,
-    WeightedRow, allocation_failed,
+    Build, BuildError, Graph, Orientation, Representation, UNIT_WEIGHT, Vertex, Weight, Weighted,
+    WeightedEdge, WeightedRow, allocation_failed, csr::first_negative,
 };
 use crate::io::EdgeList;
 use core::mem::size_of;
@@ -14,13 +14,17 @@ use core::mem::size_of;
 /// second table of the same shape, `weights[v][i]` being the weight of the
 /// edge to `adj[v][i]`, so the neighbour rows read by BFS stay as compact as
 /// in an unweighted graph.
+///
+/// A directed graph keeps each arc once, in its tail's row.
 #[derive(Debug, Clone)]
 pub struct AdjacencyList {
     adj: Vec<Vec<Vertex>>,
     /// Empty when the graph is unweighted.
     weights: Vec<Vec<Weight>>,
+    directed: bool,
     edge_count: usize,
     negative_edge: Option<WeightedEdge>,
+    negative_loops: Vec<WeightedEdge>,
 }
 
 impl AdjacencyList {
@@ -40,10 +44,18 @@ impl AdjacencyList {
 impl Build for AdjacencyList {
     const REPRESENTATION: Representation = Representation::AdjacencyList;
 
-    fn required_bytes(vertex_count: usize, edge_count: usize, weighted: bool) -> usize {
+    fn required_bytes_oriented(
+        vertex_count: usize,
+        edge_count: usize,
+        weighted: bool,
+        orientation: Orientation,
+    ) -> usize {
         // Saturating: on 32-bit targets (the browser) a product that does not
         // fit is "more than any budget", never a small wrapped number.
-        let entries = edge_count.saturating_mul(2);
+        let entries = match orientation {
+            Orientation::Directed => edge_count,
+            Orientation::Undirected => edge_count.saturating_mul(2),
+        };
         let rows = vertex_count
             .saturating_add(1)
             .saturating_mul(size_of::<Vec<Vertex>>());
@@ -59,7 +71,13 @@ impl Build for AdjacencyList {
 
     fn build_unchecked(edges: &EdgeList) -> Result<Self, BuildError> {
         let n = edges.vertex_count();
-        let required = Self::required_bytes(n, edges.edge_count(), edges.is_weighted());
+        let directed = edges.is_directed();
+        let required = Self::required_bytes_oriented(
+            n,
+            edges.edge_count(),
+            edges.is_weighted(),
+            edges.orientation(),
+        );
         let fail = || allocation_failed(Self::REPRESENTATION, required);
 
         let degrees = edges.degrees();
@@ -81,23 +99,86 @@ impl Build for AdjacencyList {
         }
         // `edges` is sorted by (min, max), which makes every row ascending:
         // all smaller neighbours of `v` are pushed (in order) while the outer
-        // endpoint is < v, and all larger ones while it is == v.
+        // endpoint is < v, and all larger ones while it is == v. A directed
+        // list is sorted by (tail, head): each row is pushed in order.
         for &[u, v] in edges.edges() {
             adj[u as usize].push(v);
-            adj[v as usize].push(u);
+            if !directed {
+                adj[v as usize].push(u);
+            }
         }
         if let Some(edge_weights) = edges.weights() {
             for (&[u, v], &weight) in edges.edges().iter().zip(edge_weights) {
                 weights[u as usize].push(weight);
-                weights[v as usize].push(weight);
+                if !directed {
+                    weights[v as usize].push(weight);
+                }
             }
         }
         Ok(Self {
             adj,
             weights,
+            directed,
             edge_count: edges.edge_count(),
             negative_edge: edges.negative_edge(),
+            negative_loops: edges.negative_loops().to_vec(),
         })
+    }
+
+    /// Rows sized by in-degree, then filled scanning the tails in ascending
+    /// order, so every row of the transpose comes out ascending.
+    fn transpose_unchecked(&self) -> Result<Self, BuildError> {
+        if !self.directed {
+            return Ok(self.clone());
+        }
+        let n = self.vertex_count();
+        let weighted = self.is_weighted();
+        let required =
+            Self::required_bytes_oriented(n, self.edge_count, weighted, self.orientation());
+        let fail = || allocation_failed(Self::REPRESENTATION, required);
+
+        let mut in_degrees = vec![0usize; n + 1];
+        for row in &self.adj {
+            for &v in row {
+                in_degrees[v as usize] += 1;
+            }
+        }
+        let mut adj: Vec<Vec<Vertex>> = Vec::new();
+        adj.try_reserve_exact(n + 1).map_err(fail())?;
+        let mut weights: Vec<Vec<Weight>> = Vec::new();
+        if weighted {
+            weights.try_reserve_exact(n + 1).map_err(fail())?;
+        }
+        for &degree in &in_degrees {
+            let mut row = Vec::new();
+            row.try_reserve_exact(degree).map_err(fail())?;
+            adj.push(row);
+            if weighted {
+                let mut row = Vec::new();
+                row.try_reserve_exact(degree).map_err(fail())?;
+                weights.push(row);
+            }
+        }
+        for u in 1..=n as Vertex {
+            for (i, &v) in self.row(u).iter().enumerate() {
+                adj[v as usize].push(u);
+                if weighted {
+                    weights[v as usize].push(self.weights[u as usize][i]);
+                }
+            }
+        }
+        let mut transpose = Self {
+            adj,
+            weights,
+            directed: true,
+            edge_count: self.edge_count,
+            negative_edge: None,
+            negative_loops: self.negative_loops.clone(),
+        };
+        if self.negative_edge.is_some() {
+            transpose.negative_edge = first_negative(&transpose);
+        }
+        Ok(transpose)
     }
 }
 
@@ -130,6 +211,11 @@ impl Graph for AdjacencyList {
     #[inline]
     fn has_edge(&self, u: Vertex, v: Vertex) -> bool {
         self.adj[u as usize].binary_search(&v).is_ok()
+    }
+
+    #[inline]
+    fn is_directed(&self) -> bool {
+        self.directed
     }
 
     fn heap_bytes(&self) -> usize {
@@ -179,5 +265,9 @@ impl Weighted for AdjacencyList {
 
     fn negative_edge(&self) -> Option<WeightedEdge> {
         self.negative_edge
+    }
+
+    fn negative_loops(&self) -> &[WeightedEdge] {
+        &self.negative_loops
     }
 }
