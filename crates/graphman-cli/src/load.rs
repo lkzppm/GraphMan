@@ -81,7 +81,7 @@ impl GraphArgs {
         if let Some(negative) = edges.negative_edge() {
             let arrow = if directed { "->" } else { "-" };
             ui.warn(&format!(
-                "{edge} {}{arrow}{} has the negative weight {}: Dijkstra will refuse the graph",
+                "{edge} {}{arrow}{} has the negative weight {}: Dijkstra will refuse the graph (Bellman-Ford takes it)",
                 negative.u, negative.v, negative.weight
             ));
         }

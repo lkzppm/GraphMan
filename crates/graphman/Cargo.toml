@@ -26,3 +26,8 @@ thiserror.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
+
+[dev-dependencies]
+# The oracle: Bellman-Ford, negative cycles, Floyd-Warshall and Johnson
+# checked against an independent implementation (tests only).
+petgraph = { workspace = true }

@@ -1,5 +1,6 @@
 //! One module per subcommand.
 
+pub mod bellman_ford;
 pub mod bench;
 pub mod components;
 pub mod dblp;

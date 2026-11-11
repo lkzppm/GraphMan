@@ -55,12 +55,26 @@ pub trait Visitor {
         Control::Continue
     }
 
-    /// Dijkstra only: the estimate of `v` fell from `previous` (`+∞` when
-    /// `v` was just reached) to `distance`, through the vertex `parent`
-    /// being settled.
+    /// Dijkstra and Bellman-Ford: the estimate of `v` fell from `previous`
+    /// (`+∞` when `v` was just reached) to `distance`, through the vertex
+    /// `parent` being settled (Dijkstra) or scanned (Bellman-Ford).
     #[inline]
     fn relax(&mut self, v: Vertex, parent: Vertex, previous: Weight, distance: Weight) {
         let _ = (v, parent, previous, distance);
+    }
+
+    /// Bellman-Ford only: the arcs leaving `v`, whose estimate is
+    /// `distance`, are about to be relaxed.
+    #[inline]
+    fn scan(&mut self, v: Vertex, distance: Weight) {
+        let _ = (v, distance);
+    }
+
+    /// Bellman-Ford only: pass number `pass` (from 1) is over, in the sense
+    /// of the run's [`Schedule`](super::Schedule).
+    #[inline]
+    fn pass_complete(&mut self, pass: usize) {
+        let _ = pass;
     }
 }
 
