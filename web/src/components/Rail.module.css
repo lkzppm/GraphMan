@@ -33,7 +33,9 @@
 }
 
 .rail ol {
-  --step: 34px;
+  /* A stop's height: 34 px, smaller when many stops would not fit the
+     viewport (the library's nineteen chapters on a laptop). */
+  --step: clamp(22px, calc((100vh - 160px) / var(--stops)), 34px);
   position: relative;
   list-style: none;
   display: flex;

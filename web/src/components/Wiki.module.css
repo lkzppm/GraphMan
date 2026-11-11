@@ -31,6 +31,41 @@
   min-width: 0;
 }
 
+/* ---- parts --------------------------------------------------------------- */
+
+/* A part's opening over its chapters: a mono number in the accent, a title
+   a size above a chapter's, what the part holds, and no rule under it (the
+   first chapter's head draws one). */
+.part {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.part + .chapter {
+  margin-top: -36px;
+}
+
+.partLabel {
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.partTitle {
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.partBody {
+  max-width: 640px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--fg-3);
+}
+
 /* ---- chapters ----------------------------------------------------------- */
 
 .chapter {
