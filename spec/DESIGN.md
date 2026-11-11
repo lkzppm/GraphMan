@@ -343,7 +343,9 @@ its in-arcs dashed: row k and column k of the table), and the strip's
 matrix follows the pivot. A click on a vertex, or on a row's label in
 the matrix, reads its row: its shortest-path tree, shown whole at once
 (nothing ran, so nothing replays; the timeline can still replay it); a
-double click on another the path between them, both off the same tables.
+double click on another the path between them, off the same tables and
+walked as any path is. A double click with no tree selected has no other
+end: it just selects the vertex's tree.
 A click on the blank canvas, or the panel's undo button, unselects the
 tree and goes back to the table; the trash drops Floyd-Warshall's whole
 result. No legend shows while no row is picked: there is no
