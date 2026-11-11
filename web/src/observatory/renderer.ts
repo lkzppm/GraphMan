@@ -886,6 +886,9 @@ export class Renderer {
         pairs[2 * i] = v;
         pairs[2 * i + 1] = this.csrTargets[this.csrOffsets[v] + i];
       }
+      // Undirected: every edge at the vertex reads both ways, so all of
+      // them are drawn solid, as a directed graph's out-arcs are.
+      outgoing = degree;
     }
     this.viewValues.incidentOut = outgoing;
     if (this.extras.size < pairs.byteLength) {
