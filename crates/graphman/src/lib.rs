@@ -69,8 +69,8 @@ pub mod metrics;
 
 pub use algo::{
     Components, Control, DegreeStats, DfsKind, Diameter, DiameterError, DiameterMethod,
-    FrontierKind, NegativeWeight, RecursionLimit, SearchTree, ShortestPathTree, Visitor, bfs, dfs,
-    dijkstra,
+    FrontierKind, NegativeCycle, NegativeWeight, RecursionLimit, ScheduleKind, SearchTree,
+    ShortestPathTree, Visitor, bellman_ford, bfs, dfs, dijkstra,
 };
 pub use graph::{
     AdjacencyList, AdjacencyMatrix, AnyGraph, Build, BuildError, Csr, Graph, MemoryBudget,

@@ -20,6 +20,7 @@ libc = "0.2"
 memchr = "2"
 memmap2 = "0.9"
 owo-colors = "4"
+petgraph = { version = "0.8", default-features = false, features = ["std"] }
 quick-xml = "0.42"
 rayon = "1"
 serde = { version = "1", features = ["derive"] }

@@ -140,21 +140,41 @@ out-arcs, and tell someone which neighbours improved. They differ only in
 like the Part 2 frontier:
 
 ```rust
+pub enum Start { Vertex(Vertex), Everywhere }
+
 pub trait Schedule {
     fn reset(&mut self, vertex_count: usize, start: Start);
-    fn next(&mut self, distance: &[Weight]) -> Option<Vertex>; // next vertex to scan
-    fn lowered(&mut self, v: Vertex, distance: Weight);       // v's estimate went down
+    fn next(&mut self) -> Option<Vertex>;                       // next vertex to scan, None: done
+    fn lowered(&mut self, v: Vertex, distance: &[Weight]);      // v's estimate went down
     fn passes(&self) -> usize;                                  // completed passes
     fn kind(&self) -> ScheduleKind;
+    fn heap_bytes(&self) -> usize;
 }
 
 pub fn bellman_ford_into<G: Weighted, S: Schedule, V: Visitor>(
-    graph: &G, root: Vertex, schedule: &mut S, tree: &mut ShortestPathTree, visitor: &mut V,
+    graph: &G, start: Start, schedule: &mut S, tree: &mut ShortestPathTree, visitor: &mut V,
 ) -> Result<(), NegativeCycle>;
 
+pub fn bellman_ford(graph, root, kind) -> Result<ShortestPathTree, NegativeCycle>;
 pub fn bellman_ford_to<G: Build>(graph: &G, target: Vertex, kind: ScheduleKind)
-    -> Result<ShortestPathTree, NegativeCycle>;   // runs on graph.transpose() when directed
+    -> Result<ShortestPathTree, BellmanFordError>;  // NegativeCycle | Transpose(BuildError)
+pub fn bellman_ford_to_into(reverse, target, schedule, tree, visitor);  // transpose built once
+pub fn negative_cycle(graph, kind) -> Option<NegativeCycle>;            // Start::Everywhere
 ```
+
+- **Implemented** (`algo/schedule.rs`, `algo/bellman_ford.rs`, `tests/bellman_ford.rs`
+  against `petgraph`). `lowered` receives the whole distance array (SLF
+  compares the lowered vertex with the front); `next` needs nothing.
+  All six schedules of the table below are three types (`SweepSchedule`,
+  `QueueSchedule`, `YenSchedule`) behind `AnySchedule`, built by
+  `ScheduleKind::schedule()`. No schedule caps its passes: `rounds` is
+  "at least `n − 1` passes, then until one changes nothing", so without a
+  negative cycle it is the textbook `n − 1` plus the confirming pass, and
+  with one it runs until the `hops` rule fires.
+- `Visitor` gains `scan(v, distance)` and `pass_complete(pass)`
+  (Bellman-Ford only) beside `relax`, for the observatory's pass-by-pass
+  animation. `ShortestPathTree::path_from(v)` reads a tree grown toward its
+  root forward, `write_toward_root_to` writes `vertex successor distance`.
 
 - **The result is Part 2's `ShortestPathTree`**: distances, parents
   (successors toward the target, when run on the transpose), `path_to`,
@@ -176,7 +196,14 @@ pub fn bellman_ford_to<G: Build>(graph: &G, target: Vertex, kind: ScheduleKind)
   parent pointers from that vertex until one repeats; every cycle of the
   parent graph has negative weight (Cherkassky-Goldberg), so that is a
   certificate the caller can check. `NegativeCycle { cycle: Vec<Vertex>,
-  weight: Weight }`.
+  weight: Weight }`, in arc order from its smallest vertex.
+  The walk that reached `n` arcs may have been cut since by a better
+  estimate, so the parents can still lead back to the root: the run then
+  goes on (the estimates around the cycle keep falling, so the parent
+  graph closes it) and the next `n` attempts are skipped, `O(1)` amortised.
+  Negative loops are checked once the run is over (a reached vertex with
+  one is the cycle `[v]`). On a transpose the cycle is reversed back to
+  the graph's orientation.
 - **The whole-graph question** ("does `G` have a negative cycle at all?")
   is the same driver with `Start::Everywhere`: every vertex starts at
   distance 0 and active, which is Bellman-Ford from a virtual vertex with a
@@ -396,7 +423,9 @@ graphman generate -n 1000 -m 5000 --directed --weights -1:10 --potential -o g.tx
    `--directed` in the CLI. **Done** (`-D`/`--directed` on every command
    that reads a graph; `info` shows out- and in-degrees).
 3. `Schedule`, `bellman_ford_into`, `NegativeCycle`, `rounds`,
-   `early-stop`, `queue`; `petgraph` oracle.
+   `early-stop`, `queue`; `petgraph` oracle. **Done**, with `yen`,
+   `random-yen` and `slf` from step 6 (the trait shaped them, a few dozen
+   lines each), `graphman bellman-ford` and `MeasuredSchedule`.
 4. `AllPairs`, `floyd_warshall` (`plain`, `pruned`), the budget.
 5. The study runner (questions 1 to 4) with `queue` and `plain`: this is
    everything the handout grades.

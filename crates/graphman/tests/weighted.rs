@@ -104,7 +104,11 @@ fn the_handout_figure_is_refused_for_its_negative_edge() {
                     }
                 }
             );
-            assert!(refused.to_string().contains("not implemented yet"));
+            assert!(
+                refused
+                    .to_string()
+                    .contains("Bellman-Ford takes negative ones")
+            );
         }
         // The unweighted algorithms still run on it.
         assert_eq!(dispatch!(&graph, g => algo::bfs(g, 1).depth()), 2);

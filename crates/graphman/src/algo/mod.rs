@@ -6,6 +6,9 @@
 //! * [`dijkstra`] / [`shortest_path`] — shortest paths on weighted graphs, one
 //!   algorithm over six interchangeable [`Frontier`]s (vector, heap, lazy heap,
 //!   4-ary heap, pairing heap, radix heap).
+//! * [`bellman_ford`] / [`bellman_ford_to`] — shortest paths with negative weights, one
+//!   algorithm over six interchangeable [`Schedule`]s, and the [`NegativeCycle`] when
+//!   there is one ([`negative_cycle`] asks the whole graph).
 //! * [`Components`] — connected components, largest first (weakly connected when directed).
 //! * [`diameter`] — exact (brute force or iFUB) and approximate (4-sweep) diameter.
 //! * [`degree_stats`] / [`weight_stats`] — min, max, mean (and median) degree and weight.
@@ -13,16 +16,22 @@
 //! * [`select`] / [`induce`] — a graph cut down to size by a [`SubgraphRule`], renumbered and written back out.
 //! * [`egonet`] — the cut of everything within `k` edges of a vertex, collected during one BFS.
 
+mod bellman_ford;
 mod components;
 mod diameter;
 mod distance;
 mod frontier;
 mod layout;
+mod schedule;
 mod shortest_path;
 mod stats;
 mod subgraph;
 mod traversal;
 
+pub use bellman_ford::{
+    BellmanFordError, NegativeCycle, bellman_ford, bellman_ford_into, bellman_ford_to,
+    bellman_ford_to_into, bellman_ford_with, negative_cycle,
+};
 pub use components::Components;
 pub use diameter::{Diameter, DiameterError, DiameterMethod, diameter, diameter_with_progress};
 pub use distance::{distance, distance_into, eccentricity, eccentricity_into};
@@ -32,6 +41,10 @@ pub use frontier::{
     VectorFrontier,
 };
 pub use layout::{RadialLayout, TreeLayout, radial_layout, tree_layout};
+pub use schedule::{
+    AnySchedule, MeasuredSchedule, QueueSchedule, Schedule, ScheduleCounts, ScheduleKind, Start,
+    SweepSchedule, YenSchedule,
+};
 pub use shortest_path::{
     NegativeWeight, Path, ShortestPathTree, dijkstra, dijkstra_into, dijkstra_with, shortest_path,
     shortest_path_into,
