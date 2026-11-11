@@ -3090,6 +3090,16 @@
 }
 
 /* The way out of a refusal, inside its note: a link-like button. */
+/* Floyd-Warshall's run row: what it does, beside the run button. */
+.runHint {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  align-self: center;
+}
+
+/* A link-style button inside a hint (Floyd-Warshall's farthest pair). */
+.inlineLink,
 .refusalSwitch {
   appearance: none;
   padding: 0;
@@ -3103,6 +3113,11 @@
   transition: color 0.2s var(--ease);
 }
 
+.inlineLink {
+  font-family: var(--font-mono);
+}
+
+.inlineLink:hover,
 .refusalSwitch:hover {
   color: var(--accent-hover);
 }

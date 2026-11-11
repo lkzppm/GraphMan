@@ -128,6 +128,7 @@ export default function Structures({
   columnRef,
   frontierAt,
   traceOf,
+  floydRound,
   vertexCount,
   hovered,
   onHover,
@@ -153,6 +154,9 @@ export default function Structures({
   /** Bellman-Ford's or Floyd-Warshall's trace (`null`: too large to keep),
       asked for once per run. */
   traceOf: () => DpTrace | null;
+  /** Floyd-Warshall's table on its own (no row picked, `search` null): the
+      round its replay stands at; `null` otherwise. */
+  floydRound: number | null;
   vertexCount: number;
   hovered: number;
   onHover: (v: number) => void;
@@ -180,7 +184,8 @@ export default function Structures({
   const s = t.structures;
   const step = search ? Math.max(0, Math.min(Math.round(reveal), search.steps - 1)) : 0;
   const link = { hovered, onHover, onSelect };
-  const dynamic = Boolean(search && (search.schedule || search.sweep));
+  const table = !search && floydRound !== null;
+  const dynamic = table || Boolean(search && (search.schedule || search.sweep));
   const frontier = useFrontier(
     search?.kind === 'dijkstra' && !dynamic ? search : null,
     step,
@@ -191,19 +196,28 @@ export default function Structures({
   const prepared = usePrepared(dpTrace, vertexCount);
 
   useEffect(() => {
-    onMembers(search ? members(search, step, frontier ?? null, prepared) : null);
-  }, [search, step, frontier, prepared, onMembers]);
+    if (table) onMembers(floydRound ? { vertices: [floydRound], focus: floydRound } : null);
+    else onMembers(search ? members(search, step, frontier ?? null, prepared) : null);
+  }, [search, step, frontier, prepared, table, floydRound, onMembers]);
   useEffect(() => () => onMembers(null), [onMembers]);
 
   let title = '';
   let body: ReactNode = <p className={styles.empty}>{s.empty}</p>;
 
-  if (search && dynamic) {
-    title = search.sweep ? s.titles.floyd : s.titles.bellman;
+  if (dynamic) {
+    const floyd = table || Boolean(search?.sweep);
+    title = floyd ? s.titles.floyd : s.titles.bellman;
     body = prepared ? (
-      <DpTable t={t} search={search} step={step} prepared={prepared} link={link} />
+      <DpTable
+        t={t}
+        search={search ?? NO_ROW}
+        step={step}
+        round={table ? (floydRound ?? 0) : undefined}
+        prepared={prepared}
+        link={link}
+      />
     ) : (
-      <p className={styles.empty}>{search.sweep ? s.dp.floydTooLarge : s.dp.bellmanTooLarge}</p>
+      <p className={styles.empty}>{floyd ? s.dp.floydTooLarge : s.dp.bellmanTooLarge}</p>
     );
   } else if (search?.kind === 'bfs') {
     title = s.titles.bfs;
@@ -287,6 +301,9 @@ export default function Structures({
     </section>
   );
 }
+
+/** Floyd-Warshall's table with no row picked: no origin, no replay order. */
+const NO_ROW = { root: 0, order: new Uint32Array(0), span: 0 };
 
 /** What the strip draws at `step`, as vertices for the canvas. */
 function members(

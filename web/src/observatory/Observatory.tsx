@@ -680,6 +680,16 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   /** Floyd-Warshall's tables, kept for the graph and sweep they were run on:
       every other origin is a row already there. */
   const floydRef = useRef<{ graph: Graph; sweep: SweepName; run: FloydRun } | null>(null);
+  /** Floyd-Warshall's table on screen with no row picked: the run's numbers
+      and the round its replay stands at (`D_round`). */
+  const [floyd, setFloyd] = useState<{
+    elapsedMs: number;
+    n: number;
+    pairs: number;
+    longest: { distance: number; from: number; to: number } | null;
+    round: number;
+  } | null>(null);
+  const [floydPlaying, setFloydPlaying] = useState(false);
   const [dfsWay, setDfsWay] = useState<DfsName>('iterative');
   /** How deep the recursive DFS may go here (the library's browser limit). */
   const [recursionLimit, setRecursionLimit] = useState(0);
@@ -1330,6 +1340,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     setCycle(null);
     floydRef.current?.run.free();
     floydRef.current = null;
+    setFloyd(null);
     setRefusal(null);
     graphRef.current?.free();
     graphRef.current = null;
@@ -1480,6 +1491,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         setLayout(willSimulate ? 'force' : 'radial');
         setSearch(null);
         setCycle(null);
+        setFloyd(null);
         setRefusal(null);
         setDiameterResults({});
         setSelected(0);
@@ -1831,6 +1843,33 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   const followRef = useRef(false);
   followRef.current = follow;
 
+  /** Floyd-Warshall's tables for the graph and sweep on screen: run once,
+      then kept for every row asked of them. `null`, with a notice, past the
+      page's limit or when the run fails. */
+  const ensureFloyd = useCallback((): FloydRun | null => {
+    const graph = graphRef.current;
+    const wasm = wasmRef.current;
+    if (!graph || !wasm) return null;
+    const limit = wasm.Graph.floydWarshallLimit();
+    if (graph.vertexCount > limit) {
+      setNotice(tRef.current.floydTooLarge(formatInt(graph.vertexCount), formatInt(limit)));
+      return null;
+    }
+    let cached = floydRef.current;
+    if (!cached || cached.graph !== graph || cached.sweep !== sweep) {
+      cached?.run.free();
+      floydRef.current = null;
+      try {
+        cached = { graph, sweep, run: graph.floydWarshall(sweepType(wasm, sweep)) };
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : String(error));
+        return null;
+      }
+      floydRef.current = cached;
+    }
+    return cached.run;
+  }, [sweep]);
+
   const runSearch = useCallback(
     (which: SearchKindName, root: number, target = 0) => {
       const wasm = wasmRef.current;
@@ -1928,24 +1967,15 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         // row of the tables.
         let floydTree: ShortestPathResult | null = null;
         if (which === 'floyd_warshall') {
-          const limit = wasm.Graph.floydWarshallLimit();
-          if (graph.vertexCount > limit) {
-            setNotice(tRef.current.floydTooLarge(formatInt(graph.vertexCount), formatInt(limit)));
-            return;
-          }
-          let cached = floydRef.current;
-          if (!cached || cached.graph !== graph || cached.sweep !== sweep) {
-            cached?.run.free();
-            floydRef.current = null;
-            cached = { graph, sweep, run: graph.floydWarshall(sweepType(wasm, sweep)) };
-            floydRef.current = cached;
-          }
-          const found = cached.run.cycle();
+          const table = ensureFloyd();
+          if (!table) return;
+          const found = table.cycle();
           if (found.length) {
+            setFloyd(null);
             showCycle(found, 'graph');
             return;
           }
-          floydTree = cached.run.tree(root);
+          floydTree = table.tree(root);
         }
         if (which === 'dijkstra' || which === 'bellman_ford' || which === 'floyd_warshall') {
           const run =
@@ -2058,8 +2088,43 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         setNotice(error instanceof Error ? error.message : String(error));
       }
     },
-    [search, pathOnly, frontier, schedule, sweep, dfsWay, fitVertices],
+    [search, pathOnly, frontier, schedule, sweep, dfsWay, fitVertices, ensureFloyd],
   );
+
+  /**
+   * Floyd-Warshall answers every pair at once: it runs with no origin, and
+   * the table is shown on its own, replayed round by round (`D_k`, the
+   * vertices 1 to k allowed in between). A row is read off it afterwards,
+   * by clicking a vertex. A negative cycle anywhere shows as Bellman-Ford's.
+   */
+  const runFloyd = useCallback(() => {
+    const renderer = rendererRef.current;
+    const table = ensureFloyd();
+    if (!renderer || !table) return;
+    if (table.cycle().length) {
+      runSearch('floyd_warshall', 1);
+      return;
+    }
+    keysTarget.current = 'search';
+    searchRef.current?.result.free();
+    searchRef.current = null;
+    setSearch(null);
+    setPlaying(false);
+    setCycle(null);
+    setRefusal(null);
+    setNotice(null);
+    renderer.setNegative(null);
+    renderer.setPath(0, null);
+    const [pairs, longest, from, to] = table.summary();
+    setFloyd({
+      elapsedMs: table.elapsedMs,
+      n: graphRef.current?.vertexCount ?? 0,
+      pairs,
+      longest: Number.isNaN(longest) ? null : { distance: longest, from, to },
+      round: 0,
+    });
+    setFloydPlaying(true);
+  }, [ensureFloyd, runSearch]);
 
   // The reveal animation: discovery ranks light up over a duration that
   // grows slowly with the tree, so small graphs stay watchable and large
@@ -2090,6 +2155,59 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [playing, search, fitDiscovered]);
+
+  // Floyd-Warshall's table on its own: the vertices allowed in between so
+  // far (1 to k) lit, the round's pivot k selected (its out-arcs are read
+  // as row k, its in-arcs as column k), replayed over the rounds.
+  const floydView = kind === 'floyd_warshall' && floyd !== null && !search && !cycle;
+  const floydN = floydView ? floyd.n : 0;
+  const floydRound = floydView ? floyd.round : null;
+  const floydRoundRef = useRef(0);
+  floydRoundRef.current = floyd?.round ?? 0;
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !floydN) return;
+    const ranks = new Uint32Array(floydN + 1).fill(UNREACHED);
+    for (let v = 1; v <= floydN; v++) ranks[v] = v - 1;
+    renderer.setSearch({
+      kind: 'bfs',
+      levels: new Uint32Array(floydN + 1).fill(1),
+      ranks,
+      parents: new Uint32Array(floydN + 1),
+      depth: 2,
+    });
+    return () => {
+      // A row read off the table takes the canvas over; leaving otherwise
+      // (another algorithm, the table dropped) gives the plain graph back.
+      if (searchRef.current) return;
+      renderer.setSearch(null);
+      renderer.setSelected(0);
+    };
+  }, [floydN]);
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || floydRound === null) return;
+    renderer.setReveal(floydRound - 1);
+    renderer.setSelected(floydRound);
+  }, [floydRound]);
+  useEffect(() => {
+    if (!floydPlaying || !floydN) return;
+    const duration = Math.min(8000, Math.max(1600, floydN * 60));
+    rendererRef.current?.setRevealRate((floydN / duration) * 1000);
+    const from = floydRoundRef.current >= floydN ? 0 : floydRoundRef.current;
+    let frame = 0;
+    let start: number | null = null;
+    const tick = (now: number) => {
+      if (start === null) start = now - (from / floydN) * duration;
+      const t = Math.min(1, (now - start) / duration);
+      const round = Math.round(t * floydN);
+      setFloyd((f) => (f && f.round !== round ? { ...f, round } : f));
+      if (t < 1) frame = requestAnimationFrame(tick);
+      else setFloydPlaying(false);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [floydPlaying, floydN]);
 
   // Embedded, the path given goes the way of any file (one at a time: a load
   // must not free what the one before it is building), skipping the picker...
@@ -2149,7 +2267,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   // to a step by the library.
   // Opening the structure strip takes the canvas's bottom: the graph is
   // framed again for the room left, gliding while the strip grows.
-  const stripShown = Boolean(meta && search && structuresOpen && !phone);
+  const stripShown = Boolean(meta && (search || floydView) && structuresOpen && !phone);
   const stripWasShown = useRef(stripShown);
   useEffect(() => {
     const opened = stripShown && !stripWasShown.current;
@@ -2166,13 +2284,13 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   const dpRun = search?.result ?? null;
   const dpRoot = search?.root ?? 0;
   const dpSchedule = search?.schedule ?? null;
-  const dpSweep = search?.sweep ?? null;
+  const dpFloyd = search ? Boolean(search.sweep) : kind === 'floyd_warshall' && floyd !== null;
   const traceOf = useCallback((): DpTrace | null => {
     const graph = graphRef.current;
     const wasm = wasmRef.current;
-    if (!graph || !wasm || !dpRun) return null;
+    if (!graph || !wasm) return null;
     try {
-      if (dpSweep) {
+      if (dpFloyd) {
         const trace = graph.floydTrace(FLOYD_TRACE_CHANGES);
         if (!trace) return null;
         const read: DpTrace = {
@@ -2186,7 +2304,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         trace.free();
         return read;
       }
-      if (dpSchedule) {
+      if (dpSchedule && dpRun) {
         const trace = graph.bellmanFordTrace(
           dpRoot,
           scheduleType(wasm, dpSchedule),
@@ -2207,7 +2325,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       // A refused replay leaves the strip saying so.
     }
     return null;
-  }, [dpRun, dpRoot, dpSchedule, dpSweep]);
+  }, [dpRun, dpRoot, dpSchedule, dpFloyd]);
 
   const frontierAt = useCallback(
     (step: number, limit: number): FrontierView | null => {
@@ -2510,6 +2628,14 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       if (!second) {
         lastClick.current = { vertex: g.vertex, at: event.timeStamp, origin: rootInput };
         setRootInput(vertexLabel(g.vertex));
+        // Floyd-Warshall's table is already there: a click reads the row.
+        const table = floydRef.current;
+        if (
+          kind === 'floyd_warshall' &&
+          table?.graph === graphRef.current &&
+          table?.sweep === sweep
+        )
+          runSearch('floyd_warshall', g.vertex);
       }
     }
     // A click on the background (a pan that never moved) clears the selection.
@@ -3076,6 +3202,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     setCycle(null);
     floydRef.current?.run.free();
     floydRef.current = null;
+    setFloyd(null);
     setRefusal(null);
     graphRef.current?.free();
     graphRef.current = null;
@@ -3161,6 +3288,13 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     setMode('distance');
     setTargetInput(vertexLabel(v));
     const s = searchRef.current;
+    if (kind === 'floyd_warshall' && floydRef.current) {
+      // The first click of the double click read v's row: the path comes
+      // from the row before it, read off the same table.
+      const from = last?.vertex === v ? resolveVertex(last.origin) : (s?.root ?? 0);
+      if (from >= 1 && from !== v) runSearch('floyd_warshall', from, v);
+      return;
+    }
     if (!s) return;
     const reached = s.ranks[v] !== UNREACHED;
     if (reached && s.ranks[v] >= s.span) {
@@ -3518,29 +3652,31 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                 </div>
               </div>
               <div className={styles.searchRow}>
-                <div className={styles.field}>
-                  <span className={styles.fieldLabel}>{t.mode}</span>
-                  <div
-                    className={styles.segmented}
-                    role="radiogroup"
-                    aria-label={t.mode}
-                    data-active={mode === 'distance' ? 'second' : 'first'}
-                  >
-                    <span className={styles.thumb} aria-hidden="true" />
-                    {(['search', 'distance'] as const).map((which) => (
-                      <button
-                        key={which}
-                        type="button"
-                        role="radio"
-                        aria-checked={mode === which}
-                        className={mode === which ? styles.segmentActive : styles.segment}
-                        onClick={() => setMode(which)}
-                      >
-                        {which === 'search' ? t.modeSearch : t.modeDistance}
-                      </button>
-                    ))}
+                {kind !== 'floyd_warshall' && (
+                  <div className={styles.field}>
+                    <span className={styles.fieldLabel}>{t.mode}</span>
+                    <div
+                      className={styles.segmented}
+                      role="radiogroup"
+                      aria-label={t.mode}
+                      data-active={mode === 'distance' ? 'second' : 'first'}
+                    >
+                      <span className={styles.thumb} aria-hidden="true" />
+                      {(['search', 'distance'] as const).map((which) => (
+                        <button
+                          key={which}
+                          type="button"
+                          role="radio"
+                          aria-checked={mode === which}
+                          className={mode === which ? styles.segmentActive : styles.segment}
+                          onClick={() => setMode(which)}
+                        >
+                          {which === 'search' ? t.modeSearch : t.modeDistance}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
                 {kind === 'dijkstra' && (
                   <Picker
                     label={t.frontier}
@@ -3571,7 +3707,11 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                     groups={SWEEP_GROUPS}
                     groupNames={t.sweepGroups}
                     value={sweep}
-                    onChange={setSweep}
+                    onChange={(next) => {
+                      setSweep(next);
+                      setFloyd(null);
+                      setFloydPlaying(false);
+                    }}
                     names={t.sweeps}
                     costs={t.sweepCosts}
                     hints={t.sweepHints}
@@ -3591,48 +3731,64 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                   />
                 )}
               </div>
-              <div className={styles.searchRow}>
-                <VertexField
-                  id="root"
-                  label={t.origin}
-                  value={rootInput}
-                  onChange={setRootInput}
-                  onBlur={() => {
-                    if (rootValid) {
-                      setSelected(root);
-                      rendererRef.current?.setSelected(root);
-                    }
-                  }}
-                  onEnter={run}
-                  placeholder={names ? t.namePlaceholder : t.originPlaceholder}
-                  named={names !== null}
-                  suggest={suggestNames}
-                  suggestionsLabel={t.names.suggestions}
-                />
-                {mode === 'distance' && (
+              {kind === 'floyd_warshall' ? (
+                <div className={styles.searchRow}>
+                  <p className={`${styles.hint} ${styles.runHint}`}>{t.floydRunHint}</p>
+                  <button
+                    type="button"
+                    className={styles.run}
+                    disabled={!meta}
+                    onClick={runFloyd}
+                    aria-label={t.runFloyd}
+                    title={t.runFloyd}
+                  >
+                    <Play size={15} aria-hidden="true" />
+                  </button>
+                </div>
+              ) : (
+                <div className={styles.searchRow}>
                   <VertexField
-                    id="target"
-                    label={t.target}
-                    value={targetInput}
-                    onChange={setTargetInput}
+                    id="root"
+                    label={t.origin}
+                    value={rootInput}
+                    onChange={setRootInput}
+                    onBlur={() => {
+                      if (rootValid) {
+                        setSelected(root);
+                        rendererRef.current?.setSelected(root);
+                      }
+                    }}
                     onEnter={run}
-                    placeholder={names ? t.namePlaceholder : t.targetPlaceholder}
+                    placeholder={names ? t.namePlaceholder : t.originPlaceholder}
                     named={names !== null}
                     suggest={suggestNames}
                     suggestionsLabel={t.names.suggestions}
                   />
-                )}
-                <button
-                  type="button"
-                  className={styles.run}
-                  disabled={!canRun}
-                  onClick={run}
-                  aria-label={runLabel}
-                  title={runLabel}
-                >
-                  <Play size={15} aria-hidden="true" />
-                </button>
-              </div>
+                  {mode === 'distance' && (
+                    <VertexField
+                      id="target"
+                      label={t.target}
+                      value={targetInput}
+                      onChange={setTargetInput}
+                      onEnter={run}
+                      placeholder={names ? t.namePlaceholder : t.targetPlaceholder}
+                      named={names !== null}
+                      suggest={suggestNames}
+                      suggestionsLabel={t.names.suggestions}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    className={styles.run}
+                    disabled={!canRun}
+                    onClick={run}
+                    aria-label={runLabel}
+                    title={runLabel}
+                  >
+                    <Play size={15} aria-hidden="true" />
+                  </button>
+                </div>
+              )}
 
               {search ? (
                 <div className={styles.result}>
@@ -3743,6 +3899,67 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                     </span>
                   </div>
                 </div>
+              ) : floydView ? (
+                <div className={styles.result}>
+                  <div className={styles.stats}>
+                    <Stat label={t.floydPairs} value={formatInt(floyd.pairs)} />
+                    <Stat
+                      label={t.floydLongest}
+                      value={floyd.longest ? formatWeight(floyd.longest.distance) : '∞'}
+                    />
+                    <Stat label={t.time} value={formatMs(floyd.elapsedMs)} />
+                  </div>
+                  {floyd.longest && (
+                    <p className={styles.hint}>
+                      {t.floydLongestPair}{' '}
+                      <button
+                        type="button"
+                        className={styles.inlineLink}
+                        onClick={() => {
+                          const { from, to } = floyd.longest ?? { from: 0, to: 0 };
+                          setMode('distance');
+                          setTargetInput(vertexLabel(to));
+                          setRootInput(vertexLabel(from));
+                          runSearch('floyd_warshall', from, to);
+                        }}
+                      >
+                        {vertexLabel(floyd.longest.from)} → {vertexLabel(floyd.longest.to)}
+                      </button>
+                    </p>
+                  )}
+                  <p className={styles.hint}>{t.floydRowHint}</p>
+                  <div className={styles.playback}>
+                    <IconButton
+                      label={floydPlaying ? t.pause : floyd.round >= floyd.n ? t.replay : t.play}
+                      onClick={() => setFloydPlaying((p) => !p)}
+                      accent
+                    >
+                      {floydPlaying ? (
+                        <Pause size={14} />
+                      ) : floyd.round >= floyd.n ? (
+                        <RotateCcw size={14} />
+                      ) : (
+                        <Play size={14} />
+                      )}
+                    </IconButton>
+                    <input
+                      type="range"
+                      min={0}
+                      max={floyd.n}
+                      step={1}
+                      value={floyd.round}
+                      onChange={(event) => {
+                        const round = Number(event.target.value);
+                        setFloydPlaying(false);
+                        setFloyd((f) => (f ? { ...f, round } : f));
+                      }}
+                      aria-label={t.floydRounds}
+                    />
+                    <span className={`mono ${styles.hint}`}>k = {floyd.round}</span>
+                  </div>
+                </div>
+              ) : kind === 'floyd_warshall' ? (
+                <p className={styles.hint}>{t.floydHint}</p>
               ) : (
                 <p className={styles.hint}>{names ? t.searchHintNamed : t.searchHint}</p>
               )}
@@ -4378,7 +4595,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
               </div>
 
               {/* The structure strip's toggle, bottom centre, once a search ran */}
-              {search && !phone && !embedded && (
+              {(search || floydView) && !phone && !embedded && (
                 <div className={`${styles.floating} ${styles.floatingBottomCenter}`}>
                   <div className={styles.cluster}>
                     <IconButton
@@ -4400,7 +4617,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                         }
                       }}
                     >
-                      {search.sweep ? (
+                      {!search || search.sweep ? (
                         <Grid3x3 size={15} />
                       ) : search.schedule ? (
                         <Table2 size={15} />
@@ -4557,43 +4774,48 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
             )}
         </div>
 
-        {meta && search && (structuresOpen || stripClosing) && !phone && !embedded && (
-          <Structures
-            t={t}
-            search={search}
-            reveal={reveal}
-            playing={playing}
-            height={stripHeight}
-            columnRef={columnRef}
-            frontierAt={frontierAt}
-            traceOf={traceOf}
-            vertexCount={meta.vertices}
-            hovered={hovered}
-            onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
-            onSelect={(v) => {
-              setSelected(v);
-              rendererRef.current?.setSelected(v);
-            }}
-            onMembers={onMembers}
-            closing={stripClosing && !structuresOpen}
-            onClosed={() => setStripClosing(false)}
-            maximized={stripMax}
-            onMaximize={setStripMax}
-            onResize={(height) => {
-              const next = clampStrip(
-                height,
-                columnRef.current?.getBoundingClientRect().height ?? 800,
-              );
-              setStripHeight(next);
-              columnRef.current?.style.setProperty('--strip-height', `${next}px`);
-              try {
-                localStorage.setItem(STRIP_HEIGHT_KEY, String(next));
-              } catch {
-                // No storage: the height lasts for this visit.
-              }
-            }}
-          />
-        )}
+        {meta &&
+          (search || floydView) &&
+          (structuresOpen || stripClosing) &&
+          !phone &&
+          !embedded && (
+            <Structures
+              t={t}
+              search={search}
+              reveal={reveal}
+              playing={playing}
+              height={stripHeight}
+              columnRef={columnRef}
+              frontierAt={frontierAt}
+              traceOf={traceOf}
+              floydRound={floydRound}
+              vertexCount={meta.vertices}
+              hovered={hovered}
+              onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
+              onSelect={(v) => {
+                setSelected(v);
+                rendererRef.current?.setSelected(v);
+              }}
+              onMembers={onMembers}
+              closing={stripClosing && !structuresOpen}
+              onClosed={() => setStripClosing(false)}
+              maximized={stripMax}
+              onMaximize={setStripMax}
+              onResize={(height) => {
+                const next = clampStrip(
+                  height,
+                  columnRef.current?.getBoundingClientRect().height ?? 800,
+                );
+                setStripHeight(next);
+                columnRef.current?.style.setProperty('--strip-height', `${next}px`);
+                try {
+                  localStorage.setItem(STRIP_HEIGHT_KEY, String(next));
+                } catch {
+                  // No storage: the height lasts for this visit.
+                }
+              }}
+            />
+          )}
       </div>
 
       {notice &&

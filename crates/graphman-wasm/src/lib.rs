@@ -759,6 +759,29 @@ impl FloydRun {
         self.cycle.clone()
     }
 
+    /// The table at a glance: `[pairs, longest, from, to]`, the ordered
+    /// pairs `i ≠ j` with a path, and the longest of their distances with
+    /// its pair (`NaN, 0, 0` when no pair has one). Empty on a negative cycle.
+    pub fn summary(&self) -> Vec<f64> {
+        let Some(all) = self.all.as_ref() else {
+            return Vec::new();
+        };
+        let n = all.vertex_count() as Vertex;
+        let (mut pairs, mut longest, mut from, mut to) = (0u64, f64::NAN, 0, 0);
+        for i in 1..=n {
+            for (j, &d) in (1..=n).zip(all.row(i)) {
+                if i == j || d == f64::INFINITY {
+                    continue;
+                }
+                pairs += 1;
+                if longest.is_nan() || d > longest {
+                    (longest, from, to) = (d, i, j);
+                }
+            }
+        }
+        vec![pairs as f64, longest, from as f64, to as f64]
+    }
+
     /// The shortest-path tree from `root`, read off its row of the tables,
     /// replayed in the order the rows' cells became final: by the round
     /// (the largest intermediate vertex on the path), parents first.
