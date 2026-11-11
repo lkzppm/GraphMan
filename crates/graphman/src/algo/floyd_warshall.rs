@@ -595,6 +595,122 @@ impl Table<'_> {
     }
 }
 
+/// Floyd-Warshall one round at a time, for a replay: the plain sweep's
+/// rounds in order, each reporting the cells it improved, so the table can
+/// be shown as it stood after any round `k` (the dynamic programme's
+/// `D_k`). The tables are the same as [`floyd_warshall`]'s; the improved
+/// cells are found by comparing, so a round costs a little more than the
+/// plain sweep's vectorised one. Meant for graphs small enough to watch.
+///
+/// ```
+/// use graphman::{Build, Csr, EdgeList, MemoryBudget, Orientation};
+/// use graphman::algo::FloydRounds;
+/// let edges = EdgeList::parse_with(b"3\n1 2 4\n1 3 3\n3 2 -2\n2 1 1\n", Orientation::Directed).unwrap();
+/// let graph = Csr::build(&edges).unwrap();
+/// let mut rounds = FloydRounds::new(&graph, MemoryBudget::Machine).unwrap();
+/// assert_eq!(rounds.table().distance(1, 2), Some(4.0));
+/// let mut improved = Vec::new();
+/// while rounds.step(&mut improved).unwrap() {}
+/// assert_eq!(rounds.rounds_done(), 3);
+/// assert_eq!(rounds.table().distance(1, 2), Some(1.0));
+/// ```
+pub struct FloydRounds<'g, G> {
+    graph: &'g G,
+    all: AllPairs,
+    /// Rounds done: the next round takes vertex `k + 1` as the intermediate.
+    k: usize,
+    row_k: Vec<Weight>,
+    parents_k: Vec<Vertex>,
+}
+
+impl<'g, G: Weighted> FloydRounds<'g, G> {
+    /// The tables before the first round (`D_0`: 0 on the diagonal, the
+    /// arcs, `+∞`), within `budget`. A negative loop is already a negative
+    /// cycle.
+    pub fn new(graph: &'g G, budget: MemoryBudget) -> Result<Self, FloydError> {
+        if let Some(edge) = graph.negative_loops().first() {
+            return Err(NegativeCycle::new(vec![edge.u], edge.weight).into());
+        }
+        let all = initial(graph, budget)?;
+        let n = all.vertex_count;
+        Ok(Self {
+            graph,
+            all,
+            k: 0,
+            row_k: vec![0.0; n],
+            parents_k: vec![NO_VERTEX; n],
+        })
+    }
+
+    /// The tables after [`rounds_done`](Self::rounds_done) rounds.
+    pub fn table(&self) -> &AllPairs {
+        &self.all
+    }
+
+    /// Rounds done so far (`n` when the run is over).
+    pub fn rounds_done(&self) -> usize {
+        self.k
+    }
+
+    /// Runs the next round, pushing to `improved` the cell `(i, j)` of every
+    /// distance it lowered, row by row. `Ok(false)` once every round is
+    /// done (nothing ran); the negative cycle when the round put one on the
+    /// diagonal.
+    pub fn step(&mut self, improved: &mut Vec<(Vertex, Vertex)>) -> Result<bool, NegativeCycle> {
+        let n = self.all.vertex_count;
+        let k = self.k;
+        if k == n {
+            return Ok(false);
+        }
+        self.row_k
+            .copy_from_slice(&self.all.distance[k * n..(k + 1) * n]);
+        self.parents_k
+            .copy_from_slice(&self.all.parent[k * n..(k + 1) * n]);
+        for i in 0..n {
+            let through = self.all.distance[i * n + k];
+            if i == k || through == Weight::INFINITY {
+                continue;
+            }
+            let row = &mut self.all.distance[i * n..(i + 1) * n];
+            let parents = &mut self.all.parent[i * n..(i + 1) * n];
+            for j in 0..n {
+                let candidate = through + self.row_k[j];
+                if candidate < row[j] {
+                    row[j] = candidate;
+                    parents[j] = self.parents_k[j];
+                    improved.push((i as Vertex + 1, j as Vertex + 1));
+                }
+            }
+        }
+        self.k += 1;
+        let table = Table {
+            n,
+            distance: &mut self.all.distance,
+            parent: &mut self.all.parent,
+        };
+        if let Some(i) = table.negative_diagonal() {
+            let i = i as Vertex + 1;
+            return Err(self
+                .all
+                .cycle_through(self.graph, i)
+                .or_else(|| negative_cycle(self.graph, ScheduleKind::Queue))
+                .expect("a negative diagonal is a closed walk of negative weight"));
+        }
+        Ok(true)
+    }
+
+    /// Runs the rounds left and returns the tables, as [`floyd_warshall`]
+    /// would (rows looping through a zero-weight cycle regrown).
+    pub fn finish(mut self) -> Result<AllPairs, NegativeCycle> {
+        let mut improved = Vec::new();
+        while self.step(&mut improved)? {
+            improved.clear();
+        }
+        self.all.regrow_looping_rows(self.graph);
+        Ok(self.all)
+    }
+}
+
 /// Row `i` mutably and row `k` immutably out of one `n`-wide table (`i ≠ k`).
 #[inline(always)]
 fn two_rows<T>(table: &mut [T], n: usize, i: usize, k: usize) -> (&mut [T], &[T]) {

@@ -529,11 +529,17 @@ export const en = {
     ] as [string, string][],
     layouts: {
       force: { label: 'Force', hint: 'springs and repulsion' },
-      radial: { label: 'Radial levels', hint: 'BFS rings around the origin' },
+      radial: {
+        label: 'Radial levels',
+        hint: 'BFS rings around the origin',
+        hintDfs: 'one ring per step down the DFS tree',
+        hintDistance: 'rings by distance from the origin',
+      },
       layered: {
         label: 'Layered',
         hint: 'the BFS tree, level by level',
-        hintDijkstra: "Dijkstra's shortest-path tree",
+        hintDfs: 'the DFS tree, one level per step down',
+        hintDistance: 'the shortest-path tree, edge by edge',
       },
       degree: { label: 'Degree circle', hint: 'sorted by degree, edges as chords' },
     },
@@ -656,6 +662,20 @@ export const en = {
       slf: 'the queue as a deque: a vertex closer than the front goes first',
     },
     scheduleGroups: { course: 'the course', faster: 'fewer passes' },
+    floydWarshall: 'Floyd-Warshall',
+    sweep: 'Sweep',
+    sweeps: { plain: 'Plain', pruned: 'Pruned', blocked: 'Blocked' },
+    sweepCosts: { plain: 'O(n³)', pruned: 'O(n³)', blocked: 'O(n³)' },
+    sweepHints: {
+      plain: 'the textbook triple loop on one table, updated in place (the memory optimisation)',
+      pruned: 'skips the rows that cannot reach k yet',
+      blocked: 'the table in tiles that stay in cache',
+    },
+    sweepGroups: { course: 'the course', faster: 'faster walks' },
+    floydTooLarge: (n: string, limit: string) =>
+      `Floyd-Warshall runs here on up to ${limit} vertices: its table grows as n² and its time as n³, and this graph has ${n}. The CLI takes it (graphman floyd-warshall).`,
+    cycleNoteGraph: (w: string) =>
+      `A negative cycle, weighing ${w}, in the graph: Floyd-Warshall has no distances for any pair it touches.`,
     cycleNote: (w: string) =>
       `A negative cycle, weighing ${w}, reached from this origin: no shortest paths, every lap makes a walk shorter.`,
     passes: 'Passes',
@@ -737,7 +757,7 @@ export const en = {
       hide: 'Hide the data structure',
       resize: 'Drag to resize the panel (double click to reset)',
       empty:
-        "Run a search and the structure it works with appears here, step by step: BFS's queue, DFS's stack, Dijkstra's priority queue.",
+        "Run a search and the structure it works with appears here, step by step: BFS's queue, DFS's stack, Dijkstra's priority queue, the tables of Bellman-Ford and Floyd-Warshall.",
       titles: {
         bfs: 'Queue',
         dfs: 'Stack',
@@ -748,6 +768,20 @@ export const en = {
         quad_heap: 'Priority queue · 4-ary heap',
         pairing: 'Priority queue · pairing heap',
         radix: 'Priority queue · radix heap',
+        bellman: 'Dynamic programming · passes',
+        floyd: 'Dynamic programming · distance matrix',
+      },
+      dp: {
+        bellmanTitle: 'd_k[v]: the estimate of v after pass k',
+        floydTitle: 'D_k[i][j]: from i to j through the vertices 1 to k',
+        pass: 'pass',
+        passOf: (k: string, total: string) => `pass ${k} of ${total}`,
+        roundOf: (k: string, n: string) => `k = ${k} of ${n}`,
+        start: 'k = 0: the arcs alone',
+        bellmanTooLarge:
+          'This run lowers too many estimates to keep them all for the table; the canvas still replays it.',
+        floydTooLarge:
+          'The matrix is replayed round by round up to 200 vertices; the canvas still shows every row.',
       },
       front: 'front',
       back: 'back',

@@ -47,6 +47,8 @@ import {
   Waypoints,
   Weight,
   X,
+  Grid3x3,
+  Table2,
 } from 'lucide-react';
 import {
   Fragment,
@@ -77,6 +79,7 @@ import {
   loadGraphman,
   looksLikeNames,
   UNREACHED,
+  type FloydRun,
   type Graph,
   type GraphmanModule,
   type MemoryReport,
@@ -110,6 +113,7 @@ import Structures, {
   type FrontierView,
   type Members,
 } from './Structures';
+import type { DpTrace } from './DpTable';
 
 type Strings = Dictionary['observatory'];
 
@@ -223,7 +227,7 @@ interface GraphMeta {
 /** The searches the panel offers. A Bellman-Ford run is shown as a
     shortest-path tree, like Dijkstra's (its `Search` keeps `kind:
     'dijkstra'` and names its `schedule`). */
-type SearchKindName = 'bfs' | 'dfs' | 'dijkstra' | 'bellman_ford';
+type SearchKindName = 'bfs' | 'dfs' | 'dijkstra' | 'bellman_ford' | 'floyd_warshall';
 /** The built-in examples behind the empty sidebar's "Examples" tile. */
 const EXAMPLES = ['plain', 'weighted', 'named', 'directed', 'cycle'] as const;
 type Example = (typeof EXAMPLES)[number];
@@ -267,6 +271,30 @@ function frontierType(wasm: GraphmanModule, name: FrontierName) {
     radix: types.Radix,
   }[name];
 }
+/** How Floyd-Warshall walks its one table: the course's textbook loop with
+    the memory optimisation, then two walks that skip or tile. */
+type SweepName = 'plain' | 'pruned' | 'blocked';
+const SWEEP_GROUPS: { group: 'course' | 'faster'; names: SweepName[] }[] = [
+  { group: 'course', names: ['plain'] },
+  { group: 'faster', names: ['pruned', 'blocked'] },
+];
+
+/** What a layout draws for the search on screen. */
+function layoutHint(t: Dictionary['observatory'], id: LayoutId, search: Search | null): string {
+  if (id === 'radial' || id === 'layered') {
+    const hints = t.layouts[id];
+    if (search?.distances) return hints.hintDistance;
+    if (search?.kind === 'dfs') return hints.hintDfs;
+  }
+  return t.layouts[id].hint;
+}
+
+/** The wasm side's number for a sweep. */
+function sweepType(wasm: GraphmanModule, name: SweepName) {
+  const types = wasm.SweepType;
+  return { plain: types.Plain, pruned: types.Pruned, blocked: types.Blocked }[name];
+}
+
 /** How DFS is written: with an explicit stack, or one call per level. */
 type DfsName = 'iterative' | 'recursive';
 
@@ -308,7 +336,7 @@ type SearchMode = 'search' | 'distance';
 
 interface Search {
   /** Bellman-Ford shows as `'dijkstra'`, with its `schedule`. */
-  kind: Exclude<SearchKindName, 'bellman_ford'>;
+  kind: Exclude<SearchKindName, 'bellman_ford' | 'floyd_warshall'>;
   root: number;
   /** The distance query's other end (0 otherwise). */
   target: number;
@@ -338,6 +366,9 @@ interface Search {
   /** Bellman-Ford only: the schedule that ran (its search shows as a
       shortest-path tree, `kind: 'dijkstra'`). */
   schedule?: ScheduleName | null;
+  /** Floyd-Warshall only: the sweep that ran (its search shows as a
+      Dijkstra's: the tree from the origin, read off the origin's row). */
+  sweep?: SweepName | null;
   /** DFS only: the way it was written. */
   dfs: DfsName | null;
   /** Steps of the replay's timeline: one per discovery (`span`), or for a
@@ -381,6 +412,29 @@ function dfsTrail(order: Uint32Array, parents: Uint32Array, span: number, unwind
 /** The discovery rank a timeline position stands at: the position itself,
     or for a DFS the rank of its last push, gliding on to the next one
     while the next step is a push. */
+/** The algorithm a search on screen ran (Bellman-Ford's and Floyd-Warshall's
+    show as a Dijkstra's, with their schedule or sweep). */
+function algorithmOf(search: Search): SearchKindName {
+  return search.sweep ? 'floyd_warshall' : search.schedule ? 'bellman_ford' : search.kind;
+}
+
+/** Each vertex's ring in the radial layout of a search: a BFS's level, a
+    DFS's depth, or a shortest-path tree's distance in bands (fractional,
+    from the smallest distance, so negative distances stay outside 0). */
+function searchRings(search: Search, order: Uint32Array): Float64Array {
+  const rings = new Float64Array(search.levels.length);
+  const distances = search.distances;
+  if (!distances) {
+    for (const v of order) rings[v] = search.levels[v];
+    return rings;
+  }
+  let nearest = 0;
+  for (const v of order) nearest = Math.min(nearest, distances[v]);
+  const width = search.bandWidth || 1;
+  for (const v of order) rings[v] = (distances[v] - nearest) / width;
+  return rings;
+}
+
 function rankOf(search: Search, position: number): number {
   if (!search.trail || !search.rankAt) return position;
   const i = Math.max(0, Math.min(search.steps - 1, Math.floor(position)));
@@ -490,6 +544,10 @@ function spacingStretch(
 const MORPH_MS = 700;
 /** Share of the view a framed path fills (the path label floats over the top). */
 const PATH_FILL = 0.62;
+/** The most lowerings of a Bellman-Ford replayed in the strip's table. */
+const BELLMAN_TRACE_LOWERINGS = 400_000;
+/** The most cell changes of a Floyd-Warshall replayed in the strip's matrix. */
+const FLOYD_TRACE_CHANGES = 2_000_000;
 /** Dijkstra's refusal frames the negative edges up to this many; past it they are the graph. */
 const NEGATIVE_FIT = 64;
 /** The negative edges named in the refusal's card; the rest are counted. */
@@ -618,6 +676,10 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   const [kind, setKind] = useState<SearchKindName>('bfs');
   const [frontier, setFrontier] = useState<FrontierName>('heap');
   const [schedule, setSchedule] = useState<ScheduleName>('queue');
+  const [sweep, setSweep] = useState<SweepName>('plain');
+  /** Floyd-Warshall's tables, kept for the graph and sweep they were run on:
+      every other origin is a row already there. */
+  const floydRef = useRef<{ graph: Graph; sweep: SweepName; run: FloydRun } | null>(null);
   const [dfsWay, setDfsWay] = useState<DfsName>('iterative');
   /** How deep the recursive DFS may go here (the library's browser limit). */
   const [recursionLimit, setRecursionLimit] = useState(0);
@@ -644,7 +706,12 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   const [diameterBusy, setDiameterBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   /** The negative cycle Bellman-Ford found instead of distances (closed: first vertex last too). */
-  const [cycle, setCycle] = useState<{ vertices: Uint32Array; weight: number } | null>(null);
+  const [cycle, setCycle] = useState<{
+    vertices: Uint32Array;
+    weight: number;
+    /** Reached from the origin (Bellman-Ford), or anywhere (Floyd-Warshall). */
+    scope: 'origin' | 'graph';
+  } | null>(null);
   /** Dijkstra's refusal: every negative edge as `[u, v]` pairs (drawn in red) and
       its weight, with the search that was asked, for running Bellman-Ford instead. */
   const [refusal, setRefusal] = useState<{
@@ -1094,8 +1161,11 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   /**
    * Rearranges the graph: the level layouts start at `root`, the force
    * layout returns to the initial placement and warms the simulation up
-   * again, and the layered one draws the tree of the search on screen when
-   * that search is a Dijkstra (a BFS tree from `root` otherwise). The layout's
+   * again. When the search on screen starts at `root`, the level layouts
+   * draw its own tree: the layered one level by level (a BFS's levels, a
+   * DFS's depth, a shortest-path tree's edges), the radial one in rings (a
+   * BFS's levels, a DFS's depth, the distance in bands, fractional). A BFS
+   * tree from `root` otherwise. The layout's
    * spacing stretches whatever comes back. Vertices slide to their new places and the view follows: the
    * whole graph, or with `frame: 'component'` only the root's component
    * (a new search origin re-arranges that one, the rest just makes room).
@@ -1118,9 +1188,13 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
               : wasm.LayerDirection.Horizontal;
           const shown = searchRef.current;
           positions =
-            shown?.kind === 'dijkstra'
-              ? graph.layeredTree(shown.result as ShortestPathResult, direction)
+            shown && shown.root === root
+              ? graph.layeredTree(shown.parents, shown.result.order(), direction)
               : graph.layered(root, direction);
+        } else if (id === 'radial' && searchRef.current?.root === root) {
+          const shown = searchRef.current;
+          const order = shown.result.order();
+          positions = graph.radialTree(shown.parents, order, searchRings(shown, order));
         } else {
           positions = graph.layout(
             id === 'radial' ? wasm.LayoutKind.Radial : wasm.LayoutKind.Degree,
@@ -1184,19 +1258,17 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     [applyCamera, glideTo],
   );
 
-  /** The level layouts follow the search: a new origin re-arranges its component,
-      and the layered tree also changes between a Dijkstra and any other search. */
+  /** The level layouts follow the search: each new run re-arranges its
+      origin's component around its own tree (a BFS's, a DFS's, a
+      shortest-path tree). */
   layoutRef.current = layout;
+  const searchRun = search?.result ?? null;
   const searchRoot = search?.root ?? 0;
-  const searchIsDijkstra = search?.kind === 'dijkstra';
   useEffect(() => {
-    if (searchRoot && layoutRef.current === 'radial')
-      applyLayout('radial', searchRoot, 'component');
-  }, [searchRoot, applyLayout]);
-  useEffect(() => {
-    if (searchRoot && layoutRef.current === 'layered')
-      applyLayout('layered', searchRoot, 'component');
-  }, [searchRoot, searchIsDijkstra, applyLayout]);
+    const id = layoutRef.current;
+    if (searchRun && searchRoot && (id === 'radial' || id === 'layered'))
+      applyLayout(id, searchRoot, 'component');
+  }, [searchRun, searchRoot, applyLayout]);
 
   /** Lights component `c` (0 clears), frames it, and hands the arrow keys to it. */
   const selectComponent = useCallback(
@@ -1256,6 +1328,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     searchRef.current?.result.free();
     setSearch(null);
     setCycle(null);
+    floydRef.current?.run.free();
+    floydRef.current = null;
     setRefusal(null);
     graphRef.current?.free();
     graphRef.current = null;
@@ -1823,37 +1897,62 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         let settled: Uint32Array | null = null;
         let bandWidth = 0;
         let fullPath: Uint32Array | null = null;
+        /** A negative cycle leaves no distances: the cycle itself is drawn
+            in red, framed, and named in the card where a path would be. */
+        const showCycle = (found: Uint32Array, scope: 'origin' | 'graph') => {
+          setSearch(null);
+          searchRef.current = null;
+          setPlaying(false);
+          setSelected(0);
+          renderer.setSelected(0);
+          renderer.setSearch(null);
+          renderer.setPath(0, found, true);
+          let weight = 0;
+          for (let i = 0; i + 1 < found.length; i++) {
+            weight += graph.edgeWeight(found[i], found[i + 1]) ?? 0;
+          }
+          setCycle({ vertices: found, weight, scope });
+          setNotice(null);
+          const onCycle = new Set(found);
+          autoFit.current = false;
+          fitVertices((v) => onCycle.has(v), PATH_FILL);
+        };
         if (which === 'bellman_ford') {
-          // A negative cycle reachable from the origin leaves no distances:
-          // the cycle itself is drawn in red, framed, and named in the card
-          // where a path would be.
           const found = graph.negativeCycle(root, scheduleType(wasm, schedule));
           if (found.length) {
-            search?.result.free();
-            setSearch(null);
-            searchRef.current = null;
-            setPlaying(false);
-            setSelected(0);
-            renderer.setSelected(0);
-            renderer.setSearch(null);
-            renderer.setPath(0, found, true);
-            let weight = 0;
-            for (let i = 0; i + 1 < found.length; i++) {
-              weight += graph.edgeWeight(found[i], found[i + 1]) ?? 0;
-            }
-            setCycle({ vertices: found, weight });
-            setNotice(null);
-            const onCycle = new Set(found);
-            autoFit.current = false;
-            fitVertices((v) => onCycle.has(v), PATH_FILL);
+            showCycle(found, 'origin');
             return;
           }
         }
-        if (which === 'dijkstra' || which === 'bellman_ford') {
+        // Floyd-Warshall runs once per graph and sweep; an origin reads its
+        // row of the tables.
+        let floydTree: ShortestPathResult | null = null;
+        if (which === 'floyd_warshall') {
+          const limit = wasm.Graph.floydWarshallLimit();
+          if (graph.vertexCount > limit) {
+            setNotice(tRef.current.floydTooLarge(formatInt(graph.vertexCount), formatInt(limit)));
+            return;
+          }
+          let cached = floydRef.current;
+          if (!cached || cached.graph !== graph || cached.sweep !== sweep) {
+            cached?.run.free();
+            floydRef.current = null;
+            cached = { graph, sweep, run: graph.floydWarshall(sweepType(wasm, sweep)) };
+            floydRef.current = cached;
+          }
+          const found = cached.run.cycle();
+          if (found.length) {
+            showCycle(found, 'graph');
+            return;
+          }
+          floydTree = cached.run.tree(root);
+        }
+        if (which === 'dijkstra' || which === 'bellman_ford' || which === 'floyd_warshall') {
           const run =
-            which === 'bellman_ford'
+            floydTree ??
+            (which === 'bellman_ford'
               ? graph.bellmanFord(root, scheduleType(wasm, schedule))
-              : graph.dijkstra(root, frontierType(wasm, frontier));
+              : graph.dijkstra(root, frontierType(wasm, frontier)));
           result = run;
           distances = run.distances();
           settled = run.order();
@@ -1901,7 +2000,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           for (let r = 0; r < span; r++) levelSizes[levels[order[r]]] += 1;
         }
         const moves = which === 'dfs' ? dfsTrail(order, parents, span, !(target && path)) : null;
-        const shown = which === 'bellman_ford' ? 'dijkstra' : which;
+        const shown = which === 'bellman_ford' || which === 'floyd_warshall' ? 'dijkstra' : which;
         setCycle(null);
         renderer.setSearch({ kind: shown, levels, ranks, parents, depth });
         renderer.setPath(target, path);
@@ -1925,6 +2024,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           bandWidth,
           frontier: which === 'dijkstra' ? frontier : null,
           schedule: which === 'bellman_ford' ? schedule : null,
+          sweep: which === 'floyd_warshall' ? sweep : null,
           dfs: which === 'dfs' ? dfsWay : null,
           steps: moves ? moves.trail.length : span,
           trail: moves?.trail ?? null,
@@ -1958,7 +2058,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         setNotice(error instanceof Error ? error.message : String(error));
       }
     },
-    [search, pathOnly, frontier, schedule, dfsWay, fitVertices],
+    [search, pathOnly, frontier, schedule, sweep, dfsWay, fitVertices],
   );
 
   // The reveal animation: discovery ranks light up over a duration that
@@ -2060,11 +2160,61 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     fit(true, [renderer.cssSize[0], Math.max(column.clientHeight - stripHeight, 1)]);
   }, [stripShown, stripHeight, fit]);
 
+  /** Bellman-Ford's or Floyd-Warshall's trace, recorded again (untimed) for
+      the strip's table: every lowering in order, or `null` when it would be
+      too large to keep. */
+  const dpRun = search?.result ?? null;
+  const dpRoot = search?.root ?? 0;
+  const dpSchedule = search?.schedule ?? null;
+  const dpSweep = search?.sweep ?? null;
+  const traceOf = useCallback((): DpTrace | null => {
+    const graph = graphRef.current;
+    const wasm = wasmRef.current;
+    if (!graph || !wasm || !dpRun) return null;
+    try {
+      if (dpSweep) {
+        const trace = graph.floydTrace(FLOYD_TRACE_CHANGES);
+        if (!trace) return null;
+        const read: DpTrace = {
+          kind: 'floyd',
+          n: trace.n,
+          initial: trace.initial(),
+          cells: trace.cells(),
+          rounds: trace.rounds(),
+          after: trace.after(),
+        };
+        trace.free();
+        return read;
+      }
+      if (dpSchedule) {
+        const trace = graph.bellmanFordTrace(
+          dpRoot,
+          scheduleType(wasm, dpSchedule),
+          BELLMAN_TRACE_LOWERINGS,
+        );
+        if (!trace) return null;
+        const read: DpTrace = {
+          kind: 'bellman',
+          vertices: trace.vertices(),
+          passes: trace.passes(),
+          distances: trace.distances(),
+          totalPasses: trace.totalPasses,
+        };
+        trace.free();
+        return read;
+      }
+    } catch {
+      // A refused replay leaves the strip saying so.
+    }
+    return null;
+  }, [dpRun, dpRoot, dpSchedule, dpSweep]);
+
   const frontierAt = useCallback(
     (step: number, limit: number): FrontierView | null => {
       const graph = graphRef.current;
       const wasm = wasmRef.current;
-      if (!graph || !wasm || search?.kind !== 'dijkstra' || search.schedule) return null;
+      if (!graph || !wasm || search?.kind !== 'dijkstra' || search.schedule || search.sweep)
+        return null;
       try {
         const snapshot = graph.frontierAt(
           search.root,
@@ -2843,7 +2993,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       const parentId = rank[parent] + 1;
       lines.push(weights ? `${parentId} ${id} ${weightOf(parent, v)}` : `${parentId} ${id}`);
     }
-    const stem = `${current.name.replace(/\.[^.]+$/, '')}_${shown.kind}_${shown.root}`;
+    const stem = `${current.name.replace(/\.[^.]+$/, '')}_${algorithmOf(shown)}_${shown.root}`;
     const encoder = new TextEncoder();
     const bytes = encoder.encode(lines.join('\n') + '\n');
     let parsed: Parsed;
@@ -2888,6 +3038,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     searchRef.current?.result.free();
     setSearch(null);
     setCycle(null);
+    floydRef.current?.run.free();
+    floydRef.current = null;
     setRefusal(null);
     graphRef.current?.free();
     graphRef.current = null;
@@ -2976,7 +3128,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     if (!s) return;
     const reached = s.ranks[v] !== UNREACHED;
     if (reached && s.ranks[v] >= s.span) {
-      runSearch(s.kind, s.root, v);
+      runSearch(algorithmOf(s), s.root, v);
       return;
     }
     let path: Uint32Array | null = null;
@@ -3014,7 +3166,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     const s = searchRef.current;
     if (!s) return;
     if (s.span < s.result.reached) {
-      runSearch(s.kind, s.root, 0);
+      runSearch(algorithmOf(s), s.root, 0);
       return;
     }
     const renderer = rendererRef.current;
@@ -3024,7 +3176,13 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     setSearch({ ...s, target: 0, path: null });
   };
   const kindLabel =
-    kind === 'dijkstra' ? t.dijkstra : kind === 'bellman_ford' ? t.bellmanFord : kind.toUpperCase();
+    kind === 'dijkstra'
+      ? t.dijkstra
+      : kind === 'bellman_ford'
+        ? t.bellmanFord
+        : kind === 'floyd_warshall'
+          ? t.floydWarshall
+          : kind.toUpperCase();
   const runLabel =
     mode === 'distance'
       ? t.runDistance(
@@ -3316,7 +3474,9 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                         ? t.dijkstra
                         : which === 'bellman_ford'
                           ? t.bellmanFord
-                          : which.toUpperCase()
+                          : which === 'floyd_warshall'
+                            ? t.floydWarshall
+                            : which.toUpperCase()
                     }
                   />
                 </div>
@@ -3367,6 +3527,18 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                     names={t.schedules}
                     costs={t.scheduleCosts}
                     hints={t.scheduleHints}
+                  />
+                )}
+                {kind === 'floyd_warshall' && (
+                  <Picker
+                    label={t.sweep}
+                    groups={SWEEP_GROUPS}
+                    groupNames={t.sweepGroups}
+                    value={sweep}
+                    onChange={setSweep}
+                    names={t.sweeps}
+                    costs={t.sweepCosts}
+                    hints={t.sweepHints}
                   />
                 )}
                 {kind === 'dfs' && (
@@ -3489,7 +3661,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                       onPick={(v) => {
                         setMode('distance');
                         setTargetInput(vertexLabel(v));
-                        runSearch(search.schedule ? 'bellman_ford' : 'dijkstra', search.root, v);
+                        runSearch(algorithmOf(search), search.root, v);
                       }}
                     />
                   ) : (
@@ -3927,7 +4099,9 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                       </p>
                     )}
                     <p className={`${styles.pathNames} ${styles.cycleNote}`} role="status">
-                      {t.cycleNote(formatWeight(cycle.weight))}
+                      {cycle.scope === 'graph'
+                        ? t.cycleNoteGraph(formatWeight(cycle.weight))
+                        : t.cycleNote(formatWeight(cycle.weight))}
                     </p>
                   </div>
                 </div>
@@ -4077,11 +4251,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                         <span className={styles.menuIcon}>{item.icon}</span>
                         <span className={styles.menuText}>
                           <span>{t.layouts[item.id].label}</span>
-                          <span className={styles.menuHint}>
-                            {item.id === 'layered' && search?.kind === 'dijkstra'
-                              ? t.layouts.layered.hintDijkstra
-                              : t.layouts[item.id].hint}
-                          </span>
+                          <span className={styles.menuHint}>{layoutHint(t, item.id, search)}</span>
                         </span>
                       </button>
                     ))}
@@ -4194,7 +4364,11 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                         }
                       }}
                     >
-                      {search.kind === 'bfs' ? (
+                      {search.sweep ? (
+                        <Grid3x3 size={15} />
+                      ) : search.schedule ? (
+                        <Table2 size={15} />
+                      ) : search.kind === 'bfs' ? (
                         <GalleryHorizontalEnd size={15} />
                       ) : search.kind === 'dfs' ? (
                         <Layers size={15} />
@@ -4347,46 +4521,43 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
             )}
         </div>
 
-        {meta &&
-          search &&
-          !search.schedule &&
-          (structuresOpen || stripClosing) &&
-          !phone &&
-          !embedded && (
-            <Structures
-              t={t}
-              search={search}
-              reveal={reveal}
-              playing={playing}
-              height={stripHeight}
-              columnRef={columnRef}
-              frontierAt={frontierAt}
-              hovered={hovered}
-              onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
-              onSelect={(v) => {
-                setSelected(v);
-                rendererRef.current?.setSelected(v);
-              }}
-              onMembers={onMembers}
-              closing={stripClosing && !structuresOpen}
-              onClosed={() => setStripClosing(false)}
-              maximized={stripMax}
-              onMaximize={setStripMax}
-              onResize={(height) => {
-                const next = clampStrip(
-                  height,
-                  columnRef.current?.getBoundingClientRect().height ?? 800,
-                );
-                setStripHeight(next);
-                columnRef.current?.style.setProperty('--strip-height', `${next}px`);
-                try {
-                  localStorage.setItem(STRIP_HEIGHT_KEY, String(next));
-                } catch {
-                  // No storage: the height lasts for this visit.
-                }
-              }}
-            />
-          )}
+        {meta && search && (structuresOpen || stripClosing) && !phone && !embedded && (
+          <Structures
+            t={t}
+            search={search}
+            reveal={reveal}
+            playing={playing}
+            height={stripHeight}
+            columnRef={columnRef}
+            frontierAt={frontierAt}
+            traceOf={traceOf}
+            vertexCount={meta.vertices}
+            hovered={hovered}
+            onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
+            onSelect={(v) => {
+              setSelected(v);
+              rendererRef.current?.setSelected(v);
+            }}
+            onMembers={onMembers}
+            closing={stripClosing && !structuresOpen}
+            onClosed={() => setStripClosing(false)}
+            maximized={stripMax}
+            onMaximize={setStripMax}
+            onResize={(height) => {
+              const next = clampStrip(
+                height,
+                columnRef.current?.getBoundingClientRect().height ?? 800,
+              );
+              setStripHeight(next);
+              columnRef.current?.style.setProperty('--strip-height', `${next}px`);
+              try {
+                localStorage.setItem(STRIP_HEIGHT_KEY, String(next));
+              } catch {
+                // No storage: the height lasts for this visit.
+              }
+            }}
+          />
+        )}
       </div>
 
       {notice &&
@@ -4462,12 +4633,13 @@ export function Panel({
     arrows move through it, Enter picks, Esc, a click outside or a scroll of
     the page closes it. */
 /**
- * The algorithms, in rows: the traversals over the shortest paths, so every
- * name fits whole at the sidebar's narrowest.
+ * The algorithms, in rows: the searches over the two dynamic programmes
+ * (Bellman-Ford's passes, Floyd-Warshall's table), so every name fits whole
+ * at the sidebar's narrowest.
  */
 const ALGORITHM_ROWS: readonly (readonly SearchKindName[])[] = [
-  ['bfs', 'dfs'],
-  ['dijkstra', 'bellman_ford'],
+  ['bfs', 'dfs', 'dijkstra'],
+  ['bellman_ford', 'floyd_warshall'],
 ];
 
 /**

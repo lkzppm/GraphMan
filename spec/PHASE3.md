@@ -473,9 +473,17 @@ graphman generate -n 1000 -m 5000 --directed --weights -1:10 --potential -o g.tx
    final tree breadth-first, since a child can be closer than its parent);
    a reachable negative cycle is drawn as a path, with its weight. Wasm:
    `Parsed(bytes, directed)`, `Graph.directed`, `edges()` lists every arc,
-   `bellmanFord`, `negativeCycle`, `edgeWeight`. Still to come: a directed
-   switch for uploaded files, SCC colouring, the Floyd-Warshall heatmap,
-   the Part 3 sheet, slides and library chapters.
+   `bellmanFord`, `negativeCycle`, `edgeWeight`. Since then: the Directed
+   switch on the opening card; the negative cycle in red in the path card;
+   Floyd-Warshall as a fifth search (a sweep picker, Plain / Pruned /
+   Blocked; run once per graph and sweep, every origin then a row of the
+   tables; refused past 1,000 vertices, the CLI takes it; a negative cycle
+   anywhere drawn as Bellman-Ford's); Bellman-Ford's replay in the order the
+   vertices became final; the structure strip showing each programme's
+   table (`FloydRounds` in the library: the plain sweep one round at a time,
+   reporting the cells each round lowered; `bellmanFordTrace`, `floydTrace`
+   in wasm); the level layouts drawing the search's own tree. Still to
+   come: SCC colouring, the Part 3 sheet, slides and library chapters.
 
 ## References
 

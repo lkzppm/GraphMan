@@ -530,11 +530,17 @@ export const pt: Dictionary = {
     ],
     layouts: {
       force: { label: 'Forças', hint: 'molas e repulsão' },
-      radial: { label: 'Níveis radiais', hint: 'anéis de BFS em torno da origem' },
+      radial: {
+        label: 'Níveis radiais',
+        hint: 'anéis de BFS em torno da origem',
+        hintDfs: 'um anel por passo para baixo na árvore da DFS',
+        hintDistance: 'anéis pela distância até a origem',
+      },
       layered: {
         label: 'Camadas',
         hint: 'a árvore da BFS, nível a nível',
-        hintDijkstra: 'a árvore de caminhos mínimos',
+        hintDfs: 'a árvore da DFS, um nível por passo para baixo',
+        hintDistance: 'a árvore de caminhos mínimos, aresta a aresta',
       },
       degree: { label: 'Círculo por grau', hint: 'ordenado por grau, arestas como cordas' },
     },
@@ -658,6 +664,20 @@ export const pt: Dictionary = {
       slf: 'a fila como deque: um vértice mais perto que o da frente passa na frente',
     },
     scheduleGroups: { course: 'a disciplina', faster: 'menos passadas' },
+    floydWarshall: 'Floyd-Warshall',
+    sweep: 'Varredura',
+    sweeps: { plain: 'Simples', pruned: 'Podada', blocked: 'Em blocos' },
+    sweepCosts: { plain: 'O(n³)', pruned: 'O(n³)', blocked: 'O(n³)' },
+    sweepHints: {
+      plain: 'o laço triplo do livro numa tabela só, atualizada no lugar (a otimização de memória)',
+      pruned: 'pula as linhas que ainda não alcançam k',
+      blocked: 'a tabela em blocos que cabem no cache',
+    },
+    sweepGroups: { course: 'a disciplina', faster: 'varreduras mais rápidas' },
+    floydTooLarge: (n: string, limit: string) =>
+      `O Floyd-Warshall roda aqui em até ${limit} vértices: a tabela cresce como n² e o tempo como n³, e este grafo tem ${n}. A CLI aceita (graphman floyd-warshall).`,
+    cycleNoteGraph: (w: string) =>
+      `Um ciclo negativo, de peso ${w}, no grafo: o Floyd-Warshall não tem distâncias para nenhum par que passe por ele.`,
     cycleNote: (w: string) =>
       `Um ciclo negativo, de peso ${w}, alcançado desta origem: não há caminhos mínimos, cada volta encurta um passeio.`,
     passes: 'Passadas',
@@ -739,7 +759,7 @@ export const pt: Dictionary = {
       hide: 'Esconder a estrutura de dados',
       resize: 'Arraste para redimensionar o painel (clique duplo para restaurar)',
       empty:
-        'Rode uma busca e a estrutura com que ela trabalha aparece aqui, passo a passo: a fila da BFS, a pilha da DFS, a fila de prioridade do Dijkstra.',
+        'Rode uma busca e a estrutura com que ela trabalha aparece aqui, passo a passo: a fila da BFS, a pilha da DFS, a fila de prioridade do Dijkstra, as tabelas do Bellman-Ford e do Floyd-Warshall.',
       titles: {
         bfs: 'Fila',
         dfs: 'Pilha',
@@ -750,6 +770,20 @@ export const pt: Dictionary = {
         quad_heap: 'Fila de prioridade · heap 4-ário',
         pairing: 'Fila de prioridade · pairing heap',
         radix: 'Fila de prioridade · radix heap',
+        bellman: 'Programação dinâmica · passadas',
+        floyd: 'Programação dinâmica · matriz de distâncias',
+      },
+      dp: {
+        bellmanTitle: 'd_k[v]: a estimativa de v depois da passada k',
+        floydTitle: 'D_k[i][j]: de i a j passando pelos vértices 1 a k',
+        pass: 'passada',
+        passOf: (k: string, total: string) => `passada ${k} de ${total}`,
+        roundOf: (k: string, n: string) => `k = ${k} de ${n}`,
+        start: 'k = 0: só os arcos',
+        bellmanTooLarge:
+          'Esta execução baixa estimativas demais para guardar todas na tabela; a tela ainda a reproduz.',
+        floydTooLarge:
+          'A matriz é reproduzida rodada a rodada até 200 vértices; a tela ainda mostra todas as linhas.',
       },
       front: 'início',
       back: 'fim',

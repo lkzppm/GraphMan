@@ -40,8 +40,14 @@ impl RadialLayout {
     /// thousands of components, and arrays of `n` for each would dwarf the
     /// layout itself.
     pub fn fill(&mut self, tree: &SearchTree) {
-        let parents = tree.parents_raw();
-        let order = tree.order();
+        self.fill_tree(tree.parents_raw(), tree.order());
+    }
+
+    /// [`fill`](Self::fill) for any rooted tree: `parents` indexed by
+    /// vertex (`NO_VERTEX` for the root), `order` its vertices with every
+    /// parent before its children and the root first (a DFS's discovery
+    /// order, a shortest-path tree's settle order).
+    pub fn fill_tree(&mut self, parents: &[Vertex], order: &[Vertex]) {
         for &v in order {
             let v = v as usize;
             self.subtree_size[v] = 1;
