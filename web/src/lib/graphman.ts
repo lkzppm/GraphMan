@@ -6,7 +6,10 @@ import { WASM_URL } from '@/wasm/manifest';
 export type {
   DegreeSummary,
   DiameterResult,
+  FloydRun,
+  FloydTrace,
   Graph,
+  LoweringTrace,
   MemoryReport,
   NetworkBuilder,
   PathBetween,

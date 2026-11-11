@@ -385,3 +385,63 @@ fn zero_weight_cycles_still_give_one_tree_per_row() {
         }
     }
 }
+
+#[test]
+fn rounds_one_at_a_time_give_the_plain_sweeps_tables_and_say_what_changed() {
+    for seed in 0..12 {
+        let edges = potential_digraph(seed, 24, 90);
+        let graph = Csr::build(&edges).unwrap();
+        let whole = algo::floyd_warshall(&graph, SweepKind::Plain, UNLIMITED).unwrap();
+        let mut rounds = algo::FloydRounds::new(&graph, UNLIMITED).unwrap();
+        let n = graph.vertex_count() as Vertex;
+        let snapshot = |all: &AllPairs| -> Vec<Option<Weight>> {
+            (1..=n)
+                .flat_map(|i| (1..=n).map(move |j| (i, j)))
+                .map(|(i, j)| all.distance(i, j))
+                .collect()
+        };
+        let mut before = snapshot(rounds.table());
+        let mut improved = Vec::new();
+        let mut done = 0;
+        while rounds.step(&mut improved).unwrap() {
+            done += 1;
+            let after = snapshot(rounds.table());
+            // Exactly the cells that went down, each once.
+            let mut changed: Vec<(Vertex, Vertex)> = (1..=n)
+                .flat_map(|i| (1..=n).map(move |j| (i, j)))
+                .filter(|&(i, j)| {
+                    let cell = ((i - 1) * n + (j - 1)) as usize;
+                    after[cell] != before[cell]
+                })
+                .collect();
+            changed.sort_unstable();
+            let mut said = improved.clone();
+            said.sort_unstable();
+            assert_eq!(said, changed, "seed {seed}, round {done}");
+            improved.clear();
+            before = after;
+        }
+        assert_eq!(done, n as usize);
+        assert_eq!(rounds.rounds_done(), n as usize);
+        let stepped = rounds.finish().unwrap();
+        assert_eq!(snapshot(&stepped), snapshot(&whole), "seed {seed}");
+        assert_valid(&graph, &stepped);
+    }
+}
+
+#[test]
+fn rounds_one_at_a_time_stop_on_a_negative_cycle() {
+    let edges = EdgeList::parse_with(b"4\n1 2 1\n2 3 -2\n3 2 1\n3 4 1\n", DIRECTED).unwrap();
+    let graph = Csr::build(&edges).unwrap();
+    let mut rounds = algo::FloydRounds::new(&graph, UNLIMITED).unwrap();
+    let mut improved = Vec::new();
+    let cycle = loop {
+        match rounds.step(&mut improved) {
+            Ok(true) => continue,
+            Ok(false) => panic!("the cycle 2 → 3 → 2 was missed"),
+            Err(cycle) => break cycle,
+        }
+    };
+    assert_eq!(cycle.cycle, vec![2, 3]);
+    assert_eq!(cycle.weight, -1.0);
+}

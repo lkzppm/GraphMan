@@ -309,7 +309,22 @@ shrinking back into it (0.34 s) while the canvas gives or takes the room
 (opening also glides the camera to frame the graph in the room left, as
 the strip grows);
 its icon names the structure (a row of cards for the queue,
-layers for the stack, brackets for the vector, a tree for the heap). Closed by default, the choice remembered;
+layers for the stack, brackets for the vector, a tree for the heap, a
+table for Bellman-Ford, a grid for Floyd-Warshall). The two dynamic
+programmes show their table instead of a structure, read off a trace the
+library records (every lowering, in order) at the moment the step's vertex
+got its final distance (the replay draws vertices in that order: by their
+last lowering for Bellman-Ford, by the round of the largest intermediate
+vertex on the path for Floyd-Warshall, so parents come first): Bellman-Ford's
+`d_k[v]` with one row per pass up to the one running and one column per
+vertex in replay order; Floyd-Warshall's `D_k[i][j]` after round `k`, the
+origin's row named in the accent, row and column `k` (the cross every
+update of the round reads) on a darker grey. Each holds its recurrence in
+mono over it, the cells the step's pass or round lowered tinted in the
+accent and fading in, the step's cell ringed (filled in the current row),
+∞ in the faint grey; a table larger than the strip is a window that follows
+the step. Floyd-Warshall replays up to 200 vertices, Bellman-Ford up to
+400,000 lowerings; past that the strip says so. Closed by default, the choice remembered;
 not on phones. Its top
 edge resizes it like the sidebar's (a horizontal grip pill in the middle,
 `row-resize`, 120–560 px and at least 220 px of canvas left, remembered,
@@ -382,8 +397,9 @@ from the axis, staggered left to right, as the old ones sink into it),
 component bar; the summary, the memory view and the components browser
 swap in place without a jump: the old view fades out, the next rises in,
 and the panel eases its height between them); Search: the algorithm
-as a full-width segmented control in rows (BFS / DFS over Dijkstra /
-Bellman-Ford: each row cut in equal columns so no name wraps, the thumb
+as a full-width segmented control in rows (BFS / DFS / Dijkstra over the
+two dynamic programmes, Bellman-Ford / Floyd-Warshall: each row cut in
+equal columns so no name wraps, the thumb
 measured onto the chosen segment and gliding there, across rows too), under
 it mode (Max, the whole traversal / Distance) and, for Dijkstra only, the
 priority queue ("Fila de prioridade": Vector / Heap, the course's two
@@ -641,9 +657,8 @@ tint, accent text), drawn last so they sit on top.
   toggles (edge weights, a weight icon, only on a weighted graph; vertex
   numbers `#`; follow), on the right the layout menu
   (`Shapes`). The menu is a popover like the help one, hung under the
-  cluster: Force (springs and repulsion), Radial levels (BFS rings around
-  the origin), Layered (a tree drawn level by level: the BFS tree, or after
-  a Dijkstra its shortest-path tree, levels counting tree edges), Degree circle
+  cluster: Force (springs and repulsion), Radial levels (rings around the
+  origin), Layered (a tree drawn level by level), Degree circle
   (sorted by degree, edges as chords), each a `menuitemradio` with an icon,
   name and one-line hint; while Force is current a footer row holds the
   simulation toggle (magnet) and reheat, and while Layered is current one
@@ -657,11 +672,20 @@ tint, accent text), drawn last so they sit on top.
   right there. Picking a layout slides every
   vertex to its new place over 700 ms and glides the view to fit; the
   level layouts start at the search origin (or the selected vertex, else
-  1. and re-arrange when a new search runs (Layered also when a Dijkstra
-     replaces another search or the reverse), the view then framing the
-     origin's component only (the rest just makes room). Every component
-     gets the layout: radial components are packed as discs around the
-     origin's, layered ones stand side by side with level 0 on one line.
+  1. and re-arrange when a new search runs, the view then framing the
+     origin's component only (the rest just makes room). Both draw the
+     tree of the search on screen, and their hints say which: after a BFS
+     its tree, rings and levels its levels; after a DFS its tree, one ring
+     or level per step down (deep and narrow, as a DFS is); after
+     Dijkstra, Bellman-Ford or Floyd-Warshall the shortest-path tree, its
+     rings the distance from the smallest one in bands (fractional, so a
+     vertex sits where its distance puts it) and its levels its edges.
+     Without a search, a BFS tree from the root. Every component gets the
+     layout: radial components are packed as discs around the origin's,
+     layered ones stand side by side with level 0 on one line; on a
+     directed graph the vertices of the origin's component its search
+     cannot reach go round one ring further (radial) or stand alone
+     beside the tree (layered).
 
 ## Responsive rules
 
