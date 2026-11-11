@@ -5270,14 +5270,19 @@ function RepresentationPicker({
           · {t.parsedIn(formatMs(pending.parseMs))}
         </span>
       </div>
-      <Choice
-        label={t.orientation}
-        options={['undirected', 'directed'] as const}
-        value={pending.directed ? 'directed' : 'undirected'}
-        onChange={(which) => onDirected(which === 'directed')}
-        names={t.orientations}
-        hints={t.orientationHints}
-      />
+      <button
+        type="button"
+        role="switch"
+        aria-checked={pending.directed}
+        className={styles.toggle}
+        title={t.directedHint}
+        onClick={() => onDirected(!pending.directed)}
+      >
+        <span className={styles.toggleTrack} aria-hidden="true">
+          <span className={styles.toggleKnob} />
+        </span>
+        {t.directed}
+      </button>
       <p className={styles.pickTitle}>{t.memory.choose}</p>
       <div className={styles.reprCards} role="radiogroup" aria-label={t.memory.choose}>
         {REPRESENTATIONS.map((which) => (
