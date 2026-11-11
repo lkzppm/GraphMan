@@ -5293,16 +5293,19 @@ function RepresentationPicker({
           {pending.name}
         </span>
         <span className={styles.pickMeta}>
-          {/* Keyed by what it says: a switch of orientation fades the new
-              counts in instead of jumping. */}
-          <span key={`${pending.edges}:${pending.directed}`} className={styles.swap}>
+          {/* One line, keyed by all it says: a switch of orientation fades
+              the vertices, the edges (or arcs) and the parse time in together. */}
+          <span
+            key={`${pending.directed}:${pending.edges}:${pending.parseMs}`}
+            className={styles.swap}
+          >
             {t.memory.parsed(
               formatCompact(pending.vertices),
               formatCompact(pending.edges),
               pending.directed,
-            )}
-          </span>{' '}
-          · {t.parsedIn(formatMs(pending.parseMs))}
+            )}{' '}
+            · {t.parsedIn(formatMs(pending.parseMs))}
+          </span>
         </span>
       </div>
       <button
