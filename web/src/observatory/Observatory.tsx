@@ -3702,20 +3702,35 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                   />
                 )}
                 {kind === 'floyd_warshall' && (
-                  <Picker
-                    label={t.sweep}
-                    groups={SWEEP_GROUPS}
-                    groupNames={t.sweepGroups}
-                    value={sweep}
-                    onChange={(next) => {
-                      setSweep(next);
-                      setFloyd(null);
-                      setFloydPlaying(false);
-                    }}
-                    names={t.sweeps}
-                    costs={t.sweepCosts}
-                    hints={t.sweepHints}
-                  />
+                  <div className={styles.fieldSpan}>
+                    <Picker
+                      label={t.sweep}
+                      groups={SWEEP_GROUPS}
+                      groupNames={t.sweepGroups}
+                      value={sweep}
+                      onChange={(next) => {
+                        setSweep(next);
+                        setFloyd(null);
+                        setFloydPlaying(false);
+                      }}
+                      names={t.sweeps}
+                      costs={t.sweepCosts}
+                      hints={t.sweepHints}
+                    />
+                  </div>
+                )}
+                {kind === 'floyd_warshall' && (
+                  // No origin to pick: every pair at once, run from here.
+                  <button
+                    type="button"
+                    className={styles.run}
+                    disabled={!meta}
+                    onClick={runFloyd}
+                    aria-label={t.runFloyd}
+                    title={t.runFloyd}
+                  >
+                    <Play size={15} aria-hidden="true" />
+                  </button>
                 )}
                 {kind === 'dfs' && (
                   <Choice
@@ -3731,21 +3746,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                   />
                 )}
               </div>
-              {kind === 'floyd_warshall' ? (
-                <div className={styles.searchRow}>
-                  <p className={`${styles.hint} ${styles.runHint}`}>{t.floydRunHint}</p>
-                  <button
-                    type="button"
-                    className={styles.run}
-                    disabled={!meta}
-                    onClick={runFloyd}
-                    aria-label={t.runFloyd}
-                    title={t.runFloyd}
-                  >
-                    <Play size={15} aria-hidden="true" />
-                  </button>
-                </div>
-              ) : (
+              {kind !== 'floyd_warshall' && (
                 <div className={styles.searchRow}>
                   <VertexField
                     id="root"

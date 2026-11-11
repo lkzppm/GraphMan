@@ -331,7 +331,8 @@ The table fills the strip: as many columns (56 px at least) and rows
 the height (40 px a row at most), the text growing with them; a table
 larger than the strip is a window that follows the step. Floyd-Warshall replays up to 200 vertices, Bellman-Ford up to
 400,000 lowerings; past that the strip says so. Floyd-Warshall has no
-origin: its panel holds the sweep and one run button for every pair, then
+origin: its panel holds the sweep with the run button beside it (no origin
+or destination fields, no mode), then
 the table's numbers (pairs with a path, the longest distance, the time),
 the farthest pair as a link to its path, and a timeline over the rounds
 `k = 0…n` (play, slider, `k = 3` in mono). While no row is picked the
