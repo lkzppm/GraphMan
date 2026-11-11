@@ -920,6 +920,17 @@ export class Renderer {
     this.touch(true);
   }
 
+  /**
+   * Which components `setComponent` lights: a component id per vertex
+   * (slot 0 unused), the weak ones loaded with the graph or the strong
+   * ones. The density measure keeps the loaded ones.
+   */
+  setComponentLabels(labels: Uint32Array) {
+    if (!this.labels || labels.length !== this.n + 1) return;
+    this.labels.write(bytes(labels));
+    this.touch(true);
+  }
+
   /** Lights one component (its id, 1 = largest) and dims the rest; 0 shows all. */
   setComponent(c: number) {
     if (c === this.viewValues.component) return;
