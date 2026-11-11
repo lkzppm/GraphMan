@@ -640,10 +640,42 @@
 
 /* In the accent; what it means is its tooltip. */
 .dpFormula {
+  position: relative;
   flex: none;
   font-size: 12px;
   color: var(--accent);
   cursor: help;
+  outline: none;
+}
+
+/* The recurrence's meaning: the site's tooltip (accent edge, mono, fading
+   in), hung under it, over the table. */
+.dpTip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  z-index: 10;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.3);
+  font-size: 11px;
+  color: var(--fg-2);
+  white-space: nowrap;
+  opacity: 0;
+  translate: -50% -2px;
+  pointer-events: none;
+  transition:
+    opacity 0.15s var(--ease),
+    translate 0.2s var(--ease);
+}
+
+.dpFormula:hover .dpTip,
+.dpFormula:focus-visible .dpTip {
+  opacity: 1;
+  translate: -50% 0;
 }
 
 .dpMoment {
