@@ -1480,29 +1480,48 @@
   transform: translateX(100%);
 }
 
-/* Three segments (BFS, DFS, Dijkstra): the same track cut in thirds. */
-.segmented[data-count='3'] {
-  grid-template-columns: 1fr 1fr 1fr;
+/* The algorithms: a segmented track in rows (each row its own equal
+   columns), the thumb measured onto the chosen segment and gliding there,
+   across rows too. Names never wrap: a row holds only what fits. */
+.segmentRows {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-3);
 }
 
-.segmented[data-count='3'] .thumb {
-  width: calc((100% - 4px) / 3);
+.segmentRow {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
 }
 
-.segmented[data-active='third'] .thumb {
-  transform: translateX(200%);
+.segmentRow > button {
+  height: 24px;
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.segmented[data-count='4'] {
-  grid-template-columns: 1fr 1fr 1fr 1fr;
-}
-
-.segmented[data-count='4'] .thumb {
-  width: calc((100% - 4px) / 4);
-}
-
-.segmented[data-active='fourth'] .thumb {
-  transform: translateX(300%);
+.segmentThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 0 0 1px var(--border);
+  transition:
+    transform 0.4s var(--ease-spring),
+    width 0.3s var(--ease),
+    height 0.3s var(--ease);
 }
 
 /* The path of a distance query, floating over the canvas: one ball per
@@ -1537,6 +1556,12 @@
 .pathArrow,
 .pathGap {
   color: var(--fg-3);
+}
+
+/* A negative cycle's balls: the one red, every vertex alike (a cycle has
+   no origin or destination to grade between). */
+.cycleBall {
+  background: var(--cycle);
 }
 
 .segment,
@@ -3049,6 +3074,13 @@
   line-height: 1.4;
   color: var(--fg-2);
   text-align: center;
+}
+
+/* What the cycle means, under its balls, edged in the cycle's red. */
+.cycleNote {
+  max-width: 440px;
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--cycle) 45%, var(--border));
 }
 
 /* The empty stage's format card: two files side by side, one in view. */

@@ -18,7 +18,9 @@ drawn for.
    accent edge of a surface, flagged values. A lighter blue (`--accent-2`)
    exists only so the level ramp has a far end. One green (`--target`,
    `#16a34a`) exists for exactly one thing: the destination of a distance
-   query, on the canvas and in the path balls. No red, no amber.
+   query, on the canvas and in the path balls. One red (`--cycle`,
+   `#e5484d`) exists for exactly one thing too: a negative cycle that
+   Bellman-Ford returns, on the canvas and in its balls. No amber.
 3. **Light first, dark on request.** White paper is the default (it is
    what the icon was drawn for); a dark theme redefines the same tokens on
    `:root[data-theme='dark']`. A visitor who has not chosen gets the
@@ -380,7 +382,9 @@ from the axis, staggered left to right, as the old ones sink into it),
 component bar; the summary, the memory view and the components browser
 swap in place without a jump: the old view fades out, the next rises in,
 and the panel eases its height between them); Search: the algorithm
-as a full-width three-way segmented control (BFS / DFS / Dijkstra), under
+as a full-width segmented control in rows (BFS / DFS over Dijkstra /
+Bellman-Ford: each row cut in equal columns so no name wraps, the thumb
+measured onto the chosen segment and gliding there, across rows too), under
 it mode (Max, the whole traversal / Distance) and, for Dijkstra only, the
 priority queue ("Fila de prioridade": Vector / Heap, the course's two
 versions, so their times can be compared on the spot; the code calls it
@@ -405,7 +409,13 @@ the path's vertices grow 1.6× with the `--fg` ring and wear the same
 gradient, its edges are thick gradient segments drawn over everything
 (appearing with the wave, never dropped by the sampling), every vertex
 off the path shrinks to a third (the fit button frames the path; the
-view otherwise stays where it was); the legend reads origin ·
+view otherwise stays where it was; its smallest frame is a fifth of the
+drawing, at most 220 world units, so a small graph's path fills the view);
+when Bellman-Ford's origin reaches a negative cycle, the same card holds
+the cycle instead (red balls in `--cycle`, the first vertex repeated last,
+a fit and a clear button, and under them a note with its weight edged in
+red), the canvas draws the cycle whole in red over a greyed, shrunk graph
+and frames it; the legend reads origin ·
 destination · not reached. In Distance a
 click on the canvas picks the target once the origin is set;
 **Dijkstra** reads like a BFS whose levels are distance bands: the origin

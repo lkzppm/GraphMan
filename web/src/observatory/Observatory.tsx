@@ -53,6 +53,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -638,6 +639,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   >({});
   const [diameterBusy, setDiameterBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /** The negative cycle Bellman-Ford found instead of distances (closed: first vertex last too). */
+  const [cycle, setCycle] = useState<{ vertices: Uint32Array; weight: number } | null>(null);
   /** The loaded graph's names, if a names file came with it. */
   const [names, setNames] = useState<NamesInfo | null>(null);
   /** Names beside the vertices; the toggle only exists once names are loaded. */
@@ -998,10 +1001,19 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       let minY = Infinity;
       let maxX = -Infinity;
       let maxY = -Infinity;
+      // The whole drawing's extent too: the smallest frame is a share of it.
+      let allMinX = Infinity;
+      let allMinY = Infinity;
+      let allMaxX = -Infinity;
+      let allMaxY = -Infinity;
       for (let v = 1, i = 2; i < positions.length; v++, i += 2) {
-        if (!keep(v)) continue;
         const x = positions[i];
         const y = positions[i + 1];
+        if (x < allMinX) allMinX = x;
+        if (x > allMaxX) allMaxX = x;
+        if (y < allMinY) allMinY = y;
+        if (y > allMaxY) allMaxY = y;
+        if (!keep(v)) continue;
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
@@ -1009,10 +1021,14 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       }
       if (!Number.isFinite(minX)) return;
       const [w, h] = renderer.cssSize;
-      // A lone origin still gets a neighbourhood, not a giant disc.
-      const bw = Math.max(maxX - minX, 220);
-      const bh = Math.max(maxY - minY, 220);
-      const zoom = Math.min((w * fill) / bw, (h * fill) / bh, 6);
+      // A lone origin still gets a neighbourhood, not a giant disc: at least
+      // a fifth of the drawing (capped at 220 world units on large ones), so
+      // a small graph's path fills the view instead of staying the size the
+      // whole graph had.
+      const floor = Math.min(220, 0.2 * Math.max(allMaxX - allMinX, allMaxY - allMinY, 1));
+      const bw = Math.max(maxX - minX, floor);
+      const bh = Math.max(maxY - minY, floor);
+      const zoom = Math.min((w * fill) / bw, (h * fill) / bh, 40);
       glideTo({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, zoom });
     },
     [glideTo],
@@ -1227,6 +1243,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     // a wasm object freed twice is a null pointer.
     searchRef.current?.result.free();
     setSearch(null);
+    setCycle(null);
     graphRef.current?.free();
     graphRef.current = null;
     // A tree's parent goes with it: there is nothing to return to.
@@ -1375,6 +1392,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         setMemoryOpen(false);
         setLayout(willSimulate ? 'force' : 'radial');
         setSearch(null);
+        setCycle(null);
         setDiameterResults({});
         setSelected(0);
         setHovered(0);
@@ -1760,21 +1778,27 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         let fullPath: Uint32Array | null = null;
         if (which === 'bellman_ford') {
           // A negative cycle reachable from the origin leaves no distances:
-          // the cycle itself is drawn, as a path, instead of a tree.
-          const cycle = graph.negativeCycle(root, scheduleType(wasm, schedule));
-          if (cycle.length) {
+          // the cycle itself is drawn in red, framed, and named in the card
+          // where a path would be.
+          const found = graph.negativeCycle(root, scheduleType(wasm, schedule));
+          if (found.length) {
             search?.result.free();
             setSearch(null);
             searchRef.current = null;
+            setPlaying(false);
+            setSelected(0);
+            renderer.setSelected(0);
             renderer.setSearch(null);
-            renderer.setPath(cycle[0], cycle);
+            renderer.setPath(0, found, true);
             let weight = 0;
-            for (let i = 0; i + 1 < cycle.length; i++) {
-              weight += graph.edgeWeight(cycle[i], cycle[i + 1]) ?? 0;
+            for (let i = 0; i + 1 < found.length; i++) {
+              weight += graph.edgeWeight(found[i], found[i + 1]) ?? 0;
             }
-            setNotice(
-              tRef.current.negativeCycle(Array.from(cycle).join(' → '), formatWeight(weight)),
-            );
+            setCycle({ vertices: found, weight });
+            setNotice(null);
+            const onCycle = new Set(found);
+            autoFit.current = false;
+            fitVertices((v) => onCycle.has(v), PATH_FILL);
             return;
           }
         }
@@ -1831,6 +1855,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         }
         const moves = which === 'dfs' ? dfsTrail(order, parents, span, !(target && path)) : null;
         const shown = which === 'bellman_ford' ? 'dijkstra' : which;
+        setCycle(null);
         renderer.setSearch({ kind: shown, levels, ranks, parents, depth });
         renderer.setPath(target, path);
         renderer.setPathOnly(pathOnly);
@@ -1886,7 +1911,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         setNotice(error instanceof Error ? error.message : String(error));
       }
     },
-    [search, pathOnly, frontier, schedule, dfsWay],
+    [search, pathOnly, frontier, schedule, dfsWay, fitVertices],
   );
 
   // The reveal animation: discovery ranks light up over a duration that
@@ -2813,6 +2838,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     parentRef.current = parked.parent ?? null;
     searchRef.current?.result.free();
     setSearch(null);
+    setCycle(null);
     graphRef.current?.free();
     graphRef.current = null;
     restoreRef.current(parked);
@@ -3230,39 +3256,19 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
               <div className={styles.searchRow}>
                 <div className={`${styles.field} ${styles.fieldWide}`}>
                   <span className={styles.fieldLabel}>{t.traversal}</span>
-                  <div
-                    className={styles.segmented}
-                    role="radiogroup"
-                    aria-label={t.traversal}
-                    data-count="4"
-                    data-active={
-                      kind === 'dfs'
-                        ? 'second'
-                        : kind === 'dijkstra'
-                          ? 'third'
-                          : kind === 'bellman_ford'
-                            ? 'fourth'
-                            : 'first'
+                  <SegmentRows
+                    label={t.traversal}
+                    rows={ALGORITHM_ROWS}
+                    value={kind}
+                    onChange={setKind}
+                    name={(which) =>
+                      which === 'dijkstra'
+                        ? t.dijkstra
+                        : which === 'bellman_ford'
+                          ? t.bellmanFord
+                          : which.toUpperCase()
                     }
-                  >
-                    <span className={styles.thumb} aria-hidden="true" />
-                    {(['bfs', 'dfs', 'dijkstra', 'bellman_ford'] as const).map((which) => (
-                      <button
-                        key={which}
-                        type="button"
-                        role="radio"
-                        aria-checked={kind === which}
-                        className={kind === which ? styles.segmentActive : styles.segment}
-                        onClick={() => setKind(which)}
-                      >
-                        {which === 'dijkstra'
-                          ? t.dijkstra
-                          : which === 'bellman_ford'
-                            ? t.bellmanFord
-                            : which.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
+                  />
                 </div>
               </div>
               <div className={styles.searchRow}>
@@ -3823,6 +3829,60 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                 </div>
               )}
 
+              {/* A negative cycle, top centre, where a path would be */}
+              {cycle && !search && (
+                <div className={`${styles.floating} ${styles.floatingTopCenter}`}>
+                  <div className={styles.cluster}>
+                    <IconButton
+                      label={t.fitCycle}
+                      onClick={() => {
+                        const onCycle = new Set(cycle.vertices);
+                        autoFit.current = false;
+                        fitVertices((v) => onCycle.has(v), PATH_FILL);
+                      }}
+                    >
+                      <Scan size={15} />
+                    </IconButton>
+                    <IconButton
+                      label={t.clearCycle}
+                      onClick={() => {
+                        setCycle(null);
+                        rendererRef.current?.setPath(0, null);
+                      }}
+                    >
+                      <X size={15} />
+                    </IconButton>
+                  </div>
+                  <div className={styles.pathStack}>
+                    <p className={`mono ${styles.path}`} aria-label={t.cycle}>
+                      {pathSteps(Array.from(cycle.vertices, String)).map((step, i) => (
+                        <Fragment key={i}>
+                          {i > 0 && <span className={styles.pathArrow}>→</span>}
+                          {step === '…' ? (
+                            <span className={styles.pathGap}>{step}</span>
+                          ) : (
+                            <span
+                              className={`${styles.pathBall} ${styles.cycleBall}`}
+                              title={nameOf(Number(step)) ?? undefined}
+                            >
+                              {step}
+                            </span>
+                          )}
+                        </Fragment>
+                      ))}
+                    </p>
+                    {names && (
+                      <p className={styles.pathNames} aria-label={t.names.pathNames}>
+                        {pathSteps(Array.from(cycle.vertices, vertexLabel)).join(' → ')}
+                      </p>
+                    )}
+                    <p className={`${styles.pathNames} ${styles.cycleNote}`} role="status">
+                      {t.cycleNote(formatWeight(cycle.weight))}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Layout tools, top right */}
               <div ref={layoutMenuRef} className={`${styles.floating} ${styles.floatingTopRight}`}>
                 <div className={styles.cluster}>
@@ -4278,6 +4338,89 @@ export function Panel({
     it, whichever has more room, and scrolls when that room runs out. The
     arrows move through it, Enter picks, Esc, a click outside or a scroll of
     the page closes it. */
+/**
+ * The algorithms, in rows: the traversals over the shortest paths, so every
+ * name fits whole at the sidebar's narrowest.
+ */
+const ALGORITHM_ROWS: readonly (readonly SearchKindName[])[] = [
+  ['bfs', 'dfs'],
+  ['dijkstra', 'bellman_ford'],
+];
+
+/**
+ * A segmented choice laid out in rows, each row cut in equal columns. The
+ * thumb is measured onto the chosen segment rather than computed from its
+ * index, so it slides right whatever the rows hold and however wide the
+ * sidebar is.
+ */
+function SegmentRows<T extends string>({
+  label,
+  rows,
+  value,
+  onChange,
+  name,
+}: {
+  label: string;
+  rows: readonly (readonly T[])[];
+  value: T;
+  onChange: (value: T) => void;
+  name: (value: T) => string;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const [thumb, setThumb] = useState<CSSProperties | null>(null);
+  // The first placement lands without a slide; the moves after it glide.
+  const [placed, setPlaced] = useState(false);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const place = () => {
+      const chosen = el.querySelector<HTMLElement>('[aria-checked="true"]');
+      if (!chosen || !chosen.offsetWidth) return;
+      setThumb({
+        width: chosen.offsetWidth,
+        height: chosen.offsetHeight,
+        transform: `translate(${chosen.offsetLeft}px, ${chosen.offsetTop}px)`,
+      });
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [value, rows]);
+  useEffect(() => {
+    if (!thumb || placed) return;
+    const frame = requestAnimationFrame(() => setPlaced(true));
+    return () => cancelAnimationFrame(frame);
+  }, [thumb, placed]);
+  return (
+    <div ref={box} className={styles.segmentRows} role="radiogroup" aria-label={label}>
+      {thumb && (
+        <span
+          className={styles.segmentThumb}
+          style={placed ? thumb : { ...thumb, transition: 'none' }}
+          aria-hidden="true"
+        />
+      )}
+      {rows.map((row, r) => (
+        <div key={r} className={styles.segmentRow}>
+          {row.map((which) => (
+            <button
+              key={which}
+              type="button"
+              role="radio"
+              aria-checked={value === which}
+              className={value === which ? styles.segmentActive : styles.segment}
+              onClick={() => onChange(which)}
+            >
+              {name(which)}
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Picker<T extends string>({
   label,
   groups,

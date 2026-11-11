@@ -32,6 +32,7 @@ struct View {
   marked: u32,        // 1: only the marked vertices (and the edges between them) keep their colour; 2: the marked edges and their ends; the rest goes ghostly
   arrows: u32,        // 1: the graph is directed, every edge [a, b] is the arc a -> b and gets a head at b
   incidentOut: u32,   // directed: the first incidentOut extras are the selected vertex's out-arcs (solid), the rest its in-arcs (dashed)
+  cycle: u32,         // 1: the lit path is a negative cycle, drawn whole in colorCycle over a greyed graph
   base: vec4f,        // node colour without a search
   dim: vec4f,         // node not (yet) reached
   colorA: vec4f,      // level 0
@@ -41,6 +42,7 @@ struct View {
   edgeDim: vec4f,
   edgeTree: vec4f,
   colorTarget: vec4f, // the destination of a distance query
+  colorCycle: vec4f,  // a negative cycle, the one red
 }
 @group(0) @binding(0) var<uniform> view: View;
 
@@ -95,6 +97,8 @@ struct VOut {
 fn nodeColor(v: u32) -> vec4f {
   if (view.marked != 0u && marks[v] == 0u) { return view.dim * 0.18; }
   if (view.component != 0u && labels[v] != view.component) { return view.dim; }
+  // A negative cycle: the cycle alone keeps a colour (the path's, below).
+  if (view.cycle != 0u) { return view.dim; }
   if (view.mode == 0u) { return view.base; }
   let rank = ranks[v];
   if (rank == 0xffffffffu || f32(rank) > view.reveal) { return view.dim; }
@@ -144,7 +148,9 @@ fn adjacent(v: u32) -> bool {
     along = f32(j) / max(f32(view.pathLength - 1u), 1.0);
     // The path shows as the wave reaches it, or, while it is walked, up to
     // the step the walk is on; until then the sampled twin stands.
-    if (onPath && view.walk >= 0.0) {
+    // A negative cycle has no wave: it stands whole.
+    if (onPath && view.cycle != 0u) {
+    } else if (onPath && view.walk >= 0.0) {
       if (f32(j) > view.walk + 0.001) { v = 0u; }
     } else if (onPath && f32(ranks[v]) > view.reveal) { v = 0u; }
   }
@@ -169,7 +175,7 @@ fn adjacent(v: u32) -> bool {
     r = max(r * 1.25, 7.0);
   }
   // In a distance query everything off the path shrinks out of the way.
-  if (view.dest != 0u && !onPath && flags == 0u) { r = max(r * 0.35, 1.0); }
+  if ((view.dest != 0u || view.cycle != 0u) && !onPath && flags == 0u) { r = max(r * 0.35, 1.0); }
   // Discovery: the vertex pops to almost twice its size and settles.
   var pop = 0.0;
   if (view.mode != 0u) { pop = freshness(ranks[v], 0.5); }
@@ -182,6 +188,7 @@ fn adjacent(v: u32) -> bool {
   out.color = mix(nodeColor(v), view.colorA, 0.5 * pop);
   // The path wears the gradient from the origin's blue to the destination's green.
   if (onPath) { out.color = mix(view.colorA, view.colorTarget, along); }
+  if (onPath && view.cycle != 0u) { out.color = view.colorCycle; }
   out.flags = flags;
   out.rpx = r;
   out.pop = pop;
@@ -244,6 +251,7 @@ struct VOut {
   // while the path is walked, as the walk goes from a to b.
   var drawn = clamp(view.reveal - (f32(ranks[b]) - 1.0), 0.0, 1.0);
   if (view.walk >= 0.0) { drawn = clamp(view.walk - f32(ii), 0.0, 1.0); }
+  if (view.cycle != 0u) { drawn = 1.0; }
   pb = mix(pa, pb, drawn);
   let d = pb - pa;
   let len = max(length(d), 1e-3);
@@ -253,7 +261,9 @@ struct VOut {
     pa + n, pb - n, pb + n);
   out.pos = toClip(corners[vi]);
   let t = (f32(ii) + 0.5) / max(f32(view.pathLength - 1u), 1.0);
-  out.color = vec4f(mix(view.colorA.rgb, view.colorTarget.rgb, t), 0.95 * step(0.001, drawn));
+  var rgb = mix(view.colorA.rgb, view.colorTarget.rgb, t);
+  if (view.cycle != 0u) { rgb = view.colorCycle.rgb; }
+  out.color = vec4f(rgb, 0.95 * step(0.001, drawn));
   return out;
 }
 

@@ -656,8 +656,8 @@ export const en = {
       slf: 'the queue as a deque: a vertex closer than the front goes first',
     },
     scheduleGroups: { course: 'the course', faster: 'fewer passes' },
-    negativeCycle: (cycle: string, w: string) =>
-      `No shortest paths from this origin: it reaches the negative cycle ${cycle}, which weighs ${w}. Going round it once more always makes a walk shorter.`,
+    cycleNote: (w: string) =>
+      `A negative cycle, weighing ${w}, reached from this origin: no shortest paths, every lap makes a walk shorter.`,
     passes: 'Passes',
     negativeWeights: (n: number) => (n === 1 ? '1 negative weight' : `${n} negative weights`),
     refusal: (u: number, v: number, w: string) =>
@@ -678,6 +678,9 @@ export const en = {
     pathOnly: 'Grey out everything but the path',
     colourSearch: 'Colour the whole traversal again',
     fitPath: 'Fit the path to the view',
+    cycle: 'Negative cycle',
+    fitCycle: 'Fit the cycle to the view',
+    clearCycle: 'Clear the cycle',
     reached: 'Reached',
     eccentricity: 'Eccentricity',
     depth: 'Depth',

@@ -658,8 +658,8 @@ export const pt: Dictionary = {
       slf: 'a fila como deque: um vértice mais perto que o da frente passa na frente',
     },
     scheduleGroups: { course: 'a disciplina', faster: 'menos passadas' },
-    negativeCycle: (cycle: string, w: string) =>
-      `Não há caminhos mínimos a partir desta origem: ela alcança o ciclo negativo ${cycle}, que pesa ${w}. Dar mais uma volta nele sempre encurta um passeio.`,
+    cycleNote: (w: string) =>
+      `Um ciclo negativo, de peso ${w}, alcançado desta origem: não há caminhos mínimos, cada volta encurta um passeio.`,
     passes: 'Passadas',
     negativeWeights: (n: number) => (n === 1 ? '1 peso negativo' : `${n} pesos negativos`),
     refusal: (u: number, v: number, w: string) =>
@@ -680,6 +680,9 @@ export const pt: Dictionary = {
     pathOnly: 'Deixar cinza tudo menos o caminho',
     colourSearch: 'Colorir a busca inteira de novo',
     fitPath: 'Enquadrar o caminho na tela',
+    cycle: 'Ciclo negativo',
+    fitCycle: 'Enquadrar o ciclo na tela',
+    clearCycle: 'Limpar o ciclo',
     reached: 'Alcançados',
     eccentricity: 'Excentric.',
     depth: 'Profundidade',
