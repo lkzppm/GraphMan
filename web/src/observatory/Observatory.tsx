@@ -1,7 +1,9 @@
 'use client';
 
 import {
+  ArrowUpRight,
   Brackets,
+  RefreshCcw,
   GalleryHorizontalEnd,
   Layers,
   Network,
@@ -45,12 +47,15 @@ import {
   Waypoints,
   Weight,
   X,
+  Grid3x3,
+  Table2,
 } from 'lucide-react';
 import {
   Fragment,
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -65,13 +70,16 @@ import {
 } from 'react';
 import { formatBytes, formatCompact, formatInt, formatMs, formatWeight } from '@/lib/format';
 import {
+  DIRECTED_SAMPLE,
   NAMED_SAMPLE,
   NAMED_SAMPLE_NAMES,
+  NEGATIVE_CYCLE_SAMPLE,
   UNWEIGHTED_SAMPLE,
   WEIGHTED_SAMPLE,
   loadGraphman,
   looksLikeNames,
   UNREACHED,
+  type FloydRun,
   type Graph,
   type GraphmanModule,
   type MemoryReport,
@@ -105,6 +113,7 @@ import Structures, {
   type FrontierView,
   type Members,
 } from './Structures';
+import type { DpTrace } from './DpTable';
 
 type Strings = Dictionary['observatory'];
 
@@ -145,6 +154,10 @@ interface Pending {
   memory: Memory;
   /** The wasm edge list; `build` consumes it, so it is used exactly once. */
   parsed: Parsed;
+  /** The file itself, to read it again with the other orientation. */
+  source: Uint8Array;
+  /** Whether its lines were read as arcs. */
+  directed: boolean;
   /** A names file that came with the graph, read once the graph is built. */
   names: NamesFile | null;
 }
@@ -178,7 +191,9 @@ interface GraphMeta {
   name: string;
   bytes: number;
   vertices: number;
+  /** Arcs when `directed`. */
   edges: number;
+  directed: boolean;
   selfLoops: number;
   duplicates: number;
   /** The storage strategy backing the graph; switched from the memory panel. */
@@ -209,9 +224,51 @@ interface GraphMeta {
   parseMs: number;
 }
 
-type SearchKindName = 'bfs' | 'dfs' | 'dijkstra';
+/** A graph's components as the panel and the canvas read them: the weak
+    ones (connected ones, undirected) loaded with the graph, or the strong
+    ones on a directed graph. */
+interface ComponentData {
+  /** Vertices per component, largest first (id = index + 1). */
+  sizes: Uint32Array;
+  /** Component id per vertex (1 = largest, ranked by size). */
+  labels: Uint32Array;
+  /** Edges or arcs inside each component (both ends in it; index = id). */
+  edges: Uint32Array;
+  /** Smallest and largest (out-)degree per component (index = id). */
+  degree: { min: Uint32Array; max: Uint32Array };
+}
+
+/** The panel's numbers for a labelling: sizes, edges inside, degree range. */
+function componentData(
+  labels: Uint32Array,
+  edgeList: Uint32Array,
+  degrees: Uint32Array,
+): ComponentData {
+  let count = 0;
+  for (let v = 1; v < labels.length; v++) count = Math.max(count, labels[v]);
+  const sizes = new Uint32Array(count);
+  for (let v = 1; v < labels.length; v++) sizes[labels[v] - 1] += 1;
+  const edges = new Uint32Array(count + 1);
+  for (let i = 0; i < edgeList.length; i += 2) {
+    const c = labels[edgeList[i]];
+    if (c === labels[edgeList[i + 1]]) edges[c] += 1;
+  }
+  const min = new Uint32Array(count + 1).fill(0xffffffff);
+  const max = new Uint32Array(count + 1);
+  for (let v = 1; v < labels.length; v++) {
+    const c = labels[v];
+    if (degrees[v] < min[c]) min[c] = degrees[v];
+    if (degrees[v] > max[c]) max[c] = degrees[v];
+  }
+  return { sizes, labels, edges, degree: { min, max } };
+}
+
+/** The searches the panel offers. A Bellman-Ford run is shown as a
+    shortest-path tree, like Dijkstra's (its `Search` keeps `kind:
+    'dijkstra'` and names its `schedule`). */
+type SearchKindName = 'bfs' | 'dfs' | 'dijkstra' | 'bellman_ford' | 'floyd_warshall';
 /** The built-in examples behind the empty sidebar's "Examples" tile. */
-const EXAMPLES = ['plain', 'weighted', 'named'] as const;
+const EXAMPLES = ['plain', 'weighted', 'named', 'directed', 'cycle'] as const;
 type Example = (typeof EXAMPLES)[number];
 /** How Dijkstra keeps its estimates: the course's three, then the three
     that go faster in practice. */
@@ -219,6 +276,27 @@ const FRONTIER_GROUPS: { group: 'course' | 'faster'; names: FrontierName[] }[] =
   { group: 'course', names: ['vector', 'heap', 'lazy_heap'] },
   { group: 'faster', names: ['quad_heap', 'pairing', 'radix'] },
 ];
+
+/** Which vertex Bellman-Ford re-examines next: the course's textbook and
+    its two optimisations, then the orders that need fewer passes. */
+type ScheduleName = 'rounds' | 'early_stop' | 'queue' | 'yen' | 'random_yen' | 'slf';
+const SCHEDULE_GROUPS: { group: 'course' | 'faster'; names: ScheduleName[] }[] = [
+  { group: 'course', names: ['rounds', 'early_stop', 'queue'] },
+  { group: 'faster', names: ['yen', 'random_yen', 'slf'] },
+];
+
+/** The wasm side's number for a schedule. */
+function scheduleType(wasm: GraphmanModule, name: ScheduleName) {
+  const types = wasm.ScheduleType;
+  return {
+    rounds: types.Rounds,
+    early_stop: types.EarlyStop,
+    queue: types.Queue,
+    yen: types.Yen,
+    random_yen: types.RandomYen,
+    slf: types.Slf,
+  }[name];
+}
 
 /** The wasm side's number for a frontier. */
 function frontierType(wasm: GraphmanModule, name: FrontierName) {
@@ -232,6 +310,30 @@ function frontierType(wasm: GraphmanModule, name: FrontierName) {
     radix: types.Radix,
   }[name];
 }
+/** How Floyd-Warshall walks its one table: the course's textbook loop with
+    the memory optimisation, then two walks that skip or tile. */
+type SweepName = 'plain' | 'pruned' | 'blocked';
+const SWEEP_GROUPS: { group: 'course' | 'faster'; names: SweepName[] }[] = [
+  { group: 'course', names: ['plain'] },
+  { group: 'faster', names: ['pruned', 'blocked'] },
+];
+
+/** What a layout draws for the search on screen. */
+function layoutHint(t: Dictionary['observatory'], id: LayoutId, search: Search | null): string {
+  if (id === 'radial' || id === 'layered') {
+    const hints = t.layouts[id];
+    if (search?.distances) return hints.hintDistance;
+    if (search?.kind === 'dfs') return hints.hintDfs;
+  }
+  return t.layouts[id].hint;
+}
+
+/** The wasm side's number for a sweep. */
+function sweepType(wasm: GraphmanModule, name: SweepName) {
+  const types = wasm.SweepType;
+  return { plain: types.Plain, pruned: types.Pruned, blocked: types.Blocked }[name];
+}
+
 /** How DFS is written: with an explicit stack, or one call per level. */
 type DfsName = 'iterative' | 'recursive';
 
@@ -242,15 +344,29 @@ type DfsName = 'iterative' | 'recursive';
     keys and the colour ramp work on it unchanged. */
 const BANDS = 12;
 
+/** Greatest common divisor. */
+function gcd(a: number, b: number): number {
+  while (b) [a, b] = [b, a % b];
+  return a;
+}
+
 function distanceBands(
   distances: Float64Array,
   order: Uint32Array,
 ): { levels: Uint32Array; width: number } {
   const levels = new Uint32Array(distances.length).fill(UNREACHED);
-  const farthest = order.length ? distances[order[order.length - 1]] : 0;
-  const width = farthest > 0 ? farthest / BANDS : 1;
+  // From the smallest distance up: with negative arcs (Bellman-Ford) some
+  // vertices are closer than the origin's 0.
+  let nearest = 0;
+  let farthest = 0;
+  for (const v of order) {
+    nearest = Math.min(nearest, distances[v]);
+    farthest = Math.max(farthest, distances[v]);
+  }
+  const width = farthest > nearest ? (farthest - nearest) / BANDS : 1;
   order.forEach((v, rank) => {
-    levels[v] = rank === 0 ? 0 : 1 + Math.min(BANDS - 1, Math.floor(distances[v] / width));
+    const band = Math.floor((distances[v] - nearest) / width);
+    levels[v] = rank === 0 ? 0 : 1 + Math.max(0, Math.min(BANDS - 1, band));
   });
   return { levels, width };
 }
@@ -258,7 +374,8 @@ function distanceBands(
 type SearchMode = 'search' | 'distance';
 
 interface Search {
-  kind: SearchKindName;
+  /** Bellman-Ford shows as `'dijkstra'`, with its `schedule`. */
+  kind: Exclude<SearchKindName, 'bellman_ford' | 'floyd_warshall'>;
   root: number;
   /** The distance query's other end (0 otherwise). */
   target: number;
@@ -285,6 +402,12 @@ interface Search {
   bandWidth: number;
   /** Dijkstra only: the frontier that ran. */
   frontier: FrontierName | null;
+  /** Bellman-Ford only: the schedule that ran (its search shows as a
+      shortest-path tree, `kind: 'dijkstra'`). */
+  schedule?: ScheduleName | null;
+  /** Floyd-Warshall only: the sweep that ran (its search shows as a
+      Dijkstra's: the tree from the origin, read off the origin's row). */
+  sweep?: SweepName | null;
   /** DFS only: the way it was written. */
   dfs: DfsName | null;
   /** Steps of the replay's timeline: one per discovery (`span`), or for a
@@ -328,6 +451,29 @@ function dfsTrail(order: Uint32Array, parents: Uint32Array, span: number, unwind
 /** The discovery rank a timeline position stands at: the position itself,
     or for a DFS the rank of its last push, gliding on to the next one
     while the next step is a push. */
+/** The algorithm a search on screen ran (Bellman-Ford's and Floyd-Warshall's
+    show as a Dijkstra's, with their schedule or sweep). */
+function algorithmOf(search: Search): SearchKindName {
+  return search.sweep ? 'floyd_warshall' : search.schedule ? 'bellman_ford' : search.kind;
+}
+
+/** Each vertex's ring in the radial layout of a search: a BFS's level, a
+    DFS's depth, or a shortest-path tree's distance in bands (fractional,
+    from the smallest distance, so negative distances stay outside 0). */
+function searchRings(search: Search, order: Uint32Array): Float64Array {
+  const rings = new Float64Array(search.levels.length);
+  const distances = search.distances;
+  if (!distances) {
+    for (const v of order) rings[v] = search.levels[v];
+    return rings;
+  }
+  let nearest = 0;
+  for (const v of order) nearest = Math.min(nearest, distances[v]);
+  const width = search.bandWidth || 1;
+  for (const v of order) rings[v] = (distances[v] - nearest) / width;
+  return rings;
+}
+
 function rankOf(search: Search, position: number): number {
   if (!search.trail || !search.rankAt) return position;
   const i = Math.max(0, Math.min(search.steps - 1, Math.floor(position)));
@@ -437,6 +583,14 @@ function spacingStretch(
 const MORPH_MS = 700;
 /** Share of the view a framed path fills (the path label floats over the top). */
 const PATH_FILL = 0.62;
+/** The most lowerings of a Bellman-Ford replayed in the strip's table. */
+const BELLMAN_TRACE_LOWERINGS = 400_000;
+/** The most cell changes of a Floyd-Warshall replayed in the strip's matrix. */
+const FLOYD_TRACE_CHANGES = 2_000_000;
+/** Dijkstra's refusal frames the negative edges up to this many; past it they are the graph. */
+const NEGATIVE_FIT = 64;
+/** The negative edges named in the refusal's card; the rest are counted. */
+const NEGATIVE_SHOWN = 3;
 /** Pointer travel (CSS px) under which a press is a click, not a drag or a pan. */
 const CLICK_SLOP = 4;
 /** Two clicks on one vertex closer than this are a double click. */
@@ -560,6 +714,21 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [kind, setKind] = useState<SearchKindName>('bfs');
   const [frontier, setFrontier] = useState<FrontierName>('heap');
+  const [schedule, setSchedule] = useState<ScheduleName>('queue');
+  const [sweep, setSweep] = useState<SweepName>('plain');
+  /** Floyd-Warshall's tables, kept for the graph and sweep they were run on:
+      every other origin is a row already there. */
+  const floydRef = useRef<{ graph: Graph; sweep: SweepName; run: FloydRun } | null>(null);
+  /** Floyd-Warshall's table on screen with no row picked: the run's numbers
+      and the round its replay stands at (`D_round`). */
+  const [floyd, setFloyd] = useState<{
+    elapsedMs: number;
+    n: number;
+    pairs: number;
+    longest: { distance: number; from: number; to: number } | null;
+    round: number;
+  } | null>(null);
+  const [floydPlaying, setFloydPlaying] = useState(false);
   const [dfsWay, setDfsWay] = useState<DfsName>('iterative');
   /** How deep the recursive DFS may go here (the library's browser limit). */
   const [recursionLimit, setRecursionLimit] = useState(0);
@@ -585,6 +754,41 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   >({});
   const [diameterBusy, setDiameterBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /** The components panel on a directed graph: the strong components
+      instead of the weak ones, and their numbers, worked out once per
+      graph (`meta` names the graph they belong to). */
+  const [strongShown, setStrongShown] = useState(false);
+  const [strong, setStrong] = useState<{ meta: GraphMeta; data: ComponentData } | null>(null);
+  const weakComponents = useMemo<ComponentData | null>(
+    () =>
+      meta && {
+        sizes: meta.componentSizes,
+        labels: meta.componentLabels,
+        edges: meta.componentEdges,
+        degree: meta.componentDegree,
+      },
+    [meta],
+  );
+  const strongData = strong && strong.meta === meta ? strong.data : null;
+  /** The components the panel, the canvas and the arrow keys go through. */
+  const components = strongShown && strongData ? strongData : weakComponents;
+  const componentsRef = useRef(components);
+  componentsRef.current = components;
+  /** The negative cycle Bellman-Ford found instead of distances (closed: first vertex last too). */
+  const [cycle, setCycle] = useState<{
+    vertices: Uint32Array;
+    weight: number;
+    /** Reached from the origin (Bellman-Ford), or anywhere (Floyd-Warshall). */
+    scope: 'origin' | 'graph';
+  } | null>(null);
+  /** Dijkstra's refusal: every negative edge as `[u, v]` pairs (drawn in red) and
+      its weight, with the search that was asked, for running Bellman-Ford instead. */
+  const [refusal, setRefusal] = useState<{
+    pairs: Uint32Array;
+    weights: Float64Array;
+    root: number;
+    target: number;
+  } | null>(null);
   /** The loaded graph's names, if a names file came with it. */
   const [names, setNames] = useState<NamesInfo | null>(null);
   /** Names beside the vertices; the toggle only exists once names are loaded. */
@@ -620,7 +824,11 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   const searchRef = useRef<Search | null>(null);
   searchRef.current = search;
   /** The last click on a vertex, and the origin it replaced. */
-  const lastClick = useRef<{ vertex: number; at: number; origin: string } | null>(null);
+  /** The last click on a vertex: when, the origin it replaced, and the
+      Floyd-Warshall row on screen before it (0: none), for a double click. */
+  const lastClick = useRef<{ vertex: number; at: number; origin: string; row: number } | null>(
+    null,
+  );
   const [helpOpen, setHelpOpen] = useState(false);
   /** The find field, top left: a vertex typed is selected and framed. */
   const [findOpen, setFindOpen] = useState(false);
@@ -945,10 +1153,19 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       let minY = Infinity;
       let maxX = -Infinity;
       let maxY = -Infinity;
+      // The whole drawing's extent too: the smallest frame is a share of it.
+      let allMinX = Infinity;
+      let allMinY = Infinity;
+      let allMaxX = -Infinity;
+      let allMaxY = -Infinity;
       for (let v = 1, i = 2; i < positions.length; v++, i += 2) {
-        if (!keep(v)) continue;
         const x = positions[i];
         const y = positions[i + 1];
+        if (x < allMinX) allMinX = x;
+        if (x > allMaxX) allMaxX = x;
+        if (y < allMinY) allMinY = y;
+        if (y > allMaxY) allMaxY = y;
+        if (!keep(v)) continue;
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
@@ -956,10 +1173,14 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       }
       if (!Number.isFinite(minX)) return;
       const [w, h] = renderer.cssSize;
-      // A lone origin still gets a neighbourhood, not a giant disc.
-      const bw = Math.max(maxX - minX, 220);
-      const bh = Math.max(maxY - minY, 220);
-      const zoom = Math.min((w * fill) / bw, (h * fill) / bh, 6);
+      // A lone origin still gets a neighbourhood, not a giant disc: at least
+      // a fifth of the drawing (capped at 220 world units on large ones), so
+      // a small graph's path fills the view instead of staying the size the
+      // whole graph had.
+      const floor = Math.min(220, 0.2 * Math.max(allMaxX - allMinX, allMaxY - allMinY, 1));
+      const bw = Math.max(maxX - minX, floor);
+      const bh = Math.max(maxY - minY, floor);
+      const zoom = Math.min((w * fill) / bw, (h * fill) / bh, 40);
       glideTo({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, zoom });
     },
     [glideTo],
@@ -1013,8 +1234,11 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   /**
    * Rearranges the graph: the level layouts start at `root`, the force
    * layout returns to the initial placement and warms the simulation up
-   * again, and the layered one draws the tree of the search on screen when
-   * that search is a Dijkstra (a BFS tree from `root` otherwise). The layout's
+   * again. When the search on screen starts at `root`, the level layouts
+   * draw its own tree: the layered one level by level (a BFS's levels, a
+   * DFS's depth, a shortest-path tree's edges), the radial one in rings (a
+   * BFS's levels, a DFS's depth, the distance in bands, fractional). A BFS
+   * tree from `root` otherwise. The layout's
    * spacing stretches whatever comes back. Vertices slide to their new places and the view follows: the
    * whole graph, or with `frame: 'component'` only the root's component
    * (a new search origin re-arranges that one, the rest just makes room).
@@ -1037,9 +1261,13 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
               : wasm.LayerDirection.Horizontal;
           const shown = searchRef.current;
           positions =
-            shown?.kind === 'dijkstra'
-              ? graph.layeredTree(shown.result as ShortestPathResult, direction)
+            shown && shown.root === root
+              ? graph.layeredTree(shown.parents, shown.result.order(), direction)
               : graph.layered(root, direction);
+        } else if (id === 'radial' && searchRef.current?.root === root) {
+          const shown = searchRef.current;
+          const order = shown.result.order();
+          positions = graph.radialTree(shown.parents, order, searchRings(shown, order));
         } else {
           positions = graph.layout(
             id === 'radial' ? wasm.LayoutKind.Radial : wasm.LayoutKind.Degree,
@@ -1103,24 +1331,22 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     [applyCamera, glideTo],
   );
 
-  /** The level layouts follow the search: a new origin re-arranges its component,
-      and the layered tree also changes between a Dijkstra and any other search. */
+  /** The level layouts follow the search: each new run re-arranges its
+      origin's component around its own tree (a BFS's, a DFS's, a
+      shortest-path tree). */
   layoutRef.current = layout;
+  const searchRun = search?.result ?? null;
   const searchRoot = search?.root ?? 0;
-  const searchIsDijkstra = search?.kind === 'dijkstra';
   useEffect(() => {
-    if (searchRoot && layoutRef.current === 'radial')
-      applyLayout('radial', searchRoot, 'component');
-  }, [searchRoot, applyLayout]);
-  useEffect(() => {
-    if (searchRoot && layoutRef.current === 'layered')
-      applyLayout('layered', searchRoot, 'component');
-  }, [searchRoot, searchIsDijkstra, applyLayout]);
+    const id = layoutRef.current;
+    if (searchRun && searchRoot && (id === 'radial' || id === 'layered'))
+      applyLayout(id, searchRoot, 'component');
+  }, [searchRun, searchRoot, applyLayout]);
 
   /** Lights component `c` (0 clears), frames it, and hands the arrow keys to it. */
   const selectComponent = useCallback(
     (c: number) => {
-      const labels = metaRef.current?.componentLabels;
+      const labels = componentsRef.current?.labels;
       setComponent(c);
       rendererRef.current?.setComponent(c);
       keysTarget.current = c ? 'components' : 'search';
@@ -1131,6 +1357,32 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     },
     [fitVertices],
   );
+
+  /** The components panel's switch: the strong components or the weak ones,
+      the canvas relabelled and the largest one lit. */
+  const showStrong = (on: boolean) => {
+    const graph = graphRef.current;
+    const current = metaRef.current;
+    if (!graph || !current) return;
+    let data = strong && strong.meta === current ? strong.data : null;
+    if (on && !data) {
+      data = componentData(graph.strongComponentLabels(), current.edgeList, current.degrees);
+      setStrong({ meta: current, data });
+    }
+    const next =
+      on && data
+        ? data
+        : {
+            sizes: current.componentSizes,
+            labels: current.componentLabels,
+            edges: current.componentEdges,
+            degree: current.componentDegree,
+          };
+    componentsRef.current = next;
+    setStrongShown(on);
+    rendererRef.current?.setComponentLabels(next.labels);
+    selectComponent(1);
+  };
 
   const toWorld = useCallback((clientX: number, clientY: number) => {
     const stage = stageRef.current;
@@ -1174,6 +1426,11 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     // a wasm object freed twice is a null pointer.
     searchRef.current?.result.free();
     setSearch(null);
+    setCycle(null);
+    floydRef.current?.run.free();
+    floydRef.current = null;
+    setFloyd(null);
+    setRefusal(null);
     graphRef.current?.free();
     graphRef.current = null;
     // A tree's parent goes with it: there is nothing to return to.
@@ -1269,16 +1526,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
             ? graph.initialLayout()
             : graph.layout(wasm.LayoutKind.Radial, Math.max(1, labels.indexOf(1)));
         const edges = graph.edges();
-        // Per component: edges (by one endpoint's label) and the degree range.
-        const componentEdges = new Uint32Array(sizes.length + 1);
-        for (let i = 0; i < edges.length; i += 2) componentEdges[labels[edges[i]]] += 1;
-        const degreeMin = new Uint32Array(sizes.length + 1).fill(0xffffffff);
-        const degreeMax = new Uint32Array(sizes.length + 1);
-        for (let v = 1; v < labels.length; v++) {
-          const c = labels[v];
-          if (degrees[v] < degreeMin[c]) degreeMin[c] = degrees[v];
-          if (degrees[v] > degreeMax[c]) degreeMax[c] = degrees[v];
-        }
+        // Per component: edges inside and the degree range.
+        const weak = componentData(labels, edges, degrees);
         renderer.load(
           {
             vertexCount: graph.vertexCount,
@@ -1287,6 +1536,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
             csrTargets: graph.adjacencyTargets(),
             positions,
             componentLabels: labels,
+            directed: graph.directed,
           },
           wasm.edgeLength(),
         );
@@ -1295,6 +1545,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           bytes: waiting.bytes,
           vertices: graph.vertexCount,
           edges: graph.edgeCount,
+          directed: graph.directed,
           selfLoops: graph.selfLoopsDropped,
           duplicates: graph.duplicatesDropped,
           representation: REPRESENTATIONS[graph.representation],
@@ -1311,15 +1562,19 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           edgeWeights: weights ? graph.weights() : null,
           componentSizes: sizes,
           componentLabels: labels,
-          componentEdges,
-          componentDegree: { min: degreeMin, max: degreeMax },
+          componentEdges: weak.edges,
+          componentDegree: weak.degree,
           parseMs: waiting.parseMs,
         });
         setComponent(0);
         setComponentsOpen(false);
+        setStrongShown(false);
         setMemoryOpen(false);
         setLayout(willSimulate ? 'force' : 'radial');
         setSearch(null);
+        setCycle(null);
+        setFloyd(null);
+        setRefusal(null);
         setDiameterResults({});
         setSelected(0);
         setHovered(0);
@@ -1361,6 +1616,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       name: string,
       bytes: Uint8Array,
       names: NamesFile | null = null,
+      directed = false,
     ): Promise<Pending | null> => {
       const wasm = wasmRef.current;
       if (!wasm) return null;
@@ -1375,7 +1631,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       await new Promise((resolve) => setTimeout(resolve, 30));
       try {
         const t0 = performance.now();
-        const parsed = new wasm.Parsed(bytes);
+        const parsed = new wasm.Parsed(bytes, directed);
         const parseMs = performance.now() - t0;
         const memory = readMemory(parsed.memoryReport());
         const waiting: Pending = {
@@ -1386,6 +1642,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           parseMs,
           memory,
           parsed,
+          source: bytes,
+          directed,
           names,
         };
         setPending(waiting);
@@ -1400,6 +1658,35 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     },
     [clearGraph],
   );
+
+  /** Reads the parsed file again with the other orientation, in place: the
+      card stays, only the counts and prices that change move to their new
+      values (no "parsing" state, nothing cleared). */
+  const reorient = useCallback((directed: boolean) => {
+    const wasm = wasmRef.current;
+    const current = pendingRef.current;
+    if (!wasm || !current || current.directed === directed) return;
+    try {
+      const t0 = performance.now();
+      const parsed = new wasm.Parsed(current.source, directed);
+      const parseMs = performance.now() - t0;
+      const next: Pending = {
+        ...current,
+        parsed,
+        directed,
+        vertices: parsed.vertexCount,
+        edges: parsed.edgeCount,
+        parseMs,
+        memory: readMemory(parsed.memoryReport()),
+      };
+      current.parsed.free();
+      pendingRef.current = next;
+      setPending(next);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setNotice(tRef.current.couldNotLoad(current.name, message));
+    }
+  }, []);
 
   parseRef.current = parseBytes;
   openPendingRef.current = openPending;
@@ -1425,6 +1712,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           csrTargets: saved.graph.adjacencyTargets(),
           positions: saved.positions,
           componentLabels: saved.meta.componentLabels,
+          directed: saved.graph.directed,
         },
         wasm.edgeLength(),
       );
@@ -1557,6 +1845,15 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         });
         return;
       }
+      if (which === 'directed' || which === 'cycle') {
+        const [name, text] =
+          which === 'directed'
+            ? ['directed.txt', DIRECTED_SAMPLE]
+            : ['directed_cycle.txt', NEGATIVE_CYCLE_SAMPLE];
+        // Read as arcs: each line `u v w` is the arc u → v.
+        void parseBytes(name, encode(text), null, true);
+        return;
+      }
       const [name, text] =
         which === 'weighted'
           ? ['sample_weighted.txt', WEIGHTED_SAMPLE]
@@ -1628,6 +1925,33 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   const followRef = useRef(false);
   followRef.current = follow;
 
+  /** Floyd-Warshall's tables for the graph and sweep on screen: run once,
+      then kept for every row asked of them. `null`, with a notice, past the
+      page's limit or when the run fails. */
+  const ensureFloyd = useCallback((): FloydRun | null => {
+    const graph = graphRef.current;
+    const wasm = wasmRef.current;
+    if (!graph || !wasm) return null;
+    const limit = wasm.Graph.floydWarshallLimit();
+    if (graph.vertexCount > limit) {
+      setNotice(tRef.current.floydTooLarge(formatInt(graph.vertexCount), formatInt(limit)));
+      return null;
+    }
+    let cached = floydRef.current;
+    if (!cached || cached.graph !== graph || cached.sweep !== sweep) {
+      cached?.run.free();
+      floydRef.current = null;
+      try {
+        cached = { graph, sweep, run: graph.floydWarshall(sweepType(wasm, sweep)) };
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : String(error));
+        return null;
+      }
+      floydRef.current = cached;
+    }
+    return cached.run;
+  }, [sweep]);
+
   const runSearch = useCallback(
     (which: SearchKindName, root: number, target = 0) => {
       const wasm = wasmRef.current;
@@ -1635,12 +1959,45 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       const renderer = rendererRef.current;
       if (!wasm || !graph || !renderer) return;
       keysTarget.current = 'search';
-      const refused = metaRef.current?.negativeEdge;
-      if (which === 'dijkstra' && refused) {
-        // The library refuses too; saying it here keeps the words the visitor's.
-        setNotice(tRef.current.refusal(refused.u, refused.v, formatWeight(refused.weight)));
+      const current = metaRef.current;
+      if (which === 'dijkstra' && current?.negativeEdge && current.edgeWeights) {
+        // The library refuses too; saying it here keeps the words the
+        // visitor's. Every negative edge goes red on the plain graph (only
+        // those are uploaded), framed while they are few, and the card at
+        // the top says why.
+        const { edgeList, edgeWeights } = current;
+        let count = 0;
+        for (const w of edgeWeights) if (w < 0) count += 1;
+        const pairs = new Uint32Array(2 * count);
+        const weights = new Float64Array(count);
+        for (let e = 0, i = 0; e < edgeWeights.length; e++) {
+          if (!(edgeWeights[e] < 0)) continue;
+          pairs[2 * i] = edgeList[2 * e];
+          pairs[2 * i + 1] = edgeList[2 * e + 1];
+          weights[i++] = edgeWeights[e];
+        }
+        search?.result.free();
+        setSearch(null);
+        searchRef.current = null;
+        setCycle(null);
+        setPlaying(false);
+        setSelected(0);
+        renderer.setSelected(0);
+        renderer.setSearch(null);
+        renderer.setPath(0, null);
+        renderer.setNegative(pairs);
+        setRefusal({ pairs, weights, root, target });
+        setNotice(null);
+        if (count <= NEGATIVE_FIT) {
+          const ends = new Set(pairs);
+          autoFit.current = false;
+          fitVertices((v) => ends.has(v), PATH_FILL);
+        }
         return;
       }
+      // Any other search takes the refusal's red away.
+      setRefusal(null);
+      renderer.setNegative(null);
       try {
         // The recursive DFS may refuse a tree too deep for the browser's
         // stack; ask first, so a refusal keeps the current search on screen.
@@ -1661,8 +2018,53 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         let settled: Uint32Array | null = null;
         let bandWidth = 0;
         let fullPath: Uint32Array | null = null;
-        if (which === 'dijkstra') {
-          const run = graph.dijkstra(root, frontierType(wasm, frontier));
+        /** A negative cycle leaves no distances: the cycle itself is drawn
+            in red, framed, and named in the card where a path would be. */
+        const showCycle = (found: Uint32Array, scope: 'origin' | 'graph') => {
+          setSearch(null);
+          searchRef.current = null;
+          setPlaying(false);
+          setSelected(0);
+          renderer.setSelected(0);
+          renderer.setSearch(null);
+          renderer.setPath(0, found, true);
+          let weight = 0;
+          for (let i = 0; i + 1 < found.length; i++) {
+            weight += graph.edgeWeight(found[i], found[i + 1]) ?? 0;
+          }
+          setCycle({ vertices: found, weight, scope });
+          setNotice(null);
+          const onCycle = new Set(found);
+          autoFit.current = false;
+          fitVertices((v) => onCycle.has(v), PATH_FILL);
+        };
+        if (which === 'bellman_ford') {
+          const found = graph.negativeCycle(root, scheduleType(wasm, schedule));
+          if (found.length) {
+            showCycle(found, 'origin');
+            return;
+          }
+        }
+        // Floyd-Warshall runs once per graph and sweep; an origin reads its
+        // row of the tables.
+        let floydTree: ShortestPathResult | null = null;
+        if (which === 'floyd_warshall') {
+          const table = ensureFloyd();
+          if (!table) return;
+          const found = table.cycle();
+          if (found.length) {
+            setFloyd(null);
+            showCycle(found, 'graph');
+            return;
+          }
+          floydTree = table.tree(root);
+        }
+        if (which === 'dijkstra' || which === 'bellman_ford' || which === 'floyd_warshall') {
+          const run =
+            floydTree ??
+            (which === 'bellman_ford'
+              ? graph.bellmanFord(root, scheduleType(wasm, schedule))
+              : graph.dijkstra(root, frontierType(wasm, frontier)));
           result = run;
           distances = run.distances();
           settled = run.order();
@@ -1710,11 +2112,13 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           for (let r = 0; r < span; r++) levelSizes[levels[order[r]]] += 1;
         }
         const moves = which === 'dfs' ? dfsTrail(order, parents, span, !(target && path)) : null;
-        renderer.setSearch({ kind: which, levels, ranks, parents, depth });
+        const shown = which === 'bellman_ford' || which === 'floyd_warshall' ? 'dijkstra' : which;
+        setCycle(null);
+        renderer.setSearch({ kind: shown, levels, ranks, parents, depth });
         renderer.setPath(target, path);
         renderer.setPathOnly(pathOnly);
         setSearch({
-          kind: which,
+          kind: shown,
           root,
           target,
           path,
@@ -1731,6 +2135,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           settled,
           bandWidth,
           frontier: which === 'dijkstra' ? frontier : null,
+          schedule: which === 'bellman_ford' ? schedule : null,
+          sweep: which === 'floyd_warshall' ? sweep : null,
           dfs: which === 'dfs' ? dfsWay : null,
           steps: moves ? moves.trail.length : span,
           trail: moves?.trail ?? null,
@@ -1743,6 +2149,19 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         // The search picture is the tree: no selection ring or neighbourhood on the origin.
         setSelected(0);
         renderer.setSelected(0);
+        if (which === 'floyd_warshall' && !path) {
+          // A row read off Floyd-Warshall's table: nothing ran, so nothing
+          // replays; the tree shows whole at once. A path (a double click)
+          // is walked like any other.
+          const end = span - 1;
+          revealRef.current = end;
+          setReveal(end);
+          renderer.setRevealRate(1e-3);
+          renderer.setReveal(end);
+          renderer.setWalk(-1);
+          setPlaying(false);
+          return;
+        }
         if (path) {
           // A destination reached: the search is shown whole, up to it, and
           // the timeline walks the path.
@@ -1764,8 +2183,80 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         setNotice(error instanceof Error ? error.message : String(error));
       }
     },
-    [search, pathOnly, frontier, dfsWay],
+    [search, pathOnly, frontier, schedule, sweep, dfsWay, fitVertices, ensureFloyd],
   );
+
+  /**
+   * Floyd-Warshall answers every pair at once: it runs with no origin, and
+   * the table is shown on its own, replayed round by round (`D_k`, the
+   * vertices 1 to k allowed in between). A row is read off it afterwards,
+   * by clicking a vertex. A negative cycle anywhere shows as Bellman-Ford's.
+   */
+  const runFloyd = useCallback(() => {
+    const renderer = rendererRef.current;
+    const table = ensureFloyd();
+    if (!renderer || !table) return;
+    if (table.cycle().length) {
+      runSearch('floyd_warshall', 1);
+      return;
+    }
+    keysTarget.current = 'search';
+    searchRef.current?.result.free();
+    searchRef.current = null;
+    setSearch(null);
+    setPlaying(false);
+    setCycle(null);
+    setRefusal(null);
+    setNotice(null);
+    renderer.setNegative(null);
+    renderer.setPath(0, null);
+    const [pairs, longest, from, to] = table.summary();
+    setFloyd({
+      elapsedMs: table.elapsedMs,
+      n: graphRef.current?.vertexCount ?? 0,
+      pairs,
+      longest: Number.isNaN(longest) ? null : { distance: longest, from, to },
+      round: 0,
+    });
+    setFloydPlaying(true);
+  }, [ensureFloyd, runSearch]);
+
+  /** Floyd-Warshall's row on screen dropped: back to the table and its rounds. */
+  const backToTable = () => {
+    searchRef.current?.result.free();
+    searchRef.current = null;
+    setSearch(null);
+    setPlaying(false);
+    setTargetInput('');
+    setSelected(0);
+    rendererRef.current?.setPath(0, null);
+    rendererRef.current?.setWalk(-1);
+  };
+
+  /** Floyd-Warshall's whole result dropped: the row, the table, its tables. */
+  const dropFloyd = () => {
+    searchRef.current?.result.free();
+    searchRef.current = null;
+    setSearch(null);
+    setPlaying(false);
+    setFloyd(null);
+    setFloydPlaying(false);
+    floydRef.current?.run.free();
+    floydRef.current = null;
+    setTargetInput('');
+    setSelected(0);
+    const renderer = rendererRef.current;
+    renderer?.setSearch(null);
+    renderer?.setPath(0, null);
+    renderer?.setWalk(-1);
+    renderer?.setSelected(0);
+  };
+
+  /** Whether Floyd-Warshall's tables for the graph and sweep on screen are kept. */
+  const floydReady = () => {
+    const table = floydRef.current;
+    return kind === 'floyd_warshall' && table?.graph === graphRef.current && table?.sweep === sweep;
+  };
 
   // The reveal animation: discovery ranks light up over a duration that
   // grows slowly with the tree, so small graphs stay watchable and large
@@ -1796,6 +2287,59 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [playing, search, fitDiscovered]);
+
+  // Floyd-Warshall's table on its own: the vertices allowed in between so
+  // far (1 to k) lit, the round's pivot k selected (its out-arcs are read
+  // as row k, its in-arcs as column k), replayed over the rounds.
+  const floydView = kind === 'floyd_warshall' && floyd !== null && !search && !cycle;
+  const floydN = floydView ? floyd.n : 0;
+  const floydRound = floydView ? floyd.round : null;
+  const floydRoundRef = useRef(0);
+  floydRoundRef.current = floyd?.round ?? 0;
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !floydN) return;
+    const ranks = new Uint32Array(floydN + 1).fill(UNREACHED);
+    for (let v = 1; v <= floydN; v++) ranks[v] = v - 1;
+    renderer.setSearch({
+      kind: 'bfs',
+      levels: new Uint32Array(floydN + 1).fill(1),
+      ranks,
+      parents: new Uint32Array(floydN + 1),
+      depth: 2,
+    });
+    return () => {
+      // A row read off the table takes the canvas over; leaving otherwise
+      // (another algorithm, the table dropped) gives the plain graph back.
+      if (searchRef.current) return;
+      renderer.setSearch(null);
+      renderer.setSelected(0);
+    };
+  }, [floydN]);
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || floydRound === null) return;
+    renderer.setReveal(floydRound - 1);
+    renderer.setSelected(floydRound);
+  }, [floydRound]);
+  useEffect(() => {
+    if (!floydPlaying || !floydN) return;
+    const duration = Math.min(8000, Math.max(1600, floydN * 60));
+    rendererRef.current?.setRevealRate((floydN / duration) * 1000);
+    const from = floydRoundRef.current >= floydN ? 0 : floydRoundRef.current;
+    let frame = 0;
+    let start: number | null = null;
+    const tick = (now: number) => {
+      if (start === null) start = now - (from / floydN) * duration;
+      const t = Math.min(1, (now - start) / duration);
+      const round = Math.round(t * floydN);
+      setFloyd((f) => (f && f.round !== round ? { ...f, round } : f));
+      if (t < 1) frame = requestAnimationFrame(tick);
+      else setFloydPlaying(false);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [floydPlaying, floydN]);
 
   // Embedded, the path given goes the way of any file (one at a time: a load
   // must not free what the one before it is building), skipping the picker...
@@ -1855,7 +2399,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
   // to a step by the library.
   // Opening the structure strip takes the canvas's bottom: the graph is
   // framed again for the room left, gliding while the strip grows.
-  const stripShown = Boolean(meta && search && structuresOpen && !phone);
+  const stripShown = Boolean(meta && (search || floydView) && structuresOpen && !phone);
   const stripWasShown = useRef(stripShown);
   useEffect(() => {
     const opened = stripShown && !stripWasShown.current;
@@ -1866,11 +2410,61 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     fit(true, [renderer.cssSize[0], Math.max(column.clientHeight - stripHeight, 1)]);
   }, [stripShown, stripHeight, fit]);
 
+  /** Bellman-Ford's or Floyd-Warshall's trace, recorded again (untimed) for
+      the strip's table: every lowering in order, or `null` when it would be
+      too large to keep. */
+  const dpRun = search?.result ?? null;
+  const dpRoot = search?.root ?? 0;
+  const dpSchedule = search?.schedule ?? null;
+  const dpFloyd = search ? Boolean(search.sweep) : kind === 'floyd_warshall' && floyd !== null;
+  const traceOf = useCallback((): DpTrace | null => {
+    const graph = graphRef.current;
+    const wasm = wasmRef.current;
+    if (!graph || !wasm) return null;
+    try {
+      if (dpFloyd) {
+        const trace = graph.floydTrace(FLOYD_TRACE_CHANGES);
+        if (!trace) return null;
+        const read: DpTrace = {
+          kind: 'floyd',
+          n: trace.n,
+          initial: trace.initial(),
+          cells: trace.cells(),
+          rounds: trace.rounds(),
+          after: trace.after(),
+        };
+        trace.free();
+        return read;
+      }
+      if (dpSchedule && dpRun) {
+        const trace = graph.bellmanFordTrace(
+          dpRoot,
+          scheduleType(wasm, dpSchedule),
+          BELLMAN_TRACE_LOWERINGS,
+        );
+        if (!trace) return null;
+        const read: DpTrace = {
+          kind: 'bellman',
+          vertices: trace.vertices(),
+          passes: trace.passes(),
+          distances: trace.distances(),
+          totalPasses: trace.totalPasses,
+        };
+        trace.free();
+        return read;
+      }
+    } catch {
+      // A refused replay leaves the strip saying so.
+    }
+    return null;
+  }, [dpRun, dpRoot, dpSchedule, dpFloyd]);
+
   const frontierAt = useCallback(
     (step: number, limit: number): FrontierView | null => {
       const graph = graphRef.current;
       const wasm = wasmRef.current;
-      if (!graph || !wasm || search?.kind !== 'dijkstra') return null;
+      if (!graph || !wasm || search?.kind !== 'dijkstra' || search.schedule || search.sweep)
+        return null;
       try {
         const snapshot = graph.frontierAt(
           search.root,
@@ -2164,8 +2758,15 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       const second =
         last !== null && last.vertex === g.vertex && event.timeStamp - last.at < DOUBLE_CLICK_MS;
       if (!second) {
-        lastClick.current = { vertex: g.vertex, at: event.timeStamp, origin: rootInput };
+        lastClick.current = {
+          vertex: g.vertex,
+          at: event.timeStamp,
+          origin: rootInput,
+          row: searchRef.current?.sweep ? searchRef.current.root : 0,
+        };
         setRootInput(vertexLabel(g.vertex));
+        // Floyd-Warshall's table is already there: a click reads the row.
+        if (floydReady()) runSearch('floyd_warshall', g.vertex);
       }
     }
     // A click on the background (a pan that never moved) clears the selection.
@@ -2178,6 +2779,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       pinnedRef.current = false;
       setHovered(0);
       renderer?.setHovered(0);
+      // Floyd-Warshall: the row's tree goes with the selection.
+      if (floydReady() && searchRef.current?.sweep) backToTable();
     }
     if (g.mode === 'drag') {
       renderer?.endDrag();
@@ -2237,6 +2840,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     walkTo,
     component,
     selectComponent,
+    floydRound: null as number | null,
+    floydN: 0,
   });
   keysRef.current = {
     search,
@@ -2246,6 +2851,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     walkTo,
     component,
     selectComponent,
+    floydRound,
+    floydN,
   };
 
   useEffect(() => {
@@ -2259,12 +2866,29 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           : event.key === 'ArrowDown' || event.key === 'ArrowLeft'
             ? -1
             : 0;
-      const count = metaRef.current?.componentSizes.length ?? 0;
-      if (arrow && k.component && (keysTarget.current === 'components' || !k.search)) {
+      const count = componentsRef.current?.sizes.length ?? 0;
+      if (
+        arrow &&
+        k.component &&
+        (keysTarget.current === 'components' || (!k.search && k.floydRound === null))
+      ) {
         // Components are ranked by size: → / ↓ go to the next smaller one.
         event.preventDefault();
         const dir = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
         k.selectComponent(Math.max(1, Math.min(count, k.component + dir)));
+        return;
+      }
+      if (arrow && k.floydRound !== null && !k.search) {
+        // Floyd-Warshall's table: ← / → a round (ten with shift), ↑ / ↓ ten.
+        event.preventDefault();
+        const vertical = event.key === 'ArrowUp' || event.key === 'ArrowDown';
+        const dir = event.key === 'ArrowRight' || event.key === 'ArrowUp' ? 1 : -1;
+        const round = Math.max(
+          0,
+          Math.min(k.floydN, k.floydRound + dir * (vertical || event.shiftKey ? 10 : 1)),
+        );
+        setFloydPlaying(false);
+        setFloyd((f) => (f ? { ...f, round } : f));
         return;
       }
       if (arrow && k.search?.path) {
@@ -2302,6 +2926,9 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       } else if (event.key === ' ' && search) {
         event.preventDefault();
         setPlaying((p) => !p);
+      } else if (event.key === ' ' && k.floydRound !== null) {
+        event.preventDefault();
+        setFloydPlaying((p) => !p);
       } else if (event.key === 'f' && meta) {
         fit();
       }
@@ -2401,11 +3028,14 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       const sy = (v: number) => (positions[2 * v + 1] - camera.y) * camera.zoom + cy;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      const radius = Math.min(12, Math.max(1.5, 3.5 * Math.sqrt(camera.zoom)));
 
-      // Weights first, so a vertex number is never covered: a small pill at
-      // the middle of each edge long enough on screen to hold one. The
-      // selected vertex's edges, and the edges Dijkstra's tree has used so
-      // far in the replay, turn blue and are drawn last, on top.
+      // Weights first, so a vertex number is never covered: a small pill on
+      // each edge long enough on screen to hold one, at its middle or, when
+      // a vertex or another pill is there, slid along the edge to the first
+      // free spot. The selected vertex's edges, and the edges the search's
+      // tree has used so far in the replay, turn blue and are drawn last,
+      // on top.
       if (weights) {
         ctx.font = `500 10px ${mono}`;
         const background = style.getPropertyValue('--bg');
@@ -2419,20 +3049,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           stroke: style.getPropertyValue('--accent'),
           text: style.getPropertyValue('--accent'),
         };
-        const pill = (e: number, colors: typeof plain) => {
-          const u = edges[2 * e];
-          const v = edges[2 * e + 1];
-          const x1 = sx(u);
-          const y1 = sy(u);
-          const x2 = sx(v);
-          const y2 = sy(v);
-          const x = (x1 + x2) / 2;
-          const y = (y1 + y2) / 2;
-          if (x < -30 || y < -30 || x > rect.width + 30 || y > rect.height + 30) return false;
-          const label = weightText[e];
-          const width = ctx.measureText(label).width + 8;
-          // Room for the pill between the two discs, or no label.
-          if (Math.hypot(x2 - x1, y2 - y1) < width + 28) return false;
+        type Box = { e: number; x: number; y: number; width: number };
+        const paint = ({ e, x, y, width }: Box, colors: typeof plain) => {
           ctx.beginPath();
           ctx.roundRect(x - width / 2, y - 7.5, width, 15, 4);
           ctx.fillStyle = background;
@@ -2445,8 +3063,82 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           ctx.lineWidth = 1;
           ctx.stroke();
           ctx.fillStyle = colors.text;
-          ctx.fillText(label, x, y + 0.5);
+          ctx.fillText(weightText[e], x, y + 0.5);
+        };
+        // Labels never overlap a vertex or each other: every vertex on
+        // screen, then each pill, claims the cells of a coarse screen grid
+        // it covers (with a margin), and a pill finds a spot whose cells are
+        // free or is not drawn. Zoomed out, a readable sample of the weights
+        // shows; zooming in makes room for the rest.
+        const CELL = 6;
+        const cols = Math.ceil(rect.width / CELL) + 2;
+        const rows = Math.ceil(rect.height / CELL) + 2;
+        const taken = new Uint8Array(cols * rows);
+        /** The grid cells of a rectangle, clipped: [c0, c1, r0, r1]. */
+        const cells = (x0: number, x1: number, y0: number, y1: number) =>
+          [
+            Math.max(0, Math.floor(x0 / CELL)),
+            Math.min(cols - 1, Math.floor(x1 / CELL)),
+            Math.max(0, Math.floor(y0 / CELL)),
+            Math.min(rows - 1, Math.floor(y1 / CELL)),
+          ] as const;
+        const area = ({ x, y, width }: Box) =>
+          cells(x - width / 2 - 2, x + width / 2 + 2, y - 9.5, y + 9.5);
+        const free = (b: Box) => {
+          const [c0, c1, r0, r1] = area(b);
+          for (let r = r0; r <= r1; r++) {
+            for (let c = c0; c <= c1; c++) if (taken[r * cols + c]) return false;
+          }
           return true;
+        };
+        const take = ([c0, c1, r0, r1]: readonly [number, number, number, number]) => {
+          if (c0 > c1) return;
+          for (let r = r0; r <= r1; r++) taken.fill(1, r * cols + c0, r * cols + c1 + 1);
+        };
+        // The vertices first, with room for the rings and the growth a
+        // search or a path gives them (past a size, too many to matter).
+        if (positions.length / 2 <= 200_000) {
+          const room = Math.max(radius * 1.6, 6) + 3;
+          for (let i = 2; i < positions.length; i += 2) {
+            const x = (positions[i] - camera.x) * camera.zoom + cx;
+            const y = (positions[i + 1] - camera.y) * camera.zoom + cy;
+            if (x < -room || y < -room || x > rect.width + room || y > rect.height + room) continue;
+            take(cells(x - room, x + room, y - room, y + room));
+          }
+        }
+        /** Where along an edge its pill is tried: the middle, then further
+            out on either side. */
+        const ALONG = [0.5, 0.4, 0.6, 0.3, 0.7, 0.22, 0.78];
+        /** The pill of edge `e`: the first spot along the edge that is on
+            screen, clear of both ends' discs and free (or, with `force`,
+            the middle when none is). `null` when the edge is too short. */
+        const place = (e: number, force: boolean): Box | null => {
+          const u = edges[2 * e];
+          const v = edges[2 * e + 1];
+          const x1 = sx(u);
+          const y1 = sy(u);
+          const x2 = sx(v);
+          const y2 = sy(v);
+          const length = Math.hypot(x2 - x1, y2 - y1);
+          const width = ctx.measureText(weightText[e]).width + 8;
+          // Clear of both ends' claimed squares, with a cell to spare.
+          const clear = (width / 2 + Math.max(radius * 1.6, 6) + 5 + CELL) / length;
+          if (clear >= 0.5) return null;
+          let fallback: Box | null = null;
+          for (const t of ALONG) {
+            if (t < clear || t > 1 - clear) continue;
+            const x = x1 + (x2 - x1) * t;
+            const y = y1 + (y2 - y1) * t;
+            if (x < -30 || y < -30 || x > rect.width + 30 || y > rect.height + 30) continue;
+            const b = { e, x, y, width };
+            fallback ??= b;
+            if (free(b)) {
+              take(area(b));
+              return b;
+            }
+          }
+          if (force && fallback) take(area(fallback));
+          return force ? fallback : null;
         };
         const selectedVertex = selectedRef.current;
         const run = searchRef.current?.kind === 'dijkstra' ? searchRef.current : null;
@@ -2460,21 +3152,34 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
           const rank = run.ranks[child];
           return rank !== UNREACHED && rank <= revealed;
         };
-        const mine: number[] = [];
-        let drawn = 0;
-        for (let e = 0; e < weights.length; e++) {
+        // The blue ones claim their room first, then the rest in a scrambled
+        // order (a fixed step coprime with the count), so the sample that
+        // fits spreads over the whole picture instead of the first edges.
+        const mine: Box[] = [];
+        const m = weights.length;
+        for (let e = 0; e < m; e++) {
           const u = edges[2 * e];
           const v = edges[2 * e + 1];
           if ((selectedVertex && (u === selectedVertex || v === selectedVertex)) || used(u, v)) {
-            mine.push(e);
-          } else if (drawn < 1500 && pill(e, plain)) {
-            drawn += 1;
+            const b = place(e, true);
+            if (b) mine.push(b);
           }
         }
-        for (const e of mine) pill(e, chosen);
+        let step = 7919 % Math.max(m, 1) || 1;
+        while (m > 1 && gcd(step, m) !== 1) step += 1;
+        const shown: Box[] = [];
+        for (let k = 0, e = 0; k < m && shown.length < 1500; k++, e = (e + step) % m) {
+          const u = edges[2 * e];
+          const v = edges[2 * e + 1];
+          if ((selectedVertex && (u === selectedVertex || v === selectedVertex)) || used(u, v)) {
+            continue;
+          }
+          const b = place(e, false);
+          if (b) shown.push(b);
+        }
+        for (const b of shown) paint(b, plain);
+        for (const b of mine) paint(b, chosen);
       }
-
-      const radius = Math.min(12, Math.max(1.5, 3.5 * Math.sqrt(camera.zoom)));
 
       // The vertices in the structure strip, ringed: the queue, the stack,
       // the frontier at this step; the one the step is about more strongly.
@@ -2578,11 +3283,12 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     const rank = shown.ranks;
     const pairs = current.edgeList;
     const weights = current.edgeWeights;
-    /** The weight of the edge `u v` (`u < v`): a binary search of the
-        sorted pairs, which the names of a tree edge are not. */
+    /** The weight of the edge `u v`: a binary search of the sorted pairs
+        (`u < v` on an undirected graph, which the ends of a tree edge need
+        not be; the arc u → v itself on a directed one). */
     const weightOf = (u: number, v: number): number => {
       if (!weights) return 1;
-      const [a, b] = u < v ? [u, v] : [v, u];
+      const [a, b] = current.directed || u < v ? [u, v] : [v, u];
       let lo = 0;
       let hi = pairs.length / 2;
       while (lo < hi) {
@@ -2606,12 +3312,13 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       const parentId = rank[parent] + 1;
       lines.push(weights ? `${parentId} ${id} ${weightOf(parent, v)}` : `${parentId} ${id}`);
     }
-    const stem = `${current.name.replace(/\.[^.]+$/, '')}_${shown.kind}_${shown.root}`;
+    const stem = `${current.name.replace(/\.[^.]+$/, '')}_${algorithmOf(shown)}_${shown.root}`;
     const encoder = new TextEncoder();
     const bytes = encoder.encode(lines.join('\n') + '\n');
     let parsed: Parsed;
     try {
-      parsed = new wasm.Parsed(bytes);
+      // A directed graph's tree is directed too: its arcs go parent → child.
+      parsed = new wasm.Parsed(bytes, current.directed);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
       return;
@@ -2631,6 +3338,8 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
         bytes: bytes.byteLength,
         vertices: parsed.vertexCount,
         edges: parsed.edgeCount,
+        source: bytes,
+        directed: current.directed,
         parseMs: 0,
         memory: readMemory(parsed.memoryReport()),
         parsed,
@@ -2647,6 +3356,11 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     parentRef.current = parked.parent ?? null;
     searchRef.current?.result.free();
     setSearch(null);
+    setCycle(null);
+    floydRef.current?.run.free();
+    floydRef.current = null;
+    setFloyd(null);
+    setRefusal(null);
     graphRef.current?.free();
     graphRef.current = null;
     restoreRef.current(parked);
@@ -2731,10 +3445,24 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     setMode('distance');
     setTargetInput(vertexLabel(v));
     const s = searchRef.current;
+    if (kind === 'floyd_warshall' && floydRef.current) {
+      // The first click of the double click read v's row: the path comes
+      // from the row on screen before it, read off the same table. With no
+      // row before it there is no other end: v's tree stays, no path.
+      const from = last?.vertex === v ? last.row : s?.sweep ? s.root : 0;
+      if (from >= 1 && from !== v) {
+        runSearch('floyd_warshall', from, v);
+        return;
+      }
+      setMode('search');
+      setTargetInput('');
+      setRootInput(vertexLabel(v));
+      return;
+    }
     if (!s) return;
     const reached = s.ranks[v] !== UNREACHED;
     if (reached && s.ranks[v] >= s.span) {
-      runSearch(s.kind, s.root, v);
+      runSearch(algorithmOf(s), s.root, v);
       return;
     }
     let path: Uint32Array | null = null;
@@ -2772,7 +3500,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     const s = searchRef.current;
     if (!s) return;
     if (s.span < s.result.reached) {
-      runSearch(s.kind, s.root, 0);
+      runSearch(algorithmOf(s), s.root, 0);
       return;
     }
     const renderer = rendererRef.current;
@@ -2781,7 +3509,14 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
     setPlaying(false);
     setSearch({ ...s, target: 0, path: null });
   };
-  const kindLabel = kind === 'dijkstra' ? t.dijkstra : kind.toUpperCase();
+  const kindLabel =
+    kind === 'dijkstra'
+      ? t.dijkstra
+      : kind === 'bellman_ford'
+        ? t.bellmanFord
+        : kind === 'floyd_warshall'
+          ? t.floydWarshall
+          : kind.toUpperCase();
   const runLabel =
     mode === 'distance'
       ? t.runDistance(
@@ -2983,6 +3718,9 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                   <ComponentsView
                     t={t}
                     meta={meta}
+                    data={components ?? weakComponents!}
+                    strong={strongShown && strongData !== null}
+                    onStrong={showStrong}
                     current={component}
                     onSelect={selectComponent}
                     onClose={() => {
@@ -2994,7 +3732,10 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                   <>
                     <div className={styles.tiles}>
                       <Tile label={t.vertices} value={formatInt(meta.vertices)} />
-                      <Tile label={t.edges} value={formatInt(meta.edges)} />
+                      <Tile
+                        label={meta.directed ? t.arcs : t.edges}
+                        value={formatInt(meta.edges)}
+                      />
                       <Tile
                         label={t.components}
                         value={formatInt(meta.components)}
@@ -3031,19 +3772,30 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
               sheet="search"
               grow
               actions={
-                search && (
+                search ? (
                   <>
                     {search.target !== 0 && (
                       <IconButton label={t.clearTarget} onClick={clearTarget}>
                         <RouteOff size={14} />
                       </IconButton>
                     )}
+                    {search.sweep && (
+                      // A row of Floyd-Warshall's table: unselect its tree,
+                      // back to the table.
+                      <IconButton label={t.clearRow} onClick={backToTable}>
+                        <Undo2 size={14} />
+                      </IconButton>
+                    )}
                     <IconButton label={t.downloadTree} onClick={downloadTree}>
                       <Download size={14} />
                     </IconButton>
                     <IconButton
-                      label={t.clearSearch}
+                      label={search.sweep ? t.clearFloyd : t.clearSearch}
                       onClick={() => {
+                        if (search.sweep) {
+                          dropFloyd();
+                          return;
+                        }
                         search.result.free();
                         setSearch(null);
                         setPlaying(false);
@@ -3054,63 +3806,115 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                       <Trash2 size={14} />
                     </IconButton>
                   </>
+                ) : (
+                  floydView && (
+                    <IconButton label={t.clearFloyd} onClick={dropFloyd}>
+                      <Trash2 size={14} />
+                    </IconButton>
+                  )
                 )
               }
             >
               <div className={styles.searchRow}>
                 <div className={`${styles.field} ${styles.fieldWide}`}>
                   <span className={styles.fieldLabel}>{t.traversal}</span>
-                  <div
-                    className={styles.segmented}
-                    role="radiogroup"
-                    aria-label={t.traversal}
-                    data-count="3"
-                    data-active={
-                      kind === 'dfs' ? 'second' : kind === 'dijkstra' ? 'third' : 'first'
+                  <SegmentRows
+                    label={t.traversal}
+                    rows={ALGORITHM_ROWS}
+                    value={kind}
+                    onChange={setKind}
+                    name={(which) =>
+                      which === 'dijkstra'
+                        ? t.dijkstra
+                        : which === 'bellman_ford'
+                          ? t.bellmanFord
+                          : which === 'floyd_warshall'
+                            ? t.floydWarshall
+                            : which.toUpperCase()
                     }
-                  >
-                    <span className={styles.thumb} aria-hidden="true" />
-                    {(['bfs', 'dfs', 'dijkstra'] as const).map((which) => (
-                      <button
-                        key={which}
-                        type="button"
-                        role="radio"
-                        aria-checked={kind === which}
-                        className={kind === which ? styles.segmentActive : styles.segment}
-                        onClick={() => setKind(which)}
-                      >
-                        {which === 'dijkstra' ? t.dijkstra : which.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
+                  />
                 </div>
               </div>
               <div className={styles.searchRow}>
-                <div className={styles.field}>
-                  <span className={styles.fieldLabel}>{t.mode}</span>
-                  <div
-                    className={styles.segmented}
-                    role="radiogroup"
-                    aria-label={t.mode}
-                    data-active={mode === 'distance' ? 'second' : 'first'}
-                  >
-                    <span className={styles.thumb} aria-hidden="true" />
-                    {(['search', 'distance'] as const).map((which) => (
-                      <button
-                        key={which}
-                        type="button"
-                        role="radio"
-                        aria-checked={mode === which}
-                        className={mode === which ? styles.segmentActive : styles.segment}
-                        onClick={() => setMode(which)}
-                      >
-                        {which === 'search' ? t.modeSearch : t.modeDistance}
-                      </button>
-                    ))}
+                {kind !== 'floyd_warshall' && (
+                  <div className={styles.field}>
+                    <span className={styles.fieldLabel}>{t.mode}</span>
+                    <div
+                      className={styles.segmented}
+                      role="radiogroup"
+                      aria-label={t.mode}
+                      data-active={mode === 'distance' ? 'second' : 'first'}
+                    >
+                      <span className={styles.thumb} aria-hidden="true" />
+                      {(['search', 'distance'] as const).map((which) => (
+                        <button
+                          key={which}
+                          type="button"
+                          role="radio"
+                          aria-checked={mode === which}
+                          className={mode === which ? styles.segmentActive : styles.segment}
+                          onClick={() => setMode(which)}
+                        >
+                          {which === 'search' ? t.modeSearch : t.modeDistance}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
                 {kind === 'dijkstra' && (
-                  <QueuePicker t={t} value={frontier} onChange={setFrontier} />
+                  <Picker
+                    label={t.frontier}
+                    groups={FRONTIER_GROUPS}
+                    groupNames={t.frontierGroups}
+                    value={frontier}
+                    onChange={setFrontier}
+                    names={t.frontiers}
+                    costs={t.frontierCosts}
+                    hints={t.frontierHints}
+                  />
+                )}
+                {kind === 'bellman_ford' && (
+                  <Picker
+                    label={t.schedule}
+                    groups={SCHEDULE_GROUPS}
+                    groupNames={t.scheduleGroups}
+                    value={schedule}
+                    onChange={setSchedule}
+                    names={t.schedules}
+                    costs={t.scheduleCosts}
+                    hints={t.scheduleHints}
+                  />
+                )}
+                {kind === 'floyd_warshall' && (
+                  <div className={styles.fieldSpan}>
+                    <Picker
+                      label={t.sweep}
+                      groups={SWEEP_GROUPS}
+                      groupNames={t.sweepGroups}
+                      value={sweep}
+                      onChange={(next) => {
+                        setSweep(next);
+                        setFloyd(null);
+                        setFloydPlaying(false);
+                      }}
+                      names={t.sweeps}
+                      costs={t.sweepCosts}
+                      hints={t.sweepHints}
+                    />
+                  </div>
+                )}
+                {kind === 'floyd_warshall' && (
+                  // No origin to pick: every pair at once, run from here.
+                  <button
+                    type="button"
+                    className={styles.run}
+                    disabled={!meta}
+                    onClick={runFloyd}
+                    aria-label={t.runFloyd}
+                    title={t.runFloyd}
+                  >
+                    <Play size={15} aria-hidden="true" />
+                  </button>
                 )}
                 {kind === 'dfs' && (
                   <Choice
@@ -3126,48 +3930,50 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                   />
                 )}
               </div>
-              <div className={styles.searchRow}>
-                <VertexField
-                  id="root"
-                  label={t.origin}
-                  value={rootInput}
-                  onChange={setRootInput}
-                  onBlur={() => {
-                    if (rootValid) {
-                      setSelected(root);
-                      rendererRef.current?.setSelected(root);
-                    }
-                  }}
-                  onEnter={run}
-                  placeholder={names ? t.namePlaceholder : t.originPlaceholder}
-                  named={names !== null}
-                  suggest={suggestNames}
-                  suggestionsLabel={t.names.suggestions}
-                />
-                {mode === 'distance' && (
+              {kind !== 'floyd_warshall' && (
+                <div className={styles.searchRow}>
                   <VertexField
-                    id="target"
-                    label={t.target}
-                    value={targetInput}
-                    onChange={setTargetInput}
+                    id="root"
+                    label={t.origin}
+                    value={rootInput}
+                    onChange={setRootInput}
+                    onBlur={() => {
+                      if (rootValid) {
+                        setSelected(root);
+                        rendererRef.current?.setSelected(root);
+                      }
+                    }}
                     onEnter={run}
-                    placeholder={names ? t.namePlaceholder : t.targetPlaceholder}
+                    placeholder={names ? t.namePlaceholder : t.originPlaceholder}
                     named={names !== null}
                     suggest={suggestNames}
                     suggestionsLabel={t.names.suggestions}
                   />
-                )}
-                <button
-                  type="button"
-                  className={styles.run}
-                  disabled={!canRun}
-                  onClick={run}
-                  aria-label={runLabel}
-                  title={runLabel}
-                >
-                  <Play size={15} aria-hidden="true" />
-                </button>
-              </div>
+                  {mode === 'distance' && (
+                    <VertexField
+                      id="target"
+                      label={t.target}
+                      value={targetInput}
+                      onChange={setTargetInput}
+                      onEnter={run}
+                      placeholder={names ? t.namePlaceholder : t.targetPlaceholder}
+                      named={names !== null}
+                      suggest={suggestNames}
+                      suggestionsLabel={t.names.suggestions}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    className={styles.run}
+                    disabled={!canRun}
+                    onClick={run}
+                    aria-label={runLabel}
+                    title={runLabel}
+                  >
+                    <Play size={15} aria-hidden="true" />
+                  </button>
+                </div>
+              )}
 
               {search ? (
                 <div className={styles.result}>
@@ -3232,7 +4038,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                       onPick={(v) => {
                         setMode('distance');
                         setTargetInput(vertexLabel(v));
-                        runSearch('dijkstra', search.root, v);
+                        runSearch(algorithmOf(search), search.root, v);
                       }}
                     />
                   ) : (
@@ -3278,6 +4084,67 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                     </span>
                   </div>
                 </div>
+              ) : floydView ? (
+                <div className={styles.result}>
+                  <div className={styles.stats}>
+                    <Stat label={t.floydPairs} value={formatInt(floyd.pairs)} />
+                    <Stat
+                      label={t.floydLongest}
+                      value={floyd.longest ? formatWeight(floyd.longest.distance) : '∞'}
+                    />
+                    <Stat label={t.time} value={formatMs(floyd.elapsedMs)} />
+                  </div>
+                  {floyd.longest && (
+                    <p className={styles.hint}>
+                      {t.floydLongestPair}{' '}
+                      <button
+                        type="button"
+                        className={styles.inlineLink}
+                        onClick={() => {
+                          const { from, to } = floyd.longest ?? { from: 0, to: 0 };
+                          setMode('distance');
+                          setTargetInput(vertexLabel(to));
+                          setRootInput(vertexLabel(from));
+                          runSearch('floyd_warshall', from, to);
+                        }}
+                      >
+                        {vertexLabel(floyd.longest.from)} → {vertexLabel(floyd.longest.to)}
+                      </button>
+                    </p>
+                  )}
+                  <p className={styles.hint}>{t.floydRowHint}</p>
+                  <div className={styles.playback}>
+                    <IconButton
+                      label={floydPlaying ? t.pause : floyd.round >= floyd.n ? t.replay : t.play}
+                      onClick={() => setFloydPlaying((p) => !p)}
+                      accent
+                    >
+                      {floydPlaying ? (
+                        <Pause size={14} />
+                      ) : floyd.round >= floyd.n ? (
+                        <RotateCcw size={14} />
+                      ) : (
+                        <Play size={14} />
+                      )}
+                    </IconButton>
+                    <input
+                      type="range"
+                      min={0}
+                      max={floyd.n}
+                      step={1}
+                      value={floyd.round}
+                      onChange={(event) => {
+                        const round = Number(event.target.value);
+                        setFloydPlaying(false);
+                        setFloyd((f) => (f ? { ...f, round } : f));
+                      }}
+                      aria-label={t.floydRounds}
+                    />
+                    <span className={`mono ${styles.hint}`}>k = {floyd.round}</span>
+                  </div>
+                </div>
+              ) : kind === 'floyd_warshall' ? (
+                <p className={styles.hint}>{t.floydHint}</p>
               ) : (
                 <p className={styles.hint}>{names ? t.searchHintNamed : t.searchHint}</p>
               )}
@@ -3498,6 +4365,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                   pending={pending}
                   leaving={status.kind === 'parsing'}
                   onChoose={(which) => void openPending(pending, which)}
+                  onDirected={reorient}
                 />
               ) : (
                 <div className={styles.dropCard}>
@@ -3621,6 +4489,135 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                 </div>
               )}
 
+              {/* A negative cycle, top centre, where a path would be */}
+              {cycle && !search && (
+                <div className={`${styles.floating} ${styles.floatingTopCenter}`}>
+                  <div className={styles.cluster}>
+                    <IconButton
+                      label={t.fitCycle}
+                      onClick={() => {
+                        const onCycle = new Set(cycle.vertices);
+                        autoFit.current = false;
+                        fitVertices((v) => onCycle.has(v), PATH_FILL);
+                      }}
+                    >
+                      <Scan size={15} />
+                    </IconButton>
+                    <IconButton
+                      label={t.clearCycle}
+                      onClick={() => {
+                        setCycle(null);
+                        rendererRef.current?.setPath(0, null);
+                      }}
+                    >
+                      <X size={15} />
+                    </IconButton>
+                  </div>
+                  <div className={styles.pathStack}>
+                    <p className={`mono ${styles.path}`} aria-label={t.cycle}>
+                      {pathSteps(Array.from(cycle.vertices, String)).map((step, i) => (
+                        <Fragment key={i}>
+                          {i > 0 && <span className={styles.pathArrow}>→</span>}
+                          {step === '…' ? (
+                            <span className={styles.pathGap}>{step}</span>
+                          ) : (
+                            <span
+                              className={`${styles.pathBall} ${styles.cycleBall}`}
+                              title={nameOf(Number(step)) ?? undefined}
+                            >
+                              {step}
+                            </span>
+                          )}
+                        </Fragment>
+                      ))}
+                    </p>
+                    {names && (
+                      <p className={styles.pathNames} aria-label={t.names.pathNames}>
+                        {pathSteps(Array.from(cycle.vertices, vertexLabel)).join(' → ')}
+                      </p>
+                    )}
+                    <p className={`${styles.pathNames} ${styles.cycleNote}`} role="status">
+                      {cycle.scope === 'graph'
+                        ? t.cycleNoteGraph(formatWeight(cycle.weight))
+                        : t.cycleNote(formatWeight(cycle.weight))}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Dijkstra's refusal, top centre: the negative edges, in the cycle's red */}
+              {refusal && !search && (
+                <div className={`${styles.floating} ${styles.floatingTopCenter}`}>
+                  <div className={styles.cluster}>
+                    <IconButton
+                      label={t.fitNegative}
+                      onClick={() => {
+                        const ends = new Set(refusal.pairs);
+                        autoFit.current = false;
+                        fitVertices((v) => ends.has(v), PATH_FILL);
+                      }}
+                    >
+                      <Scan size={15} />
+                    </IconButton>
+                    <IconButton
+                      label={t.clearRefusal}
+                      onClick={() => {
+                        setRefusal(null);
+                        rendererRef.current?.setNegative(null);
+                      }}
+                    >
+                      <X size={15} />
+                    </IconButton>
+                  </div>
+                  <div className={styles.pathStack}>
+                    <p className={`mono ${styles.path}`} aria-label={t.negativeEdges}>
+                      {Array.from(
+                        refusal.weights.subarray(0, NEGATIVE_SHOWN),
+                        (w, i) => [refusal.pairs[2 * i], refusal.pairs[2 * i + 1], w] as const,
+                      ).map(([u, v, w], i) => (
+                        <Fragment key={i}>
+                          {i > 0 && <span className={styles.pathGap}>·</span>}
+                          {[u, v].map((end, j) => (
+                            <Fragment key={j}>
+                              {j > 0 && (
+                                <span className={styles.pathArrow}>
+                                  {meta.directed ? '→' : '–'}
+                                </span>
+                              )}
+                              <span
+                                className={`${styles.pathBall} ${styles.cycleBall}`}
+                                title={nameOf(end) ?? undefined}
+                              >
+                                {end}
+                              </span>
+                            </Fragment>
+                          ))}
+                          <span className={styles.refusalWeight}>{formatWeight(w)}</span>
+                        </Fragment>
+                      ))}
+                      {refusal.weights.length > NEGATIVE_SHOWN && (
+                        <span className={styles.pathGap}>
+                          {t.refusalMore(formatInt(refusal.weights.length - NEGATIVE_SHOWN))}
+                        </span>
+                      )}
+                    </p>
+                    <p className={`${styles.pathNames} ${styles.cycleNote}`} role="status">
+                      {t.refusal(refusal.weights.length, formatInt(refusal.weights.length))}{' '}
+                      <button
+                        type="button"
+                        className={styles.refusalSwitch}
+                        onClick={() => {
+                          setKind('bellman_ford');
+                          runSearch('bellman_ford', refusal.root, refusal.target);
+                        }}
+                      >
+                        {t.runBellmanFord}
+                      </button>
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Layout tools, top right */}
               <div ref={layoutMenuRef} className={`${styles.floating} ${styles.floatingTopRight}`}>
                 <div className={styles.cluster}>
@@ -3692,11 +4689,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                         <span className={styles.menuIcon}>{item.icon}</span>
                         <span className={styles.menuText}>
                           <span>{t.layouts[item.id].label}</span>
-                          <span className={styles.menuHint}>
-                            {item.id === 'layered' && search?.kind === 'dijkstra'
-                              ? t.layouts.layered.hintDijkstra
-                              : t.layouts[item.id].hint}
-                          </span>
+                          <span className={styles.menuHint}>{layoutHint(t, item.id, search)}</span>
                         </span>
                       </button>
                     ))}
@@ -3787,7 +4780,7 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
               </div>
 
               {/* The structure strip's toggle, bottom centre, once a search ran */}
-              {search && !phone && !embedded && (
+              {(search || floydView) && !phone && !embedded && (
                 <div className={`${styles.floating} ${styles.floatingBottomCenter}`}>
                   <div className={styles.cluster}>
                     <IconButton
@@ -3809,7 +4802,11 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                         }
                       }}
                     >
-                      {search.kind === 'bfs' ? (
+                      {!search || search.sweep ? (
+                        <Grid3x3 size={15} />
+                      ) : search.schedule ? (
+                        <Table2 size={15} />
+                      ) : search.kind === 'bfs' ? (
                         <GalleryHorizontalEnd size={15} />
                       ) : search.kind === 'dfs' ? (
                         <Layers size={15} />
@@ -3890,43 +4887,50 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
                 )}
               </div>
 
-              <div className={styles.legend}>
-                {search?.target ? (
-                  <>
-                    <span className={styles.swatchOrigin} /> {t.origin.toLowerCase()}
-                    <span className={styles.legendSep} />
-                    <span className={styles.swatchTarget} /> {t.target.toLowerCase()}
-                    <span className={styles.legendSep} />
-                    <span className={styles.swatchDim} /> {t.notReached}
-                  </>
-                ) : search ? (
-                  <>
-                    <span className={styles.swatchA} />{' '}
-                    {search.distances ? t.distanceAt('0') : t.level(0)}
-                    <span className={styles.swatchBar} />
-                    <span className={styles.swatchB} />{' '}
-                    {search.distances
-                      ? t.distanceAt(formatWeight(search.depth * search.bandWidth))
-                      : t.level(search.depth)}
-                    <span className={styles.legendSep} />
-                    <span className={styles.swatchDim} /> {t.notReached}
-                  </>
-                ) : component ? (
-                  <>
-                    <span className={styles.swatchLit} /> {t.component(component)}
-                    <span className={styles.legendSep} />
-                    <span className={styles.swatchDim} /> {t.theRest}
-                  </>
-                ) : selected ? (
-                  nameOf(selected) ? (
-                    t.originNamed(nameOf(selected) ?? '')
+              {/* Floyd-Warshall has no origin: with no row read off its
+                  table, the legend has nothing to say. */}
+              {(search || component || kind !== 'floyd_warshall') && (
+                <div className={styles.legend}>
+                  {search?.target ? (
+                    <>
+                      <span className={styles.swatchOrigin} /> {t.origin.toLowerCase()}
+                      <span className={styles.legendSep} />
+                      <span className={styles.swatchTarget} /> {t.target.toLowerCase()}
+                      <span className={styles.legendSep} />
+                      <span className={styles.swatchDim} /> {t.notReached}
+                    </>
+                  ) : search ? (
+                    <>
+                      <span className={styles.swatchA} />{' '}
+                      {search.distances ? t.distanceAt('0') : t.level(0)}
+                      <span className={styles.swatchBar} />
+                      <span className={styles.swatchB} />{' '}
+                      {search.distances
+                        ? t.distanceAt(formatWeight(search.depth * search.bandWidth))
+                        : t.level(search.depth)}
+                      <span className={styles.legendSep} />
+                      <span className={styles.swatchDim} /> {t.notReached}
+                    </>
+                  ) : component ? (
+                    <>
+                      <span className={styles.swatchLit} />{' '}
+                      {strongShown && strongData
+                        ? t.strongComponent(component)
+                        : t.component(component)}
+                      <span className={styles.legendSep} />
+                      <span className={styles.swatchDim} /> {t.theRest}
+                    </>
+                  ) : selected ? (
+                    nameOf(selected) ? (
+                      t.originNamed(nameOf(selected) ?? '')
+                    ) : (
+                      t.originVertex(selected)
+                    )
                   ) : (
-                    t.originVertex(selected)
-                  )
-                ) : (
-                  t.chooseOrigin
-                )}
-              </div>
+                    t.chooseOrigin
+                  )}
+                </div>
+              )}
             </>
           )}
 
@@ -3962,41 +4966,53 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
             )}
         </div>
 
-        {meta && search && (structuresOpen || stripClosing) && !phone && !embedded && (
-          <Structures
-            t={t}
-            search={search}
-            reveal={reveal}
-            playing={playing}
-            height={stripHeight}
-            columnRef={columnRef}
-            frontierAt={frontierAt}
-            hovered={hovered}
-            onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
-            onSelect={(v) => {
-              setSelected(v);
-              rendererRef.current?.setSelected(v);
-            }}
-            onMembers={onMembers}
-            closing={stripClosing && !structuresOpen}
-            onClosed={() => setStripClosing(false)}
-            maximized={stripMax}
-            onMaximize={setStripMax}
-            onResize={(height) => {
-              const next = clampStrip(
-                height,
-                columnRef.current?.getBoundingClientRect().height ?? 800,
-              );
-              setStripHeight(next);
-              columnRef.current?.style.setProperty('--strip-height', `${next}px`);
-              try {
-                localStorage.setItem(STRIP_HEIGHT_KEY, String(next));
-              } catch {
-                // No storage: the height lasts for this visit.
-              }
-            }}
-          />
-        )}
+        {meta &&
+          (search || floydView) &&
+          (structuresOpen || stripClosing) &&
+          !phone &&
+          !embedded && (
+            <Structures
+              t={t}
+              search={search}
+              reveal={reveal}
+              playing={playing}
+              height={stripHeight}
+              columnRef={columnRef}
+              frontierAt={frontierAt}
+              traceOf={traceOf}
+              floydRound={floydRound}
+              vertexCount={meta.vertices}
+              hovered={hovered}
+              onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
+              onSelect={(v) => {
+                if (floydReady()) {
+                  setRootInput(vertexLabel(v));
+                  runSearch('floyd_warshall', v);
+                  return;
+                }
+                setSelected(v);
+                rendererRef.current?.setSelected(v);
+              }}
+              onMembers={onMembers}
+              closing={stripClosing && !structuresOpen}
+              onClosed={() => setStripClosing(false)}
+              maximized={stripMax}
+              onMaximize={setStripMax}
+              onResize={(height) => {
+                const next = clampStrip(
+                  height,
+                  columnRef.current?.getBoundingClientRect().height ?? 800,
+                );
+                setStripHeight(next);
+                columnRef.current?.style.setProperty('--strip-height', `${next}px`);
+                try {
+                  localStorage.setItem(STRIP_HEIGHT_KEY, String(next));
+                } catch {
+                  // No storage: the height lasts for this visit.
+                }
+              }}
+            />
+          )}
       </div>
 
       {notice &&
@@ -4071,14 +5087,108 @@ export function Panel({
     it, whichever has more room, and scrolls when that room runs out. The
     arrows move through it, Enter picks, Esc, a click outside or a scroll of
     the page closes it. */
-function QueuePicker({
-  t,
+/**
+ * The algorithms, in rows: the searches over the two dynamic programmes
+ * (Bellman-Ford's passes, Floyd-Warshall's table), so every name fits whole
+ * at the sidebar's narrowest.
+ */
+const ALGORITHM_ROWS: readonly (readonly SearchKindName[])[] = [
+  ['bfs', 'dfs', 'dijkstra'],
+  ['bellman_ford', 'floyd_warshall'],
+];
+
+/**
+ * A segmented choice laid out in rows, each row cut in equal columns. The
+ * thumb is measured onto the chosen segment rather than computed from its
+ * index, so it slides right whatever the rows hold and however wide the
+ * sidebar is.
+ */
+function SegmentRows<T extends string>({
+  label,
+  rows,
   value,
   onChange,
+  name,
 }: {
-  t: Strings;
-  value: FrontierName;
-  onChange: (next: FrontierName) => void;
+  label: string;
+  rows: readonly (readonly T[])[];
+  value: T;
+  onChange: (value: T) => void;
+  name: (value: T) => string;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const [thumb, setThumb] = useState<CSSProperties | null>(null);
+  // The first placement lands without a slide; the moves after it glide.
+  const [placed, setPlaced] = useState(false);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const place = () => {
+      const chosen = el.querySelector<HTMLElement>('[aria-checked="true"]');
+      if (!chosen || !chosen.offsetWidth) return;
+      setThumb({
+        width: chosen.offsetWidth,
+        height: chosen.offsetHeight,
+        transform: `translate(${chosen.offsetLeft}px, ${chosen.offsetTop}px)`,
+      });
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [value, rows]);
+  useEffect(() => {
+    if (!thumb || placed) return;
+    const frame = requestAnimationFrame(() => setPlaced(true));
+    return () => cancelAnimationFrame(frame);
+  }, [thumb, placed]);
+  return (
+    <div ref={box} className={styles.segmentRows} role="radiogroup" aria-label={label}>
+      {thumb && (
+        <span
+          className={styles.segmentThumb}
+          style={placed ? thumb : { ...thumb, transition: 'none' }}
+          aria-hidden="true"
+        />
+      )}
+      {rows.map((row, r) => (
+        <div key={r} className={styles.segmentRow}>
+          {row.map((which) => (
+            <button
+              key={which}
+              type="button"
+              role="radio"
+              aria-checked={value === which}
+              className={value === which ? styles.segmentActive : styles.segment}
+              onClick={() => onChange(which)}
+            >
+              {name(which)}
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Picker<T extends string>({
+  label,
+  groups,
+  groupNames,
+  value,
+  onChange,
+  names,
+  costs,
+  hints,
+}: {
+  label: string;
+  groups: { group: 'course' | 'faster'; names: T[] }[];
+  groupNames: Record<'course' | 'faster', string>;
+  value: T;
+  onChange: (next: T) => void;
+  names: Record<T, string>;
+  costs: Record<T, string>;
+  hints: Record<T, string>;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(value);
@@ -4086,7 +5196,7 @@ function QueuePicker({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
-  const order = FRONTIER_GROUPS.flatMap((g) => g.names);
+  const order = groups.flatMap((g) => g.names);
 
   const show = () => {
     const rect = buttonRef.current?.getBoundingClientRect();
@@ -4131,14 +5241,14 @@ function QueuePicker({
     listRef.current?.querySelector(`[data-name="${active}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [open, active]);
 
-  const pick = (name: FrontierName) => {
+  const pick = (name: T) => {
     onChange(name);
     setOpen(false);
   };
 
   return (
     <div className={styles.field}>
-      <span className={styles.fieldLabel}>{t.frontier}</span>
+      <span className={styles.fieldLabel}>{label}</span>
       <button
         ref={buttonRef}
         type="button"
@@ -4146,7 +5256,7 @@ function QueuePicker({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
-        title={t.frontierHints[value]}
+        title={hints[value]}
         onClick={() => (open ? setOpen(false) : show())}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -4166,7 +5276,7 @@ function QueuePicker({
           }
         }}
       >
-        <span className={styles.pickerValue}>{t.frontiers[value]}</span>
+        <span className={styles.pickerValue}>{names[value]}</span>
         <ChevronDown size={13} className={styles.pickerChevron} aria-hidden="true" />
       </button>
       {open &&
@@ -4177,13 +5287,13 @@ function QueuePicker({
             className={styles.pickerList}
             style={place}
             role="listbox"
-            aria-label={t.frontier}
+            aria-label={label}
           >
-            {FRONTIER_GROUPS.map(({ group, names }) => (
+            {groups.map(({ group, names: members }) => (
               <li key={group} role="presentation">
-                <span className={`label ${styles.pickerGroup}`}>{t.frontierGroups[group]}</span>
+                <span className={`label ${styles.pickerGroup}`}>{groupNames[group]}</span>
                 <ul role="presentation">
-                  {names.map((name) => (
+                  {members.map((name) => (
                     <li
                       key={name}
                       role="option"
@@ -4195,10 +5305,10 @@ function QueuePicker({
                       onClick={() => pick(name)}
                     >
                       <span className={styles.pickerName}>
-                        {t.frontiers[name]}
-                        <span className="mono">{t.frontierCosts[name]}</span>
+                        {names[name]}
+                        <span className="mono">{costs[name]}</span>
                       </span>
-                      <span className={styles.pickerHint}>{t.frontierHints[name]}</span>
+                      <span className={styles.pickerHint}>{hints[name]}</span>
                     </li>
                   ))}
                 </ul>
@@ -4329,10 +5439,14 @@ function ExamplesMenu({
               <Waypoints size={16} aria-hidden="true" />
             ) : which === 'weighted' ? (
               <Weight size={16} aria-hidden="true" />
-            ) : (
+            ) : which === 'named' ? (
               <Users size={16} aria-hidden="true" />
+            ) : which === 'directed' ? (
+              <ArrowUpRight size={16} aria-hidden="true" />
+            ) : (
+              <RefreshCcw size={16} aria-hidden="true" />
             )}
-            {/* Three choices fill the tile: the counts live in the title. */}
+            {/* The choices fill the tile: the counts live in the title. */}
             <span className={styles.menuText}>{t.samples[which].label}</span>
           </button>
         ))}
@@ -5029,7 +6143,11 @@ function RepresentationOption({
           {state === 'blocked' ? t.memory.overBudget : t.memory.hints[which]}
         </span>
       </span>
-      <span className={`mono ${styles.reprBytes}`}>{formatBytes(bytes)}</span>
+      <span className={`mono ${styles.reprBytes}`}>
+        <span key={bytes} className={styles.swap}>
+          {formatBytes(bytes)}
+        </span>
+      </span>
       <span className={styles.reprTrack} aria-hidden="true">
         <span
           className={styles.reprFill}
@@ -5050,12 +6168,15 @@ function RepresentationPicker({
   pending,
   leaving,
   onChoose,
+  onDirected,
 }: {
   t: Strings;
   pending: Pending;
   /** A strategy was picked and is being built: the card eases out. */
   leaving: boolean;
   onChoose: (which: Repr) => void;
+  /** The file read again with the other orientation (the format cannot say). */
+  onDirected: (directed: boolean) => void;
 }) {
   const { memory } = pending;
   return (
@@ -5065,10 +6186,34 @@ function RepresentationPicker({
           {pending.name}
         </span>
         <span className={styles.pickMeta}>
-          {t.memory.parsed(formatCompact(pending.vertices), formatCompact(pending.edges))} ·{' '}
-          {t.parsedIn(formatMs(pending.parseMs))}
+          {/* One line, keyed by all it says: a switch of orientation fades
+              the vertices, the edges (or arcs) and the parse time in together. */}
+          <span
+            key={`${pending.directed}:${pending.edges}:${pending.parseMs}`}
+            className={styles.swap}
+          >
+            {t.memory.parsed(
+              formatCompact(pending.vertices),
+              formatCompact(pending.edges),
+              pending.directed,
+            )}{' '}
+            · {t.parsedIn(formatMs(pending.parseMs))}
+          </span>
         </span>
       </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={pending.directed}
+        className={styles.toggle}
+        title={t.directedHint}
+        onClick={() => onDirected(!pending.directed)}
+      >
+        <span className={styles.toggleTrack} aria-hidden="true">
+          <span className={styles.toggleKnob} />
+        </span>
+        {t.directed}
+      </button>
       <p className={styles.pickTitle}>{t.memory.choose}</p>
       <div className={styles.reprCards} role="radiogroup" aria-label={t.memory.choose}>
         {REPRESENTATIONS.map((which) => (
@@ -5131,34 +6276,53 @@ function MemoryView({
 function ComponentsView({
   t,
   meta,
+  data,
+  strong,
+  onStrong,
   current,
   onSelect,
   onClose,
 }: {
   t: Strings;
   meta: GraphMeta;
+  /** The components shown: the weak ones, or the strong ones. */
+  data: ComponentData;
+  strong: boolean;
+  /** The switch to the strong components (directed graphs only). */
+  onStrong: (on: boolean) => void;
   current: number;
   onSelect: (c: number) => void;
   onClose: () => void;
 }) {
-  const sizes = meta.componentSizes;
+  const sizes = data.sizes;
   const total = meta.vertices;
   const shown = Math.min(sizes.length, 8);
   let rest = 0;
   for (let i = shown; i < sizes.length; i++) rest += sizes[i];
   const size = current ? sizes[current - 1] : 0;
-  const edges = current ? meta.componentEdges[current] : 0;
-  const possible = (size * (size - 1)) / 2;
+  const edges = current ? data.edges[current] : 0;
+  // An undirected component holds at most one edge per pair, a directed
+  // one an arc each way.
+  const possible = meta.directed ? size * (size - 1) : (size * (size - 1)) / 2;
+  const hint =
+    sizes.length === 1
+      ? strong
+        ? t.stronglyConnected
+        : t.connected
+      : strong && sizes.length === total
+        ? t.acyclic
+        : t.smallest(formatInt(sizes[sizes.length - 1]));
   return (
     <div className={styles.chart} aria-label={t.components}>
       <div className={styles.chartHeader}>
         <span className={`label ${styles.tileLabel}`}>
-          {t.componentsCount(formatInt(sizes.length))}
+          {strong
+            ? t.strongComponentsCount(formatInt(sizes.length))
+            : t.componentsCount(formatInt(sizes.length))}
         </span>
-        <span className={styles.tileHint}>
-          {sizes.length === 1 ? t.connected : t.smallest(formatInt(sizes[sizes.length - 1]))}
-        </span>
+        <span className={styles.tileHint}>{hint}</span>
       </div>
+
       <div className={styles.segments} role="group" aria-label={t.pickComponent}>
         {Array.from({ length: shown }, (_, i) => (
           <button
@@ -5228,7 +6392,7 @@ function ComponentsView({
             hint={t.ofGraph(((size / total) * 100).toFixed(size === total ? 0 : 1))}
           />
           <Tile
-            label={t.edges}
+            label={meta.directed ? t.arcs : t.edges}
             value={formatInt(edges)}
             hint={t.ofEdges(
               ((edges / Math.max(meta.edges, 1)) * 100).toFixed(edges === meta.edges ? 0 : 1),
@@ -5236,8 +6400,8 @@ function ComponentsView({
           />
           <Tile
             label={t.componentDegree}
-            value={`${meta.componentDegree.min[current]} – ${meta.componentDegree.max[current]}`}
-            hint={t.mean(size ? ((2 * edges) / size).toFixed(2) : '0')}
+            value={`${data.degree.min[current]} – ${data.degree.max[current]}`}
+            hint={t.mean(size ? (((meta.directed ? 1 : 2) * edges) / size).toFixed(2) : '0')}
           />
           <Tile
             label={t.density}
@@ -5246,6 +6410,24 @@ function ComponentsView({
             }
             hint={t.ofPossible}
           />
+        </div>
+      )}
+      {meta.directed && (
+        // Under the component's measurements, centred.
+        <div className={styles.componentsSwitch}>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={strong}
+            className={styles.toggle}
+            title={t.strongHint}
+            onClick={() => onStrong(!strong)}
+          >
+            <span className={styles.toggleTrack} aria-hidden="true">
+              <span className={styles.toggleKnob} />
+            </span>
+            {t.strongToggle}
+          </button>
         </div>
       )}
     </div>

@@ -36,6 +36,7 @@ import {
   COMPOSITE_SHADER,
   EDGE_SHADER,
   MORPH_SHADER,
+  NEGATIVE_SHADER,
   NODE_SHADER,
   PATH_SHADER,
   SIM_SHADER,
@@ -54,6 +55,7 @@ export interface Theme {
   edgeDim: Rgba;
   /** The destination of a distance query. */
   target: Rgba;
+  cycle: Rgba;
 }
 
 /** A graph needs a larger buffer than this GPU allows. */
@@ -78,6 +80,8 @@ export interface GraphBuffers {
   positions: Float32Array;
   /** Component id per vertex, used to compute the gravity anchors. */
   componentLabels: Uint32Array;
+  /** Every `[u, v]` of `edges` is the arc u → v: drawn with a head at v. */
+  directed?: boolean;
 }
 
 export interface SearchBuffers {
@@ -150,6 +154,9 @@ type ViewValues = {
   mute: number;
   walk: number;
   marked: number;
+  arrows: number;
+  incidentOut: number;
+  cycle: number;
   base: Rgba;
   dim: Rgba;
   colorA: Rgba;
@@ -159,6 +166,7 @@ type ViewValues = {
   edgeDim: Rgba;
   edgeTree: Rgba;
   colorTarget: Rgba;
+  colorCycle: Rgba;
 };
 
 const EMPTY_VIEW: ViewValues = {
@@ -184,6 +192,9 @@ const EMPTY_VIEW: ViewValues = {
   dest: 0,
   mute: 0,
   marked: 0,
+  arrows: 0,
+  incidentOut: 0,
+  cycle: 0,
   walk: -1,
   base: [0.5, 0.5, 0.5, 1],
   dim: [0.5, 0.5, 0.5, 1],
@@ -194,6 +205,7 @@ const EMPTY_VIEW: ViewValues = {
   edgeDim: [0.5, 0.5, 0.5, 0.05],
   edgeTree: [1, 1, 1, 0.9],
   colorTarget: [0.09, 0.64, 0.29, 1],
+  colorCycle: [0.9, 0.28, 0.3, 1],
 };
 
 /** WebGPU is missing or refused to give us a device. */
@@ -216,8 +228,19 @@ export class Renderer {
   private edges: Draw;
   private treeEdges: Draw;
   private extraEdges: Draw;
+  /** The heads of a directed graph's arcs, one draw per kind of edge. */
+  private edgeHeads: Draw;
+  private treeHeads: Draw;
+  private extraHeads: Draw;
+  /** Directed only: the out- and in-arcs of every vertex, for the selection. */
+  private outOffsets: Uint32Array = new Uint32Array(0);
+  private outTargets: Uint32Array = new Uint32Array(0);
+  private inOffsets: Uint32Array = new Uint32Array(0);
+  private inTargets: Uint32Array = new Uint32Array(0);
   /** The path of a distance query, as thick segments over everything. */
   private pathEdges: Draw;
+  /** The negative edges Dijkstra refused the graph for, thick and red over everything. */
+  private negativeEdges: Draw;
   private composite: Effect;
   private sim: Compute;
   private morph: Compute;
@@ -255,6 +278,9 @@ export class Renderer {
   private pathVertices: Uint32Array | null = null;
   /** The extra edge segments ([a, b] pairs): the selected vertex's edges, then the path's. */
   private extras: StorageBuffer | null = null;
+  /** The negative edges as [a, b] pairs, and how many are drawn (0 = none). */
+  private negative: StorageBuffer | null = null;
+  private negativeCount = 0;
   /** 1 per vertex, then per edge (from slot n + 1), that a distribution
       column lit: one buffer, as the vertex stage binds eight at most. */
   private marks: StorageBuffer | null = null;
@@ -320,32 +346,43 @@ export class Renderer {
       blend: 'premultiplied',
       vertices: 6, // one quad per instance
     });
-    this.edges = draw(gpu, {
-      shader: EDGE_SHADER,
-      label: 'edges',
-      blend: 'premultiplied',
-      geometry: { topology: 'line-list' },
-      set: { kind: uniforms(gpu, { tree: 0 }) },
-    });
-    this.treeEdges = draw(gpu, {
-      shader: EDGE_SHADER,
-      label: 'tree-edges',
-      blend: 'premultiplied',
-      geometry: { topology: 'line-list' },
-      set: { kind: uniforms(gpu, { tree: 1 }) },
-    });
-    this.extraEdges = draw(gpu, {
-      shader: EDGE_SHADER,
-      label: 'extra-edges',
-      blend: 'premultiplied',
-      geometry: { topology: 'line-list' },
-      set: { kind: uniforms(gpu, { tree: 2 }) },
-    });
+    // Each kind of edge is two draws of one shader: its lines, and on a
+    // directed graph the filled heads of its arcs.
+    const edgeDraws = (label: string, tree: number): [Draw, Draw] => {
+      const kind = uniforms(gpu, { tree });
+      return [
+        draw(gpu, {
+          shader: EDGE_SHADER,
+          label,
+          blend: 'premultiplied',
+          geometry: { topology: 'line-list' },
+          entry: { vertex: 'vs_main', fragment: 'fs_main' },
+          set: { kind },
+        }),
+        draw(gpu, {
+          shader: EDGE_SHADER,
+          label: `${label}-heads`,
+          blend: 'premultiplied',
+          geometry: { topology: 'triangle-list' },
+          entry: { vertex: 'vs_head', fragment: 'fs_main' },
+          set: { kind },
+        }),
+      ];
+    };
+    [this.edges, this.edgeHeads] = edgeDraws('edges', 0);
+    [this.treeEdges, this.treeHeads] = edgeDraws('tree-edges', 1);
+    [this.extraEdges, this.extraHeads] = edgeDraws('extra-edges', 2);
     this.pathEdges = draw(gpu, {
       shader: PATH_SHADER,
       label: 'path',
       blend: 'premultiplied',
       vertices: 6, // one quad per segment
+    });
+    this.negativeEdges = draw(gpu, {
+      shader: NEGATIVE_SHADER,
+      label: 'negative',
+      blend: 'premultiplied',
+      vertices: 9, // a quad and, on a directed graph, a head per edge
     });
     this.composite = effect(gpu, COMPOSITE_SHADER, { label: 'composite', blend: 'premultiplied' });
     this.sim = compute(gpu, SIM_SHADER, { label: 'layout' });
@@ -415,6 +452,7 @@ export class Renderer {
       edgeDim: theme.edgeDim,
       edgeTree: [1, 1, 1, 0.95],
       colorTarget: theme.target,
+      colorCycle: theme.cycle,
     });
   }
 
@@ -431,6 +469,7 @@ export class Renderer {
     const n = graph.vertexCount;
     this.n = n;
     this.edgeCount = graph.edges.length / 2;
+    this.viewValues.arrows = graph.directed ? 1 : 0;
     this.linkLength = linkLength;
     this.forceSpacing = 1;
     const slots = n + 1;
@@ -463,12 +502,21 @@ export class Renderer {
     this.path.write(new Uint32Array(1));
     this.extras = storage(gpu, 8, 'read');
     this.extras.write(new Uint32Array(2));
+    this.negative = storage(gpu, 8, 'read');
+    this.negative.write(new Uint32Array(2));
+    this.negativeCount = 0;
     this.marks = storage(gpu, (slots + Math.max(this.edgeCount, 1)) * 4, 'read');
     this.marks.write(new Uint32Array(slots + Math.max(this.edgeCount, 1)));
 
     this.mirror = new Float32Array(graph.positions);
     this.csrOffsets = graph.csrOffsets;
     this.csrTargets = graph.csrTargets;
+    if (graph.directed) {
+      [this.outOffsets, this.outTargets] = rows(n, graph.edges, 0);
+      [this.inOffsets, this.inTargets] = rows(n, graph.edges, 1);
+    } else {
+      this.outOffsets = this.outTargets = this.inOffsets = this.inTargets = new Uint32Array(0);
+    }
     this.cpuEdges = graph.edges;
     this.cpuLabels = graph.componentLabels;
     this.measure(graph.positions);
@@ -482,6 +530,7 @@ export class Renderer {
     this.viewValues.pathLength = 0;
     this.viewValues.incident = 0;
     this.viewValues.dest = 0;
+    this.viewValues.cycle = 0;
     this.viewValues.marked = 0;
     this.pathVertices = null;
     this.touch(true);
@@ -502,10 +551,9 @@ export class Renderer {
       extras: this.extras,
       marks: this.marks,
     };
-    this.edges.set(edgeBindings);
-    this.treeEdges.set(edgeBindings);
-    this.extraEdges.set(edgeBindings);
+    for (const edgeDraw of this.edgeDraws) edgeDraw.set(edgeBindings);
     this.pathEdges.set({ view: this.view, ranks: this.ranks, path: this.path });
+    this.negativeEdges.set({ view: this.view, pairs: this.negative });
     this.nodes.set({
       view: this.view,
       levels: this.levels,
@@ -635,6 +683,8 @@ export class Renderer {
     this.path = null;
     this.pathVertices = null;
     this.extras = null;
+    this.negative = null;
+    this.negativeCount = 0;
     this.marks = null;
     this.morphFrom = null;
     this.morphDest = null;
@@ -753,15 +803,25 @@ export class Renderer {
    * origin in the accent, everything off the path shrinks, and the path
    * (vertex ids in order, `null` when the target is not reached) grows
    * with a ring, its edges drawn in the ring colour, never dropped by the
-   * sampling. The path's edges must be edges of the graph.
+   * sampling. The path's edges must be edges of the graph. With `cycle`
+   * the path is a closed walk (a negative cycle, first vertex repeated
+   * last): drawn whole in the cycle's red, everything else greyed and shrunk.
    */
-  setPath(target: number, path: Uint32Array | null) {
+  setPath(target: number, path: Uint32Array | null, cycle = false) {
     if (!this.path) return;
     const length = path?.length ?? 0;
-    if (length === 0 && this.viewValues.pathLength === 0 && target === this.viewValues.dest) {
+    const ring = cycle && length > 0 ? 1 : 0;
+    if (
+      length === 0 &&
+      this.viewValues.pathLength === 0 &&
+      target === this.viewValues.dest &&
+      ring === this.viewValues.cycle
+    ) {
       return;
     }
     this.viewValues.dest = target;
+    this.viewValues.cycle = ring;
+    if (ring) this.viewValues.walk = -1;
     if (length > 0 && path) {
       if (this.path.size < length * 4) this.path = storage(this.gpu, length * 4, 'read');
       this.path.write(bytes(path));
@@ -775,23 +835,68 @@ export class Renderer {
   }
 
   /**
+   * Draws the edges Dijkstra refuses the graph for (`[u, v]` pairs, the
+   * arcs u -> v on a directed graph) as thick segments in the cycle's red
+   * over everything, never dropped by the sampling. Only these pairs are
+   * uploaded. `null` clears.
+   */
+  setNegative(pairs: Uint32Array | null) {
+    if (!this.negative) return;
+    const count = pairs ? pairs.length >> 1 : 0;
+    if (count === 0 && this.negativeCount === 0) return;
+    if (count > 0 && pairs) {
+      if (this.negative.size < pairs.byteLength) {
+        this.negative = storage(this.gpu, pairs.byteLength, 'read');
+      }
+      this.negative.write(bytes(pairs));
+      this.negativeEdges.set({ pairs: this.negative });
+    }
+    this.negativeCount = count;
+    this.touch(true);
+  }
+
+  /**
    * Rebuilds the extra edge segments drawn over the sample: the selected
    * vertex's edges, from the CSR row.
    */
   private updateExtras() {
     if (!this.extras) return;
     const v = this.viewValues.selected;
-    const degree = this.selectedDegree;
-    const pairs = new Uint32Array(Math.max(1, degree) * 2);
-    for (let i = 0; i < degree; i++) {
-      pairs[2 * i] = v;
-      pairs[2 * i + 1] = this.csrTargets[this.csrOffsets[v] + i];
+    let degree = this.selectedDegree;
+    let pairs = new Uint32Array(Math.max(1, degree) * 2);
+    let outgoing = 0;
+    if (v && this.viewValues.arrows && v + 1 < this.outOffsets.length) {
+      // A directed graph: the out-arcs [v, w] first, then the in-arcs
+      // [u, v] (drawn dashed).
+      const outs = this.outTargets.subarray(this.outOffsets[v], this.outOffsets[v + 1]);
+      const ins = this.inTargets.subarray(this.inOffsets[v], this.inOffsets[v + 1]);
+      outgoing = outs.length;
+      degree = outs.length + ins.length;
+      pairs = new Uint32Array(Math.max(1, degree) * 2);
+      outs.forEach((w, i) => {
+        pairs[2 * i] = v;
+        pairs[2 * i + 1] = w;
+      });
+      ins.forEach((u, i) => {
+        pairs[2 * (outgoing + i)] = u;
+        pairs[2 * (outgoing + i) + 1] = v;
+      });
+    } else {
+      for (let i = 0; i < degree; i++) {
+        pairs[2 * i] = v;
+        pairs[2 * i + 1] = this.csrTargets[this.csrOffsets[v] + i];
+      }
+      // Undirected: every edge at the vertex reads both ways, so all of
+      // them are drawn solid, as a directed graph's out-arcs are.
+      outgoing = degree;
     }
+    this.viewValues.incidentOut = outgoing;
     if (this.extras.size < pairs.byteLength) {
       this.extras = storage(this.gpu, pairs.byteLength, 'read');
     }
     this.extras.write(bytes(pairs));
     this.extraEdges.set({ extras: this.extras });
+    this.extraHeads.set({ extras: this.extras });
     this.viewValues.incident = degree;
   }
 
@@ -812,6 +917,17 @@ export class Renderer {
     const mute = on ? 1 : 0;
     if (mute === this.viewValues.mute) return;
     this.viewValues.mute = mute;
+    this.touch(true);
+  }
+
+  /**
+   * Which components `setComponent` lights: a component id per vertex
+   * (slot 0 unused), the weak ones loaded with the graph or the strong
+   * ones. The density measure keeps the loaded ones.
+   */
+  setComponentLabels(labels: Uint32Array) {
+    if (!this.labels || labels.length !== this.n + 1) return;
+    this.labels.write(bytes(labels));
     this.touch(true);
   }
 
@@ -859,6 +975,18 @@ export class Renderer {
   /** Edges of the lit path, one thick segment each. */
   private get pathSegments(): number {
     return Math.max(0, this.viewValues.pathLength - 1);
+  }
+
+  /** Every edge draw: the lines and the heads of each kind. */
+  private get edgeDraws(): Draw[] {
+    return [
+      this.edges,
+      this.treeEdges,
+      this.extraEdges,
+      this.edgeHeads,
+      this.treeHeads,
+      this.extraHeads,
+    ];
   }
 
   /** Degree of the selected vertex: how many extra segments and instances its neighbourhood needs. */
@@ -1059,10 +1187,9 @@ export class Renderer {
 
       if (this.positions) {
         const current = this.positions.read;
-        this.edges.set({ positions: current });
-        this.treeEdges.set({ positions: current });
-        this.extraEdges.set({ positions: current });
+        for (const edgeDraw of this.edgeDraws) edgeDraw.set({ positions: current });
         this.pathEdges.set({ positions: current });
+        this.negativeEdges.set({ positions: current });
         this.nodes.set({ positions: current });
       }
       // While the picture keeps moving draw a sample of the edges and of
@@ -1083,14 +1210,25 @@ export class Renderer {
         [this.viewValues.stride, this.viewValues.treeStride] = stride;
         this.view.set(this.viewValues);
         frame.pass({ target: layer, clear: [0, 0, 0, 0] }, (pass) => {
-          pass.draw(this.edges, { vertices: Math.ceil(this.edgeCount / stride[0]) * 2 });
+          // Two vertices a line; on a directed graph three more a head.
+          const arrows = this.viewValues.arrows !== 0;
+          const plain = Math.ceil(this.edgeCount / stride[0]);
+          pass.draw(this.edges, { vertices: plain * 2 });
+          if (arrows) pass.draw(this.edgeHeads, { vertices: plain * 3 });
           if (this.viewValues.mode !== 0) {
-            pass.draw(this.treeEdges, { vertices: Math.ceil(this.edgeCount / stride[1]) * 2 });
+            const tree = Math.ceil(this.edgeCount / stride[1]);
+            pass.draw(this.treeEdges, { vertices: tree * 2 });
+            if (arrows) pass.draw(this.treeHeads, { vertices: tree * 3 });
           }
-          if (this.selectedDegree > 0) {
-            pass.draw(this.extraEdges, { vertices: this.selectedDegree * 2 });
+          const incident = this.viewValues.selected ? this.viewValues.incident : 0;
+          if (incident > 0) {
+            pass.draw(this.extraEdges, { vertices: incident * 2 });
+            if (arrows) pass.draw(this.extraHeads, { vertices: incident * 3 });
           }
           if (this.pathSegments > 0) pass.draw(this.pathEdges, { instances: this.pathSegments });
+          if (this.negativeCount > 0) {
+            pass.draw(this.negativeEdges, { instances: this.negativeCount });
+          }
         });
       }
       this.dirty = false;
@@ -1239,9 +1377,10 @@ export function readTheme(): Theme {
     levelA: get('--accent', [0, 0.44, 0.95, 1]),
     levelB: get('--accent-2', [0, 0.72, 0.85, 1]),
     ring: get('--fg', [0.09, 0.09, 0.09, 1]),
-    edge: get('--edge', [0.09, 0.09, 0.09, 0.14]),
-    edgeDim: get('--edge-dim', [0.09, 0.09, 0.09, 0.06]),
+    edge: get('--canvas-edge', [0.09, 0.09, 0.09, 0.34]),
+    edgeDim: get('--canvas-edge-dim', [0.09, 0.09, 0.09, 0.12]),
     target: get('--target', [0.09, 0.64, 0.29, 1]),
+    cycle: get('--cycle', [0.9, 0.28, 0.3, 1]),
   };
 }
 
@@ -1268,4 +1407,19 @@ export function parseColor(input: string): Rgba | null {
     return [parts[0] / 255, parts[1] / 255, parts[2] / 255, parts.length > 3 ? parts[3] : 1];
   }
   return null;
+}
+
+/** The arcs `[u, v, ...]` as rows by tail (`end` 0) or by head (`end` 1):
+    offsets (`n + 2`, index 0 unused) and the other ends, by a counting sort. */
+function rows(n: number, arcs: Uint32Array, end: 0 | 1): [Uint32Array, Uint32Array] {
+  const offsets = new Uint32Array(n + 2);
+  for (let i = end; i < arcs.length; i += 2) offsets[arcs[i] + 1] += 1;
+  for (let v = 1; v < offsets.length; v++) offsets[v] += offsets[v - 1];
+  const cursor = offsets.slice(0, n + 1);
+  const targets = new Uint32Array(arcs.length / 2);
+  for (let i = 0; i < arcs.length; i += 2) {
+    const [from, to] = end === 0 ? [arcs[i], arcs[i + 1]] : [arcs[i + 1], arcs[i]];
+    targets[cursor[from]++] = to;
+  }
+  return [offsets, targets];
 }

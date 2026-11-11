@@ -3,7 +3,7 @@
 use crate::load::GraphArgs;
 use crate::ui::{self, Ui};
 use anyhow::Result;
-use graphman::algo::{Control, DiameterMethod, diameter_with_progress};
+use graphman::algo::{Control, DiameterError, DiameterMethod, diameter_with_progress};
 use graphman::dispatch;
 use std::time::Instant;
 
@@ -12,7 +12,8 @@ pub struct Args {
     #[command(flatten)]
     graph: GraphArgs,
 
-    /// Method: ifub (exact, fast in practice), exact (one BFS per vertex) or sweep (lower bound).
+    /// Method: ifub (exact, fast in practice), bounds, exact (one BFS per
+    /// vertex) or sweep (lower bound). A directed graph takes exact or sweep.
     #[arg(short, long, default_value = "ifub")]
     method: DiameterMethod,
 
@@ -24,6 +25,12 @@ pub struct Args {
 pub fn run(args: Args, ui: &Ui) -> Result<()> {
     ui.title("diameter");
     let graph = args.graph.load(ui)?;
+    if !args.method.supports(graph.orientation()) {
+        return Err(DiameterError::Directed {
+            method: args.method,
+        }
+        .into());
+    }
     let total = match args.method {
         DiameterMethod::Exact => Some(graph.vertex_count() as u64),
         _ => None,
@@ -38,7 +45,7 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
             _ => Control::Continue,
         }
     };
-    let result = dispatch!(&graph, g => diameter_with_progress(g, args.method, &progress));
+    let result = dispatch!(&graph, g => diameter_with_progress(g, args.method, &progress))?;
     bar.finish_and_clear();
     let elapsed = start.elapsed();
     ui.step(&format!(

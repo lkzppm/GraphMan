@@ -30,6 +30,9 @@ struct View {
   mute: u32,          // 1: only the path keeps its colours, the rest of the search goes grey
   walk: f32,          // >= 0: the path is walked to this step (vertex index along it, fractional while moving); < 0: it follows the wave
   marked: u32,        // 1: only the marked vertices (and the edges between them) keep their colour; 2: the marked edges and their ends; the rest goes ghostly
+  arrows: u32,        // 1: the graph is directed, every edge [a, b] is the arc a -> b and gets a head at b
+  incidentOut: u32,   // directed: the first incidentOut extras are the selected vertex's out-arcs (solid), the rest its in-arcs (dashed)
+  cycle: u32,         // 1: the lit path is a negative cycle, drawn whole in colorCycle over a greyed graph
   base: vec4f,        // node colour without a search
   dim: vec4f,         // node not (yet) reached
   colorA: vec4f,      // level 0
@@ -39,6 +42,7 @@ struct View {
   edgeDim: vec4f,
   edgeTree: vec4f,
   colorTarget: vec4f, // the destination of a distance query
+  colorCycle: vec4f,  // a negative cycle or Dijkstra's refused negative edges, the one red
 }
 @group(0) @binding(0) var<uniform> view: View;
 
@@ -93,6 +97,8 @@ struct VOut {
 fn nodeColor(v: u32) -> vec4f {
   if (view.marked != 0u && marks[v] == 0u) { return view.dim * 0.18; }
   if (view.component != 0u && labels[v] != view.component) { return view.dim; }
+  // A negative cycle: the cycle alone keeps a colour (the path's, below).
+  if (view.cycle != 0u) { return view.dim; }
   if (view.mode == 0u) { return view.base; }
   let rank = ranks[v];
   if (rank == 0xffffffffu || f32(rank) > view.reveal) { return view.dim; }
@@ -142,7 +148,9 @@ fn adjacent(v: u32) -> bool {
     along = f32(j) / max(f32(view.pathLength - 1u), 1.0);
     // The path shows as the wave reaches it, or, while it is walked, up to
     // the step the walk is on; until then the sampled twin stands.
-    if (onPath && view.walk >= 0.0) {
+    // A negative cycle has no wave: it stands whole.
+    if (onPath && view.cycle != 0u) {
+    } else if (onPath && view.walk >= 0.0) {
       if (f32(j) > view.walk + 0.001) { v = 0u; }
     } else if (onPath && f32(ranks[v]) > view.reveal) { v = 0u; }
   }
@@ -167,7 +175,7 @@ fn adjacent(v: u32) -> bool {
     r = max(r * 1.25, 7.0);
   }
   // In a distance query everything off the path shrinks out of the way.
-  if (view.dest != 0u && !onPath && flags == 0u) { r = max(r * 0.35, 1.0); }
+  if ((view.dest != 0u || view.cycle != 0u) && !onPath && flags == 0u) { r = max(r * 0.35, 1.0); }
   // Discovery: the vertex pops to almost twice its size and settles.
   var pop = 0.0;
   if (view.mode != 0u) { pop = freshness(ranks[v], 0.5); }
@@ -180,6 +188,7 @@ fn adjacent(v: u32) -> bool {
   out.color = mix(nodeColor(v), view.colorA, 0.5 * pop);
   // The path wears the gradient from the origin's blue to the destination's green.
   if (onPath) { out.color = mix(view.colorA, view.colorTarget, along); }
+  if (onPath && view.cycle != 0u) { out.color = view.colorCycle; }
   out.flags = flags;
   out.rpx = r;
   out.pop = pop;
@@ -242,6 +251,7 @@ struct VOut {
   // while the path is walked, as the walk goes from a to b.
   var drawn = clamp(view.reveal - (f32(ranks[b]) - 1.0), 0.0, 1.0);
   if (view.walk >= 0.0) { drawn = clamp(view.walk - f32(ii), 0.0, 1.0); }
+  if (view.cycle != 0u) { drawn = 1.0; }
   pb = mix(pa, pb, drawn);
   let d = pb - pa;
   let len = max(length(d), 1e-3);
@@ -251,12 +261,70 @@ struct VOut {
     pa + n, pb - n, pb + n);
   out.pos = toClip(corners[vi]);
   let t = (f32(ii) + 0.5) / max(f32(view.pathLength - 1u), 1.0);
-  out.color = vec4f(mix(view.colorA.rgb, view.colorTarget.rgb, t), 0.95 * step(0.001, drawn));
+  var rgb = mix(view.colorA.rgb, view.colorTarget.rgb, t);
+  if (view.cycle != 0u) { rgb = view.colorCycle.rgb; }
+  out.color = vec4f(rgb, 0.95 * step(0.001, drawn));
   return out;
 }
 
 @fragment fn fs_main(in: VOut) -> @location(0) vec4f {
   return vec4f(in.color.rgb * in.color.a, in.color.a);
+}
+`;
+
+/**
+ * The negative edges Dijkstra refuses a graph for, as thick segments in the
+ * cycle's red (one instanced quad per edge, as wide as a path's), and on a
+ * directed graph a filled head at each arc's end: nine vertices an
+ * instance, the last three culled on an undirected graph.
+ */
+export const NEGATIVE_SHADER = /* wgsl */ `
+${VIEW}
+@group(0) @binding(1) var<storage, read> positions: array<vec2f>;
+// The negative edges as [a, b] pairs (the arc a -> b on a directed graph).
+@group(0) @binding(2) var<storage, read> pairs: array<u32>;
+
+struct VOut {
+  @builtin(position) pos: vec4f,
+}
+
+@vertex fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
+  var out: VOut;
+  out.pos = vec4f(0.0, 0.0, 2.0, 1.0);
+  let pa = (positions[pairs[2u * ii]] - view.offset) * view.scale;
+  let pb = (positions[pairs[2u * ii + 1u]] - view.offset) * view.scale;
+  let d = pb - pa;
+  let len = length(d);
+  if (len < 1e-3) { return out; }
+  let dir = d / len;
+  let perp = vec2f(-dir.y, dir.x);
+  let half = clamp(view.radius * 0.45, 1.5, 4.0);
+  // The head's tip stops short of b's disc and the line stops inside the
+  // head, so the thick line never shows past the tip.
+  let tip = pb - dir * min(view.radius + 1.0, 0.5 * len);
+  let size = min(view.radius + 4.0 + 2.0 * half, 0.4 * len);
+  var end = pb;
+  if (view.arrows != 0u) { end = tip - dir * (0.5 * size); }
+  if (vi < 6u) {
+    let n = perp * half;
+    var corners = array<vec2f, 6>(
+      pa - n, end - n, pa + n,
+      pa + n, end - n, end + n);
+    out.pos = toClip(corners[vi]);
+    return out;
+  }
+  if (view.arrows == 0u) { return out; }
+  var head = array<vec2f, 3>(
+    tip,
+    tip - dir * size + perp * (0.5 * size),
+    tip - dir * size - perp * (0.5 * size));
+  out.pos = toClip(head[vi - 6u]);
+  return out;
+}
+
+@fragment fn fs_main() -> @location(0) vec4f {
+  let a = 0.95;
+  return vec4f(view.colorCycle.rgb * a, a);
 }
 `;
 
@@ -282,7 +350,9 @@ ${VIEW}
 struct Kind { tree: u32 }
 @group(0) @binding(6) var<uniform> kind: Kind;
 @group(0) @binding(7) var<storage, read> labels: array<u32>;
-// The edges at the selected vertex as [a, b] pairs (view.incident of them).
+// The edges at the selected vertex as [a, b] pairs (view.incident of them;
+// on a directed graph its out-arcs first, view.incidentOut of them, then its
+// in-arcs, drawn dashed).
 @group(0) @binding(8) var<storage, read> extras: array<u32>;
 // 1 per vertex, then per edge (from slot n + 1), a distribution column lit
 // (see view.marked); one buffer, as the vertex stage binds eight at most.
@@ -291,41 +361,58 @@ struct Kind { tree: u32 }
 struct VOut {
   @builtin(position) pos: vec4f,
   @location(0) color: vec4f,
+  // Device pixels from the start of the segment, for the dashes.
+  @location(1) along: f32,
+  // 1: drawn dashed (an in-arc of the selected vertex).
+  @location(2) dashed: f32,
 }
 
 fn cull() -> VOut {
   var out: VOut;
   out.pos = vec4f(0.0, 0.0, 2.0, 1.0);
   out.color = vec4f(0.0);
+  out.along = 0.0;
+  out.dashed = 0.0;
   return out;
 }
 
-@vertex fn vs_main(@builtin(vertex_index) vi: u32) -> VOut {
+// One edge of this draw, as both of its draws (the line and, on a directed
+// graph, the head) see it: its ends in device pixels and its colour.
+struct Arc {
+  pa: vec2f,
+  pb: vec2f,
+  color: vec4f,
+  dashed: f32,
+  ok: bool,
+}
+
+fn arc(segment: u32) -> Arc {
+  var r: Arc;
+  r.ok = false;
+  r.dashed = 0.0;
   let stride = select(view.stride, view.treeStride, kind.tree != 0u);
   let count = arrayLength(&edges) / 2u;
-  let sampled = (count + stride - 1u) / stride;
-  let segment = vi / 2u;
-  var a = 0u;
-  var b = 0u;
   // The edges at the selected vertex are the extras draw's segments (the
   // CPU fills the extras buffer), so no stride can drop one and they sit
   // on top; the samples skip them.
   let incident = kind.tree == 2u;
+  var a = 0u;
+  var b = 0u;
   var e = 0u;
   if (incident) {
-    if (segment >= view.incident) { return cull(); }
+    if (segment >= view.incident) { return r; }
     a = extras[2u * segment];
     b = extras[2u * segment + 1u];
+    if (segment >= view.incidentOut) { r.dashed = 1.0; }
   } else {
     e = segment * stride;
-    if (e >= count) { return cull(); }
+    if (e >= count) { return r; }
     a = edges[2u * e];
     b = edges[2u * e + 1u];
-    if (view.selected != 0u && (a == view.selected || b == view.selected)) { return cull(); }
+    if (view.selected != 0u && (a == view.selected || b == view.selected)) { return r; }
   }
-  let v = select(a, b, (vi & 1u) == 1u);
-  var out: VOut;
-  var world = positions[v];
+  var wa = positions[a];
+  var wb = positions[b];
   var color = view.edge;
   var tree = false;
   var drawn = 1.0;
@@ -340,7 +427,8 @@ fn cull() -> VOut {
       // the rank before the child is discovered, then brightens briefly.
       tree = true;
       drawn = clamp(view.reveal - (f32(rc) - 1.0), 0.0, 1.0);
-      if (v == child) { world = mix(positions[parent], positions[child], drawn); }
+      let grown = mix(positions[parent], positions[child], drawn);
+      if (child == a) { wa = grown; } else { wb = grown; }
       let fresh = freshness(rc, 0.7);
       color = mix(view.edgeTree * levelColor(levels[child]), view.colorA, 0.6 * fresh);
       color.a = color.a * step(0.001, drawn);
@@ -357,14 +445,16 @@ fn cull() -> VOut {
     if (!lit) { color = color * 0.12; }
   }
   if (view.mute != 0u && view.dest != 0u && !incident) { color = view.edgeDim; }
+  r.pa = (wa - view.offset) * view.scale;
+  r.pb = (wb - view.offset) * view.scale;
   if (incident) {
-    out.pos = toClip((world - view.offset) * view.scale);
-    out.color = vec4f(view.colorA.rgb, 0.85 * step(0.001, drawn));
-    return out;
+    r.color = vec4f(view.colorA.rgb, 0.85 * step(0.001, drawn));
+    r.ok = true;
+    return r;
   }
   if (tree != (kind.tree != 0u)) {
     // The other draw's kind of edge.
-    return cull();
+    return r;
   }
   let full = color.a;
   color.a = color.a * select(view.edgeFade, view.treeFade, tree);
@@ -372,12 +462,54 @@ fn cull() -> VOut {
   // but never stronger than an unfaded edge (at a zoom where single edges
   // are visible the sample is simply thinner).
   color.a = min(color.a * f32(stride), full);
-  out.pos = toClip((world - view.offset) * view.scale);
-  out.color = color;
+  r.color = color;
+  r.ok = true;
+  return r;
+}
+
+// The line of each edge: two vertices an edge.
+@vertex fn vs_main(@builtin(vertex_index) vi: u32) -> VOut {
+  let r = arc(vi / 2u);
+  if (!r.ok) { return cull(); }
+  let end = (vi & 1u) == 1u;
+  var out: VOut;
+  out.pos = toClip(select(r.pa, r.pb, end));
+  out.color = r.color;
+  out.along = select(0.0, length(r.pb - r.pa), end);
+  out.dashed = r.dashed;
+  return out;
+}
+
+// The head of each arc of a directed graph: a small filled triangle, three
+// vertices an arc, its tip just short of the head's disc. Sized in device
+// pixels, so it reads the same at every zoom.
+@vertex fn vs_head(@builtin(vertex_index) vi: u32) -> VOut {
+  if (view.arrows == 0u) { return cull(); }
+  let r = arc(vi / 3u);
+  if (!r.ok) { return cull(); }
+  let d = r.pb - r.pa;
+  let len = length(d);
+  if (len < 1e-3) { return cull(); }
+  let dir = d / len;
+  let perp = vec2f(-dir.y, dir.x);
+  let tip = r.pb - dir * min(view.radius + 1.0, 0.5 * len);
+  let size = min(view.radius + 4.0, 0.35 * len);
+  let corner = vi % 3u;
+  var px = tip;
+  if (corner == 1u) { px = tip - dir * size + perp * (0.42 * size); }
+  if (corner == 2u) { px = tip - dir * size - perp * (0.42 * size); }
+  var out: VOut;
+  out.pos = toClip(px);
+  // A filled head reads lighter than a line of the same alpha: a little more.
+  out.color = vec4f(r.color.rgb, min(1.0, r.color.a * 1.5));
+  out.along = 0.0;
+  out.dashed = 0.0;
   return out;
 }
 
 @fragment fn fs_main(in: VOut) -> @location(0) vec4f {
+  // Dashes of 6 device pixels, as long as the gaps.
+  if (in.dashed > 0.5 && fract(in.along / 12.0) > 0.5) { discard; }
   return vec4f(in.color.rgb * in.color.a, in.color.a);
 }
 `;

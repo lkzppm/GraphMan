@@ -25,8 +25,13 @@ pub fn run(args: Args, ui: &Ui) -> Result<()> {
     let start = Instant::now();
     let components = dispatch!(&graph, g => Components::compute(g));
     ui.step(&format!(
-        "{} components in {}",
+        "{} {}components in {}",
         components.count(),
+        if graph.is_directed() {
+            "weakly connected "
+        } else {
+            ""
+        },
         ui::duration(start.elapsed())
     ));
     ui.kv("largest", components.largest_size());

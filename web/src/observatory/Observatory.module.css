@@ -480,6 +480,37 @@
   display: block;
   height: 100%;
   background: var(--accent);
+  /* A switch of orientation on the picker reprices the strategies: the
+     bars glide to their new lengths. */
+  transition: width 0.45s var(--ease);
+}
+
+/* A value that changed in place (keyed by itself, so it remounts): it
+   fades in from just below instead of jumping. */
+.swap {
+  display: inline-block;
+  animation: swap 0.35s var(--ease) both;
+}
+
+@keyframes swap {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reprFill {
+    transition: none;
+  }
+
+  .swap {
+    animation: none;
+  }
 }
 
 .reprCard[data-state='blocked'] .reprFill,
@@ -567,6 +598,69 @@
 .pickTitle {
   font-size: 14px;
   color: var(--fg);
+}
+
+/* An on/off switch: a grey track, the accent when on, a white knob that
+   slides across. The picker card's "Directed". */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.toggle:hover,
+.toggle[aria-checked='true'] {
+  color: var(--fg);
+}
+
+.toggleTrack {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--border-2);
+  transition: background 0.2s var(--ease);
+}
+
+.toggle[aria-checked='true'] .toggleTrack {
+  background: var(--accent);
+}
+
+.toggleKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s var(--ease);
+}
+
+.toggle[aria-checked='true'] .toggleKnob {
+  transform: translateX(12px);
+}
+
+.toggle:focus-visible .toggleTrack {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toggleTrack,
+  .toggleKnob {
+    transition: none;
+  }
 }
 
 @media (max-width: 620px) {
@@ -1271,6 +1365,13 @@
   align-items: end;
 }
 
+/* A control that takes the row's two field columns, the run button in the
+   third (Floyd-Warshall's sweep: no origin to pick). */
+.fieldSpan {
+  grid-column: 1 / 3;
+  min-width: 0;
+}
+
 /* A control that takes the whole row (the three algorithms). */
 .fieldWide {
   grid-column: 1 / -1;
@@ -1386,17 +1487,48 @@
   transform: translateX(100%);
 }
 
-/* Three segments (BFS, DFS, Dijkstra): the same track cut in thirds. */
-.segmented[data-count='3'] {
-  grid-template-columns: 1fr 1fr 1fr;
+/* The algorithms: a segmented track in rows (each row its own equal
+   columns), the thumb measured onto the chosen segment and gliding there,
+   across rows too. Names never wrap: a row holds only what fits. */
+.segmentRows {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-3);
 }
 
-.segmented[data-count='3'] .thumb {
-  width: calc((100% - 4px) / 3);
+.segmentRow {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
 }
 
-.segmented[data-active='third'] .thumb {
-  transform: translateX(200%);
+.segmentRow > button {
+  height: 24px;
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.segmentThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 0 0 1px var(--border);
+  transition:
+    transform 0.4s var(--ease-spring),
+    width 0.3s var(--ease),
+    height 0.3s var(--ease);
 }
 
 /* The path of a distance query, floating over the canvas: one ball per
@@ -1431,6 +1563,12 @@
 .pathArrow,
 .pathGap {
   color: var(--fg-3);
+}
+
+/* A negative cycle's balls: the one red, every vertex alike (a cycle has
+   no origin or destination to grade between). */
+.cycleBall {
+  background: var(--cycle);
 }
 
 .segment,
@@ -2945,6 +3083,44 @@
   text-align: center;
 }
 
+/* What the cycle means, under its balls, edged in the cycle's red. */
+.cycleNote {
+  max-width: 440px;
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--cycle) 45%, var(--border));
+}
+
+/* Dijkstra's refusal: each negative edge's weight beside its red balls. */
+.refusalWeight {
+  margin-left: 2px;
+  color: var(--cycle);
+}
+
+/* The way out of a refusal, inside its note: a link-like button. */
+/* A link-style button inside a hint (Floyd-Warshall's farthest pair). */
+.inlineLink,
+.refusalSwitch {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color 0.2s var(--ease);
+}
+
+.inlineLink {
+  font-family: var(--font-mono);
+}
+
+.inlineLink:hover,
+.refusalSwitch:hover {
+  color: var(--accent-hover);
+}
+
 /* The empty stage's format card: two files side by side, one in view. */
 .formatSlider {
   display: flex;
@@ -3092,4 +3268,10 @@
 .embedded .floatingTopCenter {
   left: 130px;
   right: 130px;
+}
+
+/* The components browser's strong switch: centred under the measurements. */
+.componentsSwitch {
+  display: flex;
+  justify-content: center;
 }

@@ -14,15 +14,17 @@
 #![warn(missing_docs, clippy::all)]
 
 use graphman::algo::{
-    self, Components, Control, DegreeStats, DiameterMethod, Frontier, FrontierEntry, FrontierKind,
-    HeapFrontier, LazyHeapFrontier, PairingHeapFrontier, QuadHeapFrontier, RadialLayout,
-    RadixHeapFrontier, SearchTree, ShortestPathTree, UNREACHED, VectorFrontier, Visitor,
-    WeightStats, bfs_into, dfs_into, dfs_recursive_into, dijkstra_into, tree_layout,
+    self, AllPairs, Components, Control, DegreeStats, DiameterMethod, FloydError, FloydRounds,
+    Frontier, FrontierEntry, FrontierKind, HeapFrontier, LazyHeapFrontier, MeasuredSchedule,
+    PairingHeapFrontier, QuadHeapFrontier, RadialLayout, RadixHeapFrontier, ScheduleKind,
+    SearchTree, ShortestPathTree, Start, StrongComponents, SweepKind, UNREACHED, VectorFrontier,
+    Visitor, WeightStats, bellman_ford_into, bfs_into, dfs_into, dfs_recursive_into, dijkstra_into,
+    tree_layout,
 };
 use graphman::io::write_summary;
 use graphman::{
     AdjacencyList, AdjacencyMatrix, AnyGraph, Build, BuildError, Csr, EdgeList, Graph,
-    MemoryBudget, NO_VERTEX, Representation, Vertex, VertexNames, Weighted, dispatch,
+    MemoryBudget, NO_VERTEX, Orientation, Representation, Vertex, VertexNames, Weighted, dispatch,
 };
 use std::f64::consts::TAU;
 use wasm_bindgen::prelude::*;
@@ -135,6 +137,38 @@ impl From<FrontierType> for FrontierKind {
     }
 }
 
+/// The order in which Bellman-Ford re-examines vertices (the library's
+/// `ScheduleKind`).
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScheduleType {
+    /// `n - 1` passes over every vertex, the textbook.
+    Rounds = 0,
+    /// Passes until one changes nothing.
+    EarlyStop = 1,
+    /// A queue of the vertices whose estimate went down.
+    Queue = 2,
+    /// Yen's sweeps up and down the ids.
+    Yen = 3,
+    /// Yen's sweeps over a random order.
+    RandomYen = 4,
+    /// Small Label First.
+    Slf = 5,
+}
+
+impl From<ScheduleType> for ScheduleKind {
+    fn from(kind: ScheduleType) -> Self {
+        match kind {
+            ScheduleType::Rounds => ScheduleKind::Rounds,
+            ScheduleType::EarlyStop => ScheduleKind::EarlyStop,
+            ScheduleType::Queue => ScheduleKind::Queue,
+            ScheduleType::Yen => ScheduleKind::Yen,
+            ScheduleType::RandomYen => ScheduleKind::RandomYen,
+            ScheduleType::Slf => ScheduleKind::Slf,
+        }
+    }
+}
+
 /// Which storage strategy backs the graph (the library's `Representation`).
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,15 +246,16 @@ pub struct MemoryReport {
 impl MemoryReport {
     /// What a graph of this size costs in each representation.
     fn of(edges: &EdgeList) -> Self {
-        let (n, m, w) = (
+        let (n, m, w, o) = (
             edges.vertex_count(),
             edges.edge_count(),
             edges.is_weighted(),
+            edges.orientation(),
         );
         Self {
-            list: AdjacencyList::required_bytes(n, m, w) as f64,
-            matrix: AdjacencyMatrix::required_bytes(n, m, w) as f64,
-            csr: Csr::required_bytes(n, m, w) as f64,
+            list: AdjacencyList::required_bytes_oriented(n, m, w, o) as f64,
+            matrix: AdjacencyMatrix::required_bytes_oriented(n, m, w, o) as f64,
+            csr: Csr::required_bytes_oriented(n, m, w, o) as f64,
             budget: BUDGET_BYTES as f64,
         }
     }
@@ -239,12 +274,20 @@ pub struct WasmEdges {
 #[wasm_bindgen(js_class = Parsed)]
 impl WasmEdges {
     /// Parses the text format (`n`, then one `u v` or `u v weight` edge per
-    /// line), dropping self-loops and duplicates. Throws with the parser's
-    /// message (line number included) on malformed input.
+    /// line), dropping self-loops and duplicates; with `directed`, every
+    /// line is the arc from its first vertex to its second. Throws with the
+    /// parser's message (line number included) on malformed input.
     #[wasm_bindgen(constructor)]
-    pub fn new(bytes: &[u8]) -> Result<WasmEdges, JsError> {
-        let edges = EdgeList::parse(bytes).map_err(|e| JsError::new(&e.to_string()))?;
+    pub fn new(bytes: &[u8], directed: bool) -> Result<WasmEdges, JsError> {
+        let edges = EdgeList::parse_with(bytes, Orientation::from_directed(directed))
+            .map_err(|e| JsError::new(&e.to_string()))?;
         Ok(Self { edges })
+    }
+
+    /// Whether the lines were read as arcs.
+    #[wasm_bindgen(getter)]
+    pub fn directed(&self) -> bool {
+        self.edges.is_directed()
     }
 
     /// Number of vertices `n`.
@@ -468,11 +511,30 @@ pub struct ShortestPathResult {
     frontier: FrontierType,
     tree: ShortestPathTree,
     elapsed_ms: f64,
+    /// Bellman-Ford's passes (0 for Dijkstra).
+    passes: u32,
+    /// Bellman-Ford only: the reached vertices with every parent before its
+    /// children (the tree walked breadth-first from the root), which the
+    /// replay animates. With negative arcs a child can be closer than its
+    /// parent, so the tree's order by distance would draw it first.
+    replay: Option<Vec<u32>>,
 }
 
 #[wasm_bindgen]
 impl ShortestPathResult {
-    /// Which frontier ran.
+    /// The order the replay animates: the settle order, or Bellman-Ford's
+    /// tree walked breadth-first.
+    fn replay_order(&self) -> &[u32] {
+        self.replay.as_deref().unwrap_or(self.tree.order())
+    }
+
+    /// Bellman-Ford's passes over its schedule (0 for a Dijkstra run).
+    #[wasm_bindgen(getter)]
+    pub fn passes(&self) -> u32 {
+        self.passes
+    }
+
+    /// Which frontier ran (meaningless for a Bellman-Ford run).
     #[wasm_bindgen(getter)]
     pub fn frontier(&self) -> FrontierType {
         self.frontier
@@ -520,13 +582,13 @@ impl ShortestPathResult {
 
     /// Settled vertices in settle order (non-decreasing distance).
     pub fn order(&self) -> Vec<u32> {
-        self.tree.order().to_vec()
+        self.replay_order().to_vec()
     }
 
     /// Settle index of every vertex, indexed by vertex (`0xFFFFFFFF` = unreached).
     pub fn ranks(&self) -> Vec<u32> {
         let mut ranks = vec![UNREACHED; self.tree.vertex_count() + 1];
-        for (rank, &v) in self.tree.order().iter().enumerate() {
+        for (rank, &v) in self.replay_order().iter().enumerate() {
             ranks[v as usize] = rank as u32;
         }
         ranks
@@ -556,6 +618,234 @@ impl ShortestPathResult {
             .write_to(&mut out)
             .expect("writing to a Vec never fails");
         String::from_utf8(out).expect("the tree is written as ASCII")
+    }
+}
+
+/// The most vertices the page runs Floyd-Warshall on: 12 MB of tables and
+/// about 10⁹ updates, a second or two in the browser.
+const FLOYD_LIMIT: usize = 1000;
+/// The most vertices whose Floyd-Warshall is replayed round by round.
+const FLOYD_TRACE_LIMIT: usize = 200;
+
+/// Notes Bellman-Ford's lowerings: when each vertex last went down and, up
+/// to a limit, every lowering with its pass.
+struct Lowerings {
+    /// The pass in progress, from 1.
+    pass: u32,
+    count: u64,
+    /// The lowering that last changed each vertex (0: never, the root).
+    last: Vec<u64>,
+    limit: usize,
+    overflow: bool,
+    vertices: Vec<u32>,
+    passes: Vec<u32>,
+    distances: Vec<f64>,
+}
+
+impl Lowerings {
+    /// For `n` vertices, logging at most `limit` lowerings (0: none).
+    fn new(n: usize, limit: usize) -> Self {
+        Self {
+            pass: 1,
+            count: 0,
+            last: vec![0; n + 1],
+            limit,
+            overflow: false,
+            vertices: Vec::new(),
+            passes: Vec::new(),
+            distances: Vec::new(),
+        }
+    }
+}
+
+impl Visitor for Lowerings {
+    fn relax(&mut self, v: Vertex, _parent: Vertex, _previous: f64, distance: f64) {
+        self.count += 1;
+        self.last[v as usize] = self.count;
+        if self.overflow || self.limit == 0 {
+            return;
+        }
+        if self.vertices.len() == self.limit {
+            self.overflow = true;
+            return;
+        }
+        self.vertices.push(v);
+        self.passes.push(self.pass);
+        self.distances.push(distance);
+    }
+
+    fn pass_complete(&mut self, passes: usize) {
+        self.pass = passes as u32 + 1;
+    }
+}
+
+/// Bellman-Ford's lowerings in order: vertex, pass (from 1) and the new
+/// estimate. Row 0 of the table is the start: the root at 0, all else `∞`.
+#[wasm_bindgen]
+pub struct LoweringTrace {
+    vertices: Vec<u32>,
+    passes: Vec<u32>,
+    distances: Vec<f64>,
+    total_passes: u32,
+}
+
+#[wasm_bindgen]
+impl LoweringTrace {
+    /// The vertex each lowering changed.
+    pub fn vertices(&self) -> Vec<u32> {
+        self.vertices.clone()
+    }
+
+    /// The pass each lowering happened in, from 1.
+    pub fn passes(&self) -> Vec<u32> {
+        self.passes.clone()
+    }
+
+    /// The estimate each lowering set.
+    pub fn distances(&self) -> Vec<f64> {
+        self.distances.clone()
+    }
+
+    /// Passes the schedule made (the last may have changed nothing).
+    #[wasm_bindgen(getter, js_name = totalPasses)]
+    pub fn total_passes(&self) -> u32 {
+        self.total_passes
+    }
+}
+
+/// How Floyd-Warshall walks its table in the browser (the library's
+/// `SweepKind`; its parallel sweep is the pruned one without threads).
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SweepType {
+    /// The textbook triple loop on one table.
+    Plain = 0,
+    /// Skips the rows that cannot reach `k` yet.
+    Pruned = 1,
+    /// Tiles that stay in cache.
+    Blocked = 2,
+}
+
+impl From<SweepType> for SweepKind {
+    fn from(kind: SweepType) -> Self {
+        match kind {
+            SweepType::Plain => SweepKind::Plain,
+            SweepType::Pruned => SweepKind::Pruned,
+            SweepType::Blocked => SweepKind::Blocked,
+        }
+    }
+}
+
+/// A Floyd-Warshall run: every pair's distance and the shortest-path tree
+/// from every vertex, or the negative cycle that leaves none.
+#[wasm_bindgen]
+pub struct FloydRun {
+    all: Option<AllPairs>,
+    cycle: Vec<u32>,
+    elapsed_ms: f64,
+}
+
+#[wasm_bindgen]
+impl FloydRun {
+    /// Milliseconds spent in the algorithm itself.
+    #[wasm_bindgen(getter, js_name = elapsedMs)]
+    pub fn elapsed_ms(&self) -> f64 {
+        self.elapsed_ms
+    }
+
+    /// The negative cycle found, closed (first vertex repeated last); empty
+    /// when the run has tables.
+    pub fn cycle(&self) -> Vec<u32> {
+        self.cycle.clone()
+    }
+
+    /// The table at a glance: `[pairs, longest, from, to]`, the ordered
+    /// pairs `i ≠ j` with a path, and the longest of their distances with
+    /// its pair (`NaN, 0, 0` when no pair has one). Empty on a negative cycle.
+    pub fn summary(&self) -> Vec<f64> {
+        let Some(all) = self.all.as_ref() else {
+            return Vec::new();
+        };
+        let n = all.vertex_count() as Vertex;
+        let (mut pairs, mut longest, mut from, mut to) = (0u64, f64::NAN, 0, 0);
+        for i in 1..=n {
+            for (j, &d) in (1..=n).zip(all.row(i)) {
+                if i == j || d == f64::INFINITY {
+                    continue;
+                }
+                pairs += 1;
+                if longest.is_nan() || d > longest {
+                    (longest, from, to) = (d, i, j);
+                }
+            }
+        }
+        vec![pairs as f64, longest, from as f64, to as f64]
+    }
+
+    /// The shortest-path tree from `root`, read off its row of the tables,
+    /// replayed in the order the rows' cells became final: by the round
+    /// (the largest intermediate vertex on the path), parents first.
+    pub fn tree(&self, root: u32) -> Result<ShortestPathResult, JsError> {
+        let all = self
+            .all
+            .as_ref()
+            .ok_or_else(|| JsError::new("the graph has a negative cycle"))?;
+        if root == NO_VERTEX || root as usize > all.vertex_count() {
+            return Err(JsError::new(&format!(
+                "vertex {root} is outside 1..={}",
+                all.vertex_count()
+            )));
+        }
+        let tree = all.tree(root);
+        let replay = round_order(&tree, root);
+        Ok(ShortestPathResult {
+            frontier: FrontierType::Heap,
+            tree,
+            elapsed_ms: self.elapsed_ms,
+            passes: 0,
+            replay: Some(replay),
+        })
+    }
+}
+
+/// Floyd-Warshall replayed: the table `D_0` (row-major, `n × n`, `∞` when
+/// unreachable) and every cell a round lowered, in order: its index
+/// `(i - 1) n + (j - 1)`, its round `k` (from 1) and its new distance.
+#[wasm_bindgen]
+pub struct FloydTrace {
+    n: u32,
+    initial: Vec<f64>,
+    cells: Vec<u32>,
+    rounds: Vec<u32>,
+    after: Vec<f64>,
+}
+
+#[wasm_bindgen]
+impl FloydTrace {
+    /// Vertices: the table is `n × n`.
+    #[wasm_bindgen(getter)]
+    pub fn n(&self) -> u32 {
+        self.n
+    }
+
+    /// `D_0`, row-major.
+    pub fn initial(&self) -> Vec<f64> {
+        self.initial.clone()
+    }
+
+    /// The cell of every change.
+    pub fn cells(&self) -> Vec<u32> {
+        self.cells.clone()
+    }
+
+    /// The round of every change, from 1.
+    pub fn rounds(&self) -> Vec<u32> {
+        self.rounds.clone()
+    }
+
+    /// The distance every change set.
+    pub fn after(&self) -> Vec<f64> {
+        self.after.clone()
     }
 }
 
@@ -722,7 +1012,13 @@ impl WasmGraph {
     /// the representation does not fit [`BUDGET_BYTES`].
     #[wasm_bindgen(constructor)]
     pub fn new(bytes: &[u8], representation: RepresentationKind) -> Result<WasmGraph, JsError> {
-        WasmEdges::new(bytes)?.build(representation)
+        WasmEdges::new(bytes, false)?.build(representation)
+    }
+
+    /// Whether the graph is directed: its edges are arcs.
+    #[wasm_bindgen(getter)]
+    pub fn directed(&self) -> bool {
+        self.graph.is_directed()
     }
 
     /// Builds `representation` over edges that are already parsed.
@@ -854,8 +1150,10 @@ impl WasmGraph {
     pub fn edges(&self) -> Vec<u32> {
         dispatch!(&self.graph, g => {
             let mut edges = Vec::with_capacity(2 * g.edge_count());
+            // Each edge once, from its smaller end; each arc from its tail.
+            let directed = g.is_directed();
             for v in g.vertices() {
-                for w in g.neighbors(v).filter(|&w| w > v) {
+                for w in g.neighbors(v).filter(|&w| directed || w > v) {
                     edges.push(v);
                     edges.push(w);
                 }
@@ -869,39 +1167,64 @@ impl WasmGraph {
     pub fn weights(&self) -> Vec<f64> {
         dispatch!(&self.graph, g => {
             let mut weights = Vec::with_capacity(g.edge_count());
+            let directed = g.is_directed();
             for v in g.vertices() {
-                weights.extend(g.weighted_neighbors(v).filter(|&(w, _)| w > v).map(|(_, x)| x));
+                weights.extend(
+                    g.weighted_neighbors(v)
+                        .filter(|&(w, _)| directed || w > v)
+                        .map(|(_, x)| x),
+                );
             }
             weights
         })
     }
 
-    /// Row offsets of the neighbour rows (`n + 2` entries, index 0 unused):
-    /// `offsets[v]..offsets[v + 1]` indexes the neighbours of `v` in
-    /// [`adjacencyTargets`](Self::adjacency_targets). Read off the degrees, so
-    /// the GPU gets the same buffers whichever representation is in use.
+    /// Row offsets of the neighbour rows the canvas draws with (`n + 2`
+    /// entries, index 0 unused): `offsets[v]..offsets[v + 1]` indexes the
+    /// neighbours of `v` in [`adjacencyTargets`](Self::adjacency_targets).
+    /// On a directed graph a row holds the out- and the in-neighbours (each
+    /// once), so the layout's springs pull both ends of an arc and a
+    /// selected vertex lights every vertex it is joined to.
     #[wasm_bindgen(js_name = adjacencyOffsets)]
     pub fn adjacency_offsets(&self) -> Vec<u32> {
-        let n = self.graph.vertex_count();
-        let mut offsets = Vec::with_capacity(n + 2);
+        let rows = self.drawing_rows();
+        let mut offsets = Vec::with_capacity(rows.len() + 1);
         offsets.push(0);
         offsets.push(0);
-        for v in 1..=n as Vertex {
+        for row in rows.iter().skip(1) {
             let last = *offsets.last().expect("offsets is never empty");
-            offsets.push(last + self.graph.degree(v) as u32);
+            offsets.push(last + row.len() as u32);
         }
         offsets
     }
 
-    /// Every neighbour row back to back (`2m` entries), ascending within a row.
+    /// Every neighbour row back to back, ascending within a row (`2m`
+    /// entries on an undirected graph; out- and in-neighbours on a directed one).
     #[wasm_bindgen(js_name = adjacencyTargets)]
     pub fn adjacency_targets(&self) -> Vec<u32> {
+        self.drawing_rows().concat()
+    }
+
+    /// The rows the canvas draws with, indexed by vertex: the neighbour
+    /// rows, read both ways on a directed graph.
+    fn drawing_rows(&self) -> Vec<Vec<u32>> {
         dispatch!(&self.graph, g => {
-            let mut targets = Vec::with_capacity(2 * g.edge_count());
+            let mut rows: Vec<Vec<u32>> = vec![Vec::new(); g.vertex_count() + 1];
             for v in g.vertices() {
-                targets.extend(g.neighbors(v));
+                rows[v as usize].extend(g.neighbors(v));
             }
-            targets
+            if g.is_directed() {
+                for v in g.vertices() {
+                    for w in g.neighbors(v) {
+                        rows[w as usize].push(v);
+                    }
+                }
+                for row in &mut rows {
+                    row.sort_unstable();
+                    row.dedup();
+                }
+            }
+            rows
         })
     }
 
@@ -938,6 +1261,30 @@ impl WasmGraph {
         labels.push(0);
         labels.extend((1..=n).map(|v| components.component_of(v)));
         labels
+    }
+
+    /// Strong component id of every vertex, indexed by vertex: the library's
+    /// strongly connected components (iterative Tarjan), renumbered like
+    /// [`componentLabels`](Self::component_labels), `1` the largest (ties
+    /// by the smallest vertex), so the page browses both the same way. On
+    /// an undirected graph they are the connected components.
+    #[wasm_bindgen(js_name = strongComponentLabels)]
+    pub fn strong_component_labels(&self) -> Vec<u32> {
+        let strong = dispatch!(&self.graph, g => StrongComponents::compute(g));
+        let count = strong.count() as u32;
+        let mut ids: Vec<u32> = (1..=count).collect();
+        ids.sort_by_key(|&id| {
+            let members = strong.members(id);
+            (core::cmp::Reverse(members.len()), members[0])
+        });
+        let mut rank = vec![0u32; count as usize + 1];
+        for (r, &id) in ids.iter().enumerate() {
+            rank[id as usize] = r as u32 + 1;
+        }
+        let n = self.graph.vertex_count() as Vertex;
+        core::iter::once(0)
+            .chain((1..=n).map(|v| rank[strong.component_of(v) as usize]))
+            .collect()
     }
 
     /// Runs a BFS or DFS from `root` and returns the tree, timed with
@@ -1015,6 +1362,190 @@ impl WasmGraph {
             frontier,
             tree,
             elapsed_ms,
+            passes: 0,
+            replay: None,
+        })
+    }
+
+    /// Runs Bellman-Ford from `root` with the chosen schedule and returns
+    /// the tree in the shape Dijkstra's has (its order lists the reached
+    /// vertices by distance), timed with `performance.now()`. Negative
+    /// weights are fine; throws the library's message when a negative cycle
+    /// is reachable ([`negativeCycle`](Self::negative_cycle) returns it).
+    #[wasm_bindgen(js_name = bellmanFord)]
+    pub fn bellman_ford(
+        &mut self,
+        root: u32,
+        schedule: ScheduleType,
+    ) -> Result<ShortestPathResult, JsError> {
+        self.check(root)?;
+        let n = self.graph.vertex_count();
+        let mut tree = ShortestPathTree::new(n);
+        let mut measured = MeasuredSchedule::new(ScheduleKind::from(schedule).schedule());
+        let start = now();
+        let run = dispatch!(&self.graph, g => {
+            bellman_ford_into(g, Start::Vertex(root), &mut measured, &mut tree, &mut ())
+        });
+        let elapsed_ms = now() - start;
+        run.map_err(|e| JsError::new(&e.to_string()))?;
+        // The replay shows each vertex when its estimate went down for the
+        // last time (final from then on): the same run again, untimed, with
+        // a visitor that only notes when. A parent's last lowering comes
+        // before its child's, so the order draws every tree edge in.
+        let mut lowerings = Lowerings::new(n, 0);
+        let mut schedule = ScheduleKind::from(schedule).schedule();
+        let mut again = ShortestPathTree::new(n);
+        dispatch!(&self.graph, g => {
+            bellman_ford_into(g, Start::Vertex(root), &mut schedule, &mut again, &mut lowerings)
+        })
+        .map_err(|e| JsError::new(&e.to_string()))?;
+        let mut replay = tree.order().to_vec();
+        replay.sort_by_key(|&v| (lowerings.last[v as usize], v));
+        Ok(ShortestPathResult {
+            frontier: FrontierType::Heap,
+            tree,
+            elapsed_ms,
+            passes: measured.counts().passes as u32,
+            replay: Some(replay),
+        })
+    }
+
+    /// Every estimate Bellman-Ford lowered from `root`, in order, with the
+    /// pass it happened in: the dynamic programme's table `d_k[v]` (the
+    /// estimate of `v` after pass `k`) read off as it fills. `undefined`
+    /// past `limit` lowerings, or when a negative cycle is reachable.
+    #[wasm_bindgen(js_name = bellmanFordTrace)]
+    pub fn bellman_ford_trace(
+        &self,
+        root: u32,
+        schedule: ScheduleType,
+        limit: u32,
+    ) -> Result<Option<LoweringTrace>, JsError> {
+        self.check(root)?;
+        let n = self.graph.vertex_count();
+        let mut lowerings = Lowerings::new(n, limit as usize);
+        let mut measured = MeasuredSchedule::new(ScheduleKind::from(schedule).schedule());
+        let mut tree = ShortestPathTree::new(n);
+        let run = dispatch!(&self.graph, g => {
+            bellman_ford_into(g, Start::Vertex(root), &mut measured, &mut tree, &mut lowerings)
+        });
+        if run.is_err() || lowerings.overflow {
+            return Ok(None);
+        }
+        Ok(Some(LoweringTrace {
+            vertices: lowerings.vertices,
+            passes: lowerings.passes,
+            distances: lowerings.distances,
+            total_passes: measured.counts().passes as u32,
+        }))
+    }
+
+    /// The most vertices [`floydWarshall`](Self::floyd_warshall) takes: its
+    /// table grows as `n²` and its time as `n³`, on the page's only thread.
+    #[wasm_bindgen(js_name = floydWarshallLimit)]
+    pub fn floyd_warshall_limit() -> u32 {
+        FLOYD_LIMIT as u32
+    }
+
+    /// Floyd-Warshall over every pair, with `sweep`; refused past
+    /// [`floydWarshallLimit`](Self::floyd_warshall_limit) vertices. A
+    /// negative cycle anywhere in the graph comes back as the run's
+    /// [`cycle`](FloydRun::cycle) instead of tables.
+    #[wasm_bindgen(js_name = floydWarshall)]
+    pub fn floyd_warshall(&self, sweep: SweepType) -> Result<FloydRun, JsError> {
+        let budget = MemoryBudget::Bytes(AllPairs::required_bytes(FLOYD_LIMIT));
+        let start = now();
+        let run = dispatch!(&self.graph, g => algo::floyd_warshall(g, sweep.into(), budget));
+        let elapsed_ms = now() - start;
+        match run {
+            Ok(all) => Ok(FloydRun {
+                all: Some(all),
+                cycle: Vec::new(),
+                elapsed_ms,
+            }),
+            Err(FloydError::NegativeCycle(cycle)) => {
+                let mut closed = cycle.cycle.clone();
+                closed.push(cycle.cycle[0]);
+                Ok(FloydRun {
+                    all: None,
+                    cycle: closed,
+                    elapsed_ms,
+                })
+            }
+            Err(error) => Err(JsError::new(&error.to_string())),
+        }
+    }
+
+    /// Floyd-Warshall replayed round by round: the table before the first
+    /// round and every cell each round lowered, for the dynamic programme's
+    /// `D_k`. `undefined` past [`FLOYD_TRACE_LIMIT`] vertices or `limit`
+    /// changes, or on a negative cycle.
+    #[wasm_bindgen(js_name = floydTrace)]
+    pub fn floyd_trace(&self, limit: u32) -> Option<FloydTrace> {
+        let n = self.graph.vertex_count();
+        if n > FLOYD_TRACE_LIMIT {
+            return None;
+        }
+        dispatch!(&self.graph, g => {
+            let mut rounds = FloydRounds::new(g, MemoryBudget::Unlimited).ok()?;
+            let mut initial = Vec::with_capacity(n * n);
+            for i in 1..=n as Vertex {
+                initial.extend_from_slice(rounds.table().row(i));
+            }
+            let (mut cells, mut done, mut after) = (Vec::new(), Vec::new(), Vec::new());
+            let mut improved = Vec::new();
+            while rounds.step(&mut improved).ok()? {
+                if cells.len() + improved.len() > limit as usize {
+                    return None;
+                }
+                let k = rounds.rounds_done() as u32;
+                for &(i, j) in &improved {
+                    cells.push((i - 1) * n as u32 + (j - 1));
+                    done.push(k);
+                    after.push(rounds.table().distance(i, j).expect("just lowered"));
+                }
+                improved.clear();
+            }
+            Some(FloydTrace {
+                n: n as u32,
+                initial,
+                cells,
+                rounds: done,
+                after,
+            })
+        })
+    }
+
+    /// The weight of the edge `u v` (the arc u → v when directed);
+    /// `undefined` when there is none. `1` for every edge when unweighted.
+    #[wasm_bindgen(js_name = edgeWeight)]
+    pub fn edge_weight(&self, u: u32, v: u32) -> Option<f64> {
+        let n = self.graph.vertex_count() as u32;
+        if !(1..=n).contains(&u) || !(1..=n).contains(&v) {
+            return None;
+        }
+        self.graph.weight(u, v)
+    }
+
+    /// The negative cycle reachable from `root`, in arc order from its
+    /// smallest vertex and closed (its first vertex repeated at the end, so
+    /// it draws as a path); empty when there is none.
+    #[wasm_bindgen(js_name = negativeCycle)]
+    pub fn negative_cycle(&self, root: u32, schedule: ScheduleType) -> Result<Vec<u32>, JsError> {
+        self.check(root)?;
+        let n = self.graph.vertex_count();
+        let mut tree = ShortestPathTree::new(n);
+        let mut schedule = ScheduleKind::from(schedule).schedule();
+        let run = dispatch!(&self.graph, g => {
+            bellman_ford_into(g, Start::Vertex(root), &mut schedule, &mut tree, &mut ())
+        });
+        Ok(match run {
+            Ok(()) => Vec::new(),
+            Err(cycle) => {
+                let mut closed = cycle.cycle.clone();
+                closed.push(cycle.cycle[0]);
+                closed
+            }
         })
     }
 
@@ -1141,8 +1672,10 @@ impl WasmGraph {
             }
         };
         let start = now();
+        // The observatory's graphs are undirected, where every method runs.
         let d =
-            dispatch!(&self.graph, g => algo::diameter_with_progress(g, kind.into(), &progress));
+            dispatch!(&self.graph, g => algo::diameter_with_progress(g, kind.into(), &progress))
+                .expect("every diameter method runs on an undirected graph");
         DiameterResult {
             value: d.value,
             from: d.endpoints.0,
@@ -1193,8 +1726,7 @@ impl WasmGraph {
     pub fn layout(&mut self, kind: LayoutKind, root: u32) -> Result<Vec<f32>, JsError> {
         self.check(root)?;
         let components = self.components().clone();
-        let positions =
-            dispatch!(&self.graph, g => layout_of(g, &mut self.tree, &components, kind, root));
+        let positions = dispatch!(&self.graph, g => layout_of(g, &mut self.tree, &components, kind, root, None));
         self.tree.reset();
         Ok(positions)
     }
@@ -1208,26 +1740,54 @@ impl WasmGraph {
     }
 
     /// Like [`layered`](Self::layered), with the root's component drawn as
-    /// the shortest-path tree of `run`: levels count the edges of the tree, not
-    /// the distance. `O(n + m)`.
+    /// the tree of the search on screen (`parents` by vertex, `order` with
+    /// every parent before its children, the root first): a DFS's tree, or
+    /// a shortest-path tree, whose levels count its edges, not the distance.
+    /// `O(n + m)`.
     #[wasm_bindgen(js_name = layeredTree)]
     pub fn layered_tree(
         &mut self,
-        run: &ShortestPathResult,
+        parents: &[u32],
+        order: &[u32],
         direction: LayerDirection,
-    ) -> Vec<f32> {
-        self.layered_from(run.tree.root(), Some(&run.tree), direction)
+    ) -> Result<Vec<f32>, JsError> {
+        let given = GivenTree::new(self.graph.vertex_count(), parents, order, &[])?;
+        Ok(self.layered_from(order[0], Some(&given), direction))
+    }
+
+    /// The radial layout with the root's component drawn around the tree of
+    /// the search on screen: wedges from its subtrees, each vertex on ring
+    /// `rings[v]` (a BFS level, a DFS depth, or a distance measured in
+    /// bands, fractional). The other components as in [`layout`](Self::layout).
+    #[wasm_bindgen(js_name = radialTree)]
+    pub fn radial_tree(
+        &mut self,
+        parents: &[u32],
+        order: &[u32],
+        rings: &[f64],
+    ) -> Result<Vec<f32>, JsError> {
+        let n = self.graph.vertex_count();
+        if rings.len() != n + 1 {
+            return Err(JsError::new("one ring per vertex"));
+        }
+        let given = GivenTree::new(n, parents, order, rings)?;
+        let components = self.components().clone();
+        let positions = dispatch!(&self.graph, g => {
+            layout_of(g, &mut self.tree, &components, LayoutKind::Radial, order[0], Some(&given))
+        });
+        self.tree.reset();
+        Ok(positions)
     }
 
     fn layered_from(
         &mut self,
         root: Vertex,
-        shortest: Option<&ShortestPathTree>,
+        given: Option<&GivenTree>,
         direction: LayerDirection,
     ) -> Vec<f32> {
         let components = self.components().clone();
         let positions = dispatch!(&self.graph, g => {
-            layered_layout_of(g, &mut self.tree, &components, root, shortest, direction)
+            layered_layout_of(g, &mut self.tree, &components, root, given, direction)
         });
         self.tree.reset();
         positions
@@ -1280,12 +1840,48 @@ fn initial_layout_of<G: Graph>(
 }
 
 /// Positions arranged by `kind`; see [`WasmGraph::layout`].
+/// A search's tree handed over by the page for the layouts: parents indexed
+/// by vertex (`0` for the root), the reached vertices with every parent
+/// before its children (the root first) and, for the radial layout, each
+/// vertex's ring (a level, a DFS depth, or a distance in bands).
+struct GivenTree<'a> {
+    parents: &'a [Vertex],
+    order: &'a [Vertex],
+    rings: &'a [f64],
+}
+
+impl<'a> GivenTree<'a> {
+    /// The tree, checked against a graph of `n` vertices.
+    fn new(
+        n: usize,
+        parents: &'a [Vertex],
+        order: &'a [Vertex],
+        rings: &'a [f64],
+    ) -> Result<Self, JsError> {
+        let fits = |v: Vertex| v != NO_VERTEX && v as usize <= n;
+        if parents.len() != n + 1
+            || (!rings.is_empty() && rings.len() != n + 1)
+            || order.is_empty()
+            || !order.iter().all(|&v| fits(v))
+            || parents[order[0] as usize] != NO_VERTEX
+        {
+            return Err(JsError::new("the tree does not fit this graph"));
+        }
+        Ok(Self {
+            parents,
+            order,
+            rings,
+        })
+    }
+}
+
 fn layout_of<G: Graph>(
     graph: &G,
     tree: &mut SearchTree,
     components: &Components,
     kind: LayoutKind,
     root: Vertex,
+    given: Option<&GivenTree>,
 ) -> Vec<f32> {
     let n = graph.vertex_count();
     let mut positions = vec![0f32; 2 * (n + 1)];
@@ -1310,30 +1906,70 @@ fn layout_of<G: Graph>(
         .collect();
     let mut extent = vec![0f64; components.count()];
     let mut layout = RadialLayout::new(n);
+    let mut placed = vec![false; n + 1];
     for &c in &order {
         let members = components.members(c as u32 + 1);
-        let start = if c == home { root } else { members[0] };
-        bfs_into(graph, start, tree, &mut ());
-        layout.fill(tree);
-        let depth = tree.depth() as usize;
-        let mut counts = vec![0f64; depth + 1];
-        for &v in tree.order() {
-            counts[tree.level(v).expect("reached") as usize] += 1.0;
+        // The tree and each vertex's ring: the search's own for the root's
+        // component when given, a BFS's levels otherwise.
+        let (reached, ring): (&[Vertex], Box<dyn Fn(Vertex) -> f64>) = match given {
+            Some(search) if c == home => {
+                layout.fill_tree(search.parents, search.order);
+                let rings = search.rings;
+                (search.order, Box::new(move |v| rings[v as usize].max(0.0)))
+            }
+            _ => {
+                let start = if c == home { root } else { members[0] };
+                bfs_into(graph, start, tree, &mut ());
+                layout.fill(tree);
+                let mut ring = vec![0f64; n + 1];
+                for &v in tree.order() {
+                    ring[v as usize] = tree.level(v).expect("reached") as f64;
+                }
+                (tree.order(), Box::new(move |v| ring[v as usize]))
+            }
+        };
+        let outer = reached.iter().map(|&v| ring(v)).fold(0.0, f64::max);
+        // Rings far enough apart that the fullest one has room (a ring is
+        // a unit of `ring`: a level, or a slice of the distances).
+        let mut counts = vec![0f64; outer as usize + 2];
+        for &v in reached {
+            counts[ring(v) as usize] += 1.0;
         }
-        // Rings far enough apart that the fullest one has room.
+        // A directed graph's search leaves part of its (weak) component
+        // out: those vertices go round one ring further.
+        for &v in reached {
+            placed[v as usize] = true;
+        }
+        let left: Vec<Vertex> = members
+            .iter()
+            .copied()
+            .filter(|&v| !placed[v as usize])
+            .collect();
+        *counts.last_mut().expect("two rings at least") += left.len() as f64;
         let gap = counts
             .iter()
             .enumerate()
             .skip(1)
             .map(|(l, &count)| count * SPACING / (TAU * l as f64))
             .fold(2.0 * EDGE_LENGTH, f64::max);
-        for &v in tree.order() {
-            let l = tree.level(v).expect("reached") as f64;
+        for &v in reached {
+            let r = ring(v);
             let a = layout.angle[v as usize] as f64;
-            positions[2 * v as usize] = (l * gap * a.cos()) as f32;
-            positions[2 * v as usize + 1] = (l * gap * a.sin()) as f32;
+            positions[2 * v as usize] = (r * gap * a.cos()) as f32;
+            positions[2 * v as usize + 1] = (r * gap * a.sin()) as f32;
         }
-        extent[c] = depth as f64 * gap + EDGE_LENGTH;
+        let rim = if left.is_empty() {
+            outer
+        } else {
+            outer.floor() + 1.0
+        };
+        for (i, &v) in left.iter().enumerate() {
+            let a = TAU * i as f64 / left.len() as f64;
+            positions[2 * v as usize] = (rim * gap * a.cos()) as f32;
+            positions[2 * v as usize + 1] = (rim * gap * a.sin()) as f32;
+            placed[v as usize] = true;
+        }
+        extent[c] = rim * gap + EDGE_LENGTH;
     }
 
     // Then move each component to its place.
@@ -1356,7 +1992,7 @@ fn layered_layout_of<G: Graph>(
     tree: &mut SearchTree,
     components: &Components,
     root: Vertex,
-    shortest: Option<&ShortestPathTree>,
+    given: Option<&GivenTree>,
     direction: LayerDirection,
 ) -> Vec<f32> {
     let n = graph.vertex_count();
@@ -1364,10 +2000,11 @@ fn layered_layout_of<G: Graph>(
     // One forest: the root's tree first, then the rest largest first.
     let mut parents = vec![NO_VERTEX; n + 1];
     let mut order = Vec::with_capacity(n);
+    let mut placed = vec![false; n + 1];
     let home = (components.component_of(root) - 1) as usize;
     for c in core::iter::once(home).chain((0..components.count()).filter(|&c| c != home)) {
-        let (grown_parents, grown_order) = match shortest {
-            Some(run) if c == home => (run.parents_raw(), run.order()),
+        let (grown_parents, grown_order) = match given {
+            Some(search) if c == home => (search.parents, search.order),
             _ => {
                 let start = if c == home {
                     root
@@ -1380,8 +2017,17 @@ fn layered_layout_of<G: Graph>(
         };
         for &v in grown_order {
             parents[v as usize] = grown_parents[v as usize];
+            placed[v as usize] = true;
         }
         order.extend_from_slice(grown_order);
+        // A directed graph's search leaves part of its (weak) component
+        // out: each of those vertices stands as a tree of its own.
+        for &v in components.members(c as u32 + 1) {
+            if !placed[v as usize] {
+                placed[v as usize] = true;
+                order.push(v);
+            }
+        }
     }
     let layout = tree_layout(&parents, &order);
 
@@ -1706,8 +2352,74 @@ fn parse_vertex(field: &[u8]) -> Option<Vertex> {
     Vertex::try_from(value).ok()
 }
 
+/// A Floyd-Warshall row's vertices in the order their distances became
+/// final: a cell last changes in the round of the largest intermediate
+/// vertex on its path, so the vertices go by that round, then by depth,
+/// which puts every parent before its children.
+fn round_order(tree: &ShortestPathTree, root: u32) -> Vec<u32> {
+    let mut order = tree_order(tree, root);
+    let mut key = vec![(0u32, 0u32); tree.vertex_count() + 1];
+    for &v in &order[1..] {
+        let p = tree.parent(v).expect("reached, not the root");
+        let (round, depth) = key[p as usize];
+        let through = if p == root { 0 } else { p };
+        key[v as usize] = (round.max(through), depth + 1);
+    }
+    order.sort_by_key(|&v| (key[v as usize], v));
+    order
+}
+
+/// The reached vertices of `tree`, every parent before its children: the
+/// tree walked breadth-first from `root`, children by distance.
+fn tree_order(tree: &ShortestPathTree, root: u32) -> Vec<u32> {
+    let n = tree.vertex_count();
+    let mut children: Vec<Vec<u32>> = vec![Vec::new(); n + 1];
+    for &v in tree.order() {
+        if let Some(p) = tree.parent(v) {
+            children[p as usize].push(v);
+        }
+    }
+    let mut order = vec![root];
+    let mut at = 0;
+    while at < order.len() {
+        let v = order[at];
+        at += 1;
+        order.extend_from_slice(&children[v as usize]);
+    }
+    order
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_directed_file_gives_arcs_and_its_negative_cycle() {
+        use super::*;
+        // 1 → 2 costs 4, 1 → 3 → 2 costs 3 - 2 = 1.
+        let parsed = WasmEdges::new(b"3\n1 2 4\n1 3 3\n3 2 -2\n", true).expect("parses");
+        assert!(parsed.directed());
+        let graph = parsed.build(RepresentationKind::Csr).expect("fits");
+        assert!(graph.directed());
+        assert_eq!(graph.edges(), vec![1, 2, 1, 3, 3, 2]);
+        assert_eq!(graph.weights(), vec![4.0, 3.0, -2.0]);
+        // (`bellmanFord` is timed with the browser's clock: the library's
+        // tests cover the run itself.)
+        assert!(
+            graph
+                .negative_cycle(1, ScheduleType::Yen)
+                .expect("in range")
+                .is_empty()
+        );
+
+        let cyclic = WasmEdges::new(b"3\n1 2 1\n2 3 -3\n3 2 1\n", true).expect("parses");
+        let graph = cyclic.build(RepresentationKind::List).expect("fits");
+        assert_eq!(
+            graph
+                .negative_cycle(1, ScheduleType::Queue)
+                .expect("in range"),
+            vec![2, 3, 2]
+        );
+    }
+
     use super::*;
 
     /// A triangle, a duplicate edge line, a self-loop and an isolated vertex.
@@ -1744,12 +2456,10 @@ mod tests {
             dijkstra_into(graph, 1, &mut HeapFrontier::new(5), &mut tree, &mut ())
         })
         .expect("no negative weights");
-        let run = ShortestPathResult {
-            frontier: FrontierType::Heap,
-            tree,
-            elapsed_ms: 0.0,
-        };
-        let shortest = g.layered_tree(&run, LayerDirection::Vertical);
+        let order = tree.order().to_vec();
+        let shortest = g
+            .layered_tree(tree.parents_raw(), &order, LayerDirection::Vertical)
+            .unwrap();
         assert!(y(&shortest, 1) < y(&shortest, 2));
         assert!(y(&shortest, 2) < y(&shortest, 3));
         assert!(y(&shortest, 3) < y(&shortest, 4));
@@ -1757,6 +2467,93 @@ mod tests {
         // The other component stands beside the tree, level 0 on one line.
         assert_eq!(y(&shortest, 5), y(&shortest, 1));
         assert!(x(&shortest, 5) > x(&shortest, 1));
+    }
+
+    #[test]
+    fn the_radial_layout_puts_each_vertex_on_the_ring_it_is_given() {
+        let mut g = WasmGraph::new(DETOUR, RepresentationKind::Csr).expect("parses");
+        // The path 1-2-3-4 as the tree, with distances as rings.
+        let parents = [0, 0, 1, 2, 3, 0];
+        let order = [1, 2, 3, 4];
+        let rings = [0.0, 0.0, 1.0, 2.0, 3.0, 0.0];
+        let p = g.radial_tree(&parents, &order, &rings).unwrap();
+        let radius = |v: usize| x(&p, v).hypot(y(&p, v));
+        assert_eq!(radius(1), 0.0);
+        assert!(radius(2) < radius(3) && radius(3) < radius(4));
+    }
+
+    #[test]
+    fn a_directed_search_leaves_no_vertex_of_its_component_at_the_origin() {
+        // 2 cannot be reached from 1, yet shares its weak component.
+        let parsed = WasmEdges::new(b"3\n1 3\n2 3\n", true).expect("parses");
+        let mut g = parsed.build(RepresentationKind::Csr).expect("fits");
+        let radial = g.layout(LayoutKind::Radial, 1).unwrap();
+        assert!(x(&radial, 2).hypot(y(&radial, 2)) > 0.0);
+        let layered = g.layered(1, LayerDirection::Vertical).unwrap();
+        assert_ne!(
+            (x(&layered, 2), y(&layered, 2)),
+            (x(&layered, 1), y(&layered, 1))
+        );
+    }
+
+    #[test]
+    fn bellman_fords_trace_fills_the_table_pass_by_pass() {
+        let parsed = WasmEdges::new(b"3\n1 2 4\n1 3 3\n3 2 -2\n", true).expect("parses");
+        let g = parsed.build(RepresentationKind::Csr).expect("fits");
+        let trace = g
+            .bellman_ford_trace(1, ScheduleType::Rounds, 100)
+            .unwrap()
+            .expect("small, no cycle");
+        // 2 at 4, 3 at 3, then 2 at 1 through 3.
+        assert_eq!(trace.vertices(), vec![2, 3, 2]);
+        assert_eq!(trace.distances(), vec![4.0, 3.0, 1.0]);
+        assert!(trace.passes().windows(2).all(|w| w[0] <= w[1]));
+        assert!(
+            g.bellman_ford_trace(1, ScheduleType::Rounds, 2)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn floyd_warshalls_trace_and_its_rows_replay_parents_first() {
+        let parsed = WasmEdges::new(b"3\n1 2 4\n1 3 3\n3 2 -2\n2 1 1\n", true).expect("parses");
+        let g = parsed.build(RepresentationKind::Csr).expect("fits");
+        let trace = g.floyd_trace(1000).expect("small, no cycle");
+        assert_eq!(trace.n(), 3);
+        let mut table = trace.initial();
+        assert_eq!(table[1], 4.0); // D_0[1][2]
+        for (&cell, &d) in trace.cells().iter().zip(&trace.after()) {
+            assert!(d < table[cell as usize]);
+            table[cell as usize] = d;
+        }
+        assert_eq!(table[1], 1.0); // 1 → 3 → 2
+        assert_eq!(table[2 * 3], -1.0); // 3 → 2 → 1
+
+        let all = dispatch!(&g.graph, graph => {
+            algo::floyd_warshall(graph, SweepKind::Plain, MemoryBudget::Unlimited)
+        })
+        .unwrap();
+        let tree = all.tree(1);
+        let order = round_order(&tree, 1);
+        assert_eq!(order[0], 1);
+        for (rank, &v) in order.iter().enumerate() {
+            if let Some(p) = tree.parent(v) {
+                assert!(order[..rank].contains(&p), "{p} before {v}");
+            }
+        }
+    }
+
+    #[test]
+    fn strong_components_are_ranked_by_size_like_the_weak_ones() {
+        // {1} → the cycle {2, 3, 4}, and 5 alone after it.
+        let parsed = WasmEdges::new(b"5\n1 2\n2 3\n3 4\n4 2\n4 5\n", true).expect("parses");
+        let g = parsed.build(RepresentationKind::Csr).expect("fits");
+        let labels = g.strong_component_labels();
+        assert_eq!(labels[2], 1);
+        assert_eq!((labels[3], labels[4]), (1, 1));
+        // Two singletons: the smaller vertex first.
+        assert_eq!((labels[1], labels[5]), (2, 3));
     }
 
     #[test]
@@ -1853,8 +2650,8 @@ mod tests {
 
     #[test]
     fn weighted_memory_reports_count_the_weights() {
-        let weighted = WasmEdges::new(WEIGHTED).expect("parses");
-        let plain = WasmEdges::new(b"5\n1 2\n2 5\n5 3\n3 4\n4 5\n1 5\n").expect("parses");
+        let weighted = WasmEdges::new(WEIGHTED, false).expect("parses");
+        let plain = WasmEdges::new(b"5\n1 2\n2 5\n5 3\n3 4\n4 5\n1 5\n", false).expect("parses");
         assert!(weighted.weighted() && !plain.weighted());
         let (w, p) = (weighted.memory_report(), plain.memory_report());
         assert_eq!(w.csr - p.csr, (2 * 6 * 8) as f64);

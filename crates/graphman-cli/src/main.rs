@@ -40,10 +40,18 @@ enum Command {
     Dfs(commands::search::Args),
     /// Shortest-path tree (Dijkstra) from one vertex, and paths to targets.
     Dijkstra(commands::dijkstra::Args),
+    /// Distances to one target with negative weights (Bellman-Ford), or the graph's negative cycle.
+    BellmanFord(commands::bellman_ford::Args),
+    /// Distances between all pairs in one table (Floyd-Warshall), printed for chosen vertices.
+    FloydWarshall(commands::floyd_warshall::Args),
+    /// Distances between all pairs by one Bellman-Ford and n Dijkstras (Johnson).
+    Johnson(commands::johnson::Args),
     /// Distance between pairs of vertices (weighted when the graph is).
     Distance(commands::distance::Args),
     /// Diameter: exact (brute force or iFUB) or a 4-sweep lower bound.
     Diameter(commands::diameter::Args),
+    /// Strongly connected components, in topological order, and the condensation.
+    Scc(commands::scc::Args),
     /// Connected components, largest first.
     Components(commands::components::Args),
     /// Time BFS, DFS or Dijkstra from many distinct start vertices.
@@ -55,7 +63,7 @@ enum Command {
     /// The DBLP XML dump as the course's collaboration network (weighted edge list + names).
     Dblp(commands::dblp::Args),
     /// Run the whole case study and write JSON + Markdown results.
-    Study(commands::study::Args),
+    Study(Box<commands::study::Args>),
 }
 
 fn main() -> Result<()> {
@@ -71,13 +79,17 @@ fn main() -> Result<()> {
         Command::Bfs(args) => commands::search::run(args, commands::search::Algorithm::Bfs, &ui),
         Command::Dfs(args) => commands::search::run(args, commands::search::Algorithm::Dfs, &ui),
         Command::Dijkstra(args) => commands::dijkstra::run(args, &ui),
+        Command::BellmanFord(args) => commands::bellman_ford::run(args, &ui),
         Command::Distance(args) => commands::distance::run(args, &ui),
+        Command::Johnson(args) => commands::johnson::run(args, &ui),
+        Command::Scc(args) => commands::scc::run(args, &ui),
+        Command::FloydWarshall(args) => commands::floyd_warshall::run(args, &ui),
         Command::Diameter(args) => commands::diameter::run(args, &ui),
         Command::Components(args) => commands::components::run(args, &ui),
         Command::Bench(args) => commands::bench::run(args, &ui),
         Command::Generate(args) => commands::generate::run(args, &ui),
         Command::Memory(args) => commands::memory::run(args, &ui),
         Command::Dblp(args) => commands::dblp::run(args, &ui),
-        Command::Study(args) => commands::study::run(args, &ui),
+        Command::Study(args) => commands::study::run(*args, &ui),
     }
 }

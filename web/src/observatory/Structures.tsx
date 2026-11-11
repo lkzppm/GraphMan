@@ -3,6 +3,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -12,6 +13,7 @@ import {
 import { ArrowDown } from 'lucide-react';
 import { formatInt, formatWeight } from '@/lib/format';
 import type { Dictionary } from '@/i18n';
+import DpTable, { dpMembers, usePrepared, type DpTrace, type Prepared } from './DpTable';
 import styles from './Structures.module.css';
 
 /* The structure strip: under the canvas, the data structure the search on
@@ -39,6 +41,10 @@ export interface StructureSearch {
   distances: Float64Array | null;
   ranks: Uint32Array;
   frontier: FrontierName | null;
+  /** Bellman-Ford's schedule, or Floyd-Warshall's sweep: the strip then
+      shows the dynamic programme's table. */
+  schedule?: string | null;
+  sweep?: string | null;
   dfs: 'iterative' | 'recursive' | null;
   /** Steps of the replay: `span`, or for a DFS one per push and per pop. */
   steps: number;
@@ -121,6 +127,9 @@ export default function Structures({
   height,
   columnRef,
   frontierAt,
+  traceOf,
+  floydRound,
+  vertexCount,
   hovered,
   onHover,
   onSelect,
@@ -142,6 +151,13 @@ export default function Structures({
   /** Dijkstra's frontier after the settle `step`, at most `limit` entries;
       `null` when it cannot be replayed. */
   frontierAt: (step: number, limit: number) => FrontierView | null;
+  /** Bellman-Ford's or Floyd-Warshall's trace (`null`: too large to keep),
+      asked for once per run. */
+  traceOf: () => DpTrace | null;
+  /** Floyd-Warshall's table on its own (no row picked, `search` null): the
+      round its replay stands at; `null` otherwise. */
+  floydRound: number | null;
+  vertexCount: number;
   hovered: number;
   onHover: (v: number) => void;
   onSelect: (v: number) => void;
@@ -168,22 +184,42 @@ export default function Structures({
   const s = t.structures;
   const step = search ? Math.max(0, Math.min(Math.round(reveal), search.steps - 1)) : 0;
   const link = { hovered, onHover, onSelect };
+  const table = !search && floydRound !== null;
+  const dynamic = table || Boolean(search && (search.schedule || search.sweep));
   const frontier = useFrontier(
-    search?.kind === 'dijkstra' ? search : null,
+    search?.kind === 'dijkstra' && !dynamic ? search : null,
     step,
     playing,
     frontierAt,
   );
+  const dpTrace = useMemo(() => (dynamic ? traceOf() : null), [dynamic, traceOf]);
+  const prepared = usePrepared(dpTrace, vertexCount);
 
   useEffect(() => {
-    onMembers(search ? members(search, step, frontier ?? null) : null);
-  }, [search, step, frontier, onMembers]);
+    if (table) onMembers(floydRound ? { vertices: [floydRound], focus: floydRound } : null);
+    else onMembers(search ? members(search, step, frontier ?? null, prepared) : null);
+  }, [search, step, frontier, prepared, table, floydRound, onMembers]);
   useEffect(() => () => onMembers(null), [onMembers]);
 
   let title = '';
   let body: ReactNode = <p className={styles.empty}>{s.empty}</p>;
 
-  if (search?.kind === 'bfs') {
+  if (dynamic) {
+    const floyd = table || Boolean(search?.sweep);
+    title = floyd ? s.titles.floyd : s.titles.bellman;
+    body = prepared ? (
+      <DpTable
+        t={t}
+        search={search ?? NO_ROW}
+        step={step}
+        round={table ? (floydRound ?? 0) : undefined}
+        prepared={prepared}
+        link={link}
+      />
+    ) : (
+      <p className={styles.empty}>{floyd ? s.dp.floydTooLarge : s.dp.bellmanTooLarge}</p>
+    );
+  } else if (search?.kind === 'bfs') {
     title = s.titles.bfs;
     body = (
       <ArrayView
@@ -266,8 +302,19 @@ export default function Structures({
   );
 }
 
+/** Floyd-Warshall's table with no row picked: no origin, no replay order. */
+const NO_ROW = { root: 0, order: new Uint32Array(0), span: 0 };
+
 /** What the strip draws at `step`, as vertices for the canvas. */
-function members(search: StructureSearch, step: number, frontier: FrontierView | null): Members {
+function members(
+  search: StructureSearch,
+  step: number,
+  frontier: FrontierView | null,
+  prepared: Prepared | null,
+): Members {
+  if (search.schedule || search.sweep) {
+    return prepared ? dpMembers(prepared, search, step) : { vertices: [], focus: 0 };
+  }
   if (search.kind !== 'dijkstra') {
     const held = search.kind === 'bfs' ? bfsQueue(search, step) : dfsStack(search, step);
     const shown = held.items.filter((x): x is number => !isGap(x));

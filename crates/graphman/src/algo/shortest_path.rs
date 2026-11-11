@@ -17,37 +17,46 @@ use std::io::{self, Write};
 
 /// Dijkstra was asked to run on a graph with a negative edge.
 ///
-/// In an undirected graph one negative edge `{u, v}` already makes the walk
-/// `u v u v ...` as short as one likes, so there is no shortest path to
-/// report; the library says so instead of returning a wrong answer.
+/// Dijkstra settles a vertex for good the moment it leaves the frontier,
+/// which is only right when no edge can make a path shorter. In an
+/// undirected graph one negative edge `{u, v}` even makes the walk
+/// `u v u v ...` as short as one likes. The library refuses instead of
+/// returning a wrong answer; [`bellman_ford`](super::bellman_ford) takes
+/// negative weights and reports the negative cycle when there is one.
 #[derive(Debug, Clone, Copy, PartialEq, thiserror::Error)]
 #[error(
-    "edge {}-{} has the negative weight {}: shortest paths with negative weights are not implemented yet",
+    "edge {}-{} has the negative weight {}: Dijkstra needs non-negative weights \
+     (Bellman-Ford takes negative ones)",
     .edge.u, .edge.v, .edge.weight
 )]
 pub struct NegativeWeight {
-    /// The first negative edge of the graph, in `[min, max]` order.
+    /// The first negative edge of the graph, in sorted order.
     pub edge: WeightedEdge,
 }
 
 /// The tree a Dijkstra run produces: the distance from the root to every
 /// settled vertex, the parent on a shortest path, and the settle order.
+/// Bellman-Ford builds the same tree (every vertex it reaches counts as
+/// settled once the run is over).
 ///
 /// Like [`SearchTree`](super::SearchTree) it is reusable: [`reset`](Self::reset)
 /// only touches the vertices the previous run reached, so `k` runs from
 /// different roots on a graph with millions of vertices allocate nothing.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShortestPathTree {
-    root: Vertex,
-    parent: Vec<Vertex>,
+    pub(super) root: Vertex,
+    pub(super) parent: Vec<Vertex>,
     /// Tentative while a run is in progress, final once settled; `+∞` when unreached.
-    distance: Vec<Weight>,
+    pub(super) distance: Vec<Weight>,
     /// Settled vertices, in the order they left the frontier.
-    order: Vec<Vertex>,
+    pub(super) order: Vec<Vertex>,
     /// Every vertex that received an estimate, settled or not.
-    touched: Vec<Vertex>,
+    pub(super) touched: Vec<Vertex>,
     /// One bit per vertex, set when settled.
-    settled: Vec<u64>,
+    pub(super) settled: Vec<u64>,
+    /// Bellman-Ford only (empty otherwise): the number of arcs of the walk
+    /// behind each estimate, which reaches `n` only through a negative cycle.
+    pub(super) hops: Vec<u32>,
 }
 
 impl ShortestPathTree {
@@ -60,6 +69,7 @@ impl ShortestPathTree {
             order: Vec::with_capacity(vertex_count),
             touched: Vec::with_capacity(vertex_count),
             settled: vec![0u64; (vertex_count + 1).div_ceil(64)],
+            hops: Vec::new(),
         }
     }
 
@@ -120,6 +130,17 @@ impl ShortestPathTree {
     /// The shortest path from the root to `v` (both included), or `None` if
     /// `v` was not reached.
     pub fn path_to(&self, v: Vertex) -> Option<Vec<Vertex>> {
+        let mut path = self.path_from(v)?;
+        path.reverse();
+        Some(path)
+    }
+
+    /// The parents from `v` back to the root (both included), or `None` if
+    /// `v` was not reached: [`path_to`](Self::path_to) reversed. On a tree
+    /// grown toward its root ([`bellman_ford_to`](super::bellman_ford_to),
+    /// where the parent of a vertex is its successor), this is the shortest
+    /// path from `v` to the target.
+    pub fn path_from(&self, v: Vertex) -> Option<Vec<Vertex>> {
         if !self.is_settled(v) {
             return None;
         }
@@ -129,7 +150,6 @@ impl ShortestPathTree {
             path.push(p);
             at = p;
         }
-        path.reverse();
         Some(path)
     }
 
@@ -140,6 +160,7 @@ impl ShortestPathTree {
             + self.distance.capacity() * size_of::<Weight>()
             + (self.order.capacity() + self.touched.capacity()) * size_of::<Vertex>()
             + self.settled.capacity() * size_of::<u64>()
+            + self.hops.capacity() * size_of::<u32>()
     }
 
     /// Raw parent array indexed by vertex (`NO_VERTEX` = none). Only settled
@@ -156,17 +177,21 @@ impl ShortestPathTree {
 
     /// Forgets the previous run in `O(reached)` time.
     pub fn reset(&mut self) {
+        let hops = !self.hops.is_empty();
         for &v in &self.touched {
             self.distance[v as usize] = Weight::INFINITY;
             self.parent[v as usize] = NO_VERTEX;
             self.settled[(v >> 6) as usize] = 0;
+            if hops {
+                self.hops[v as usize] = 0;
+            }
         }
         self.touched.clear();
         self.order.clear();
         self.root = NO_VERTEX;
     }
 
-    fn begin(&mut self, root: Vertex) {
+    pub(super) fn begin(&mut self, root: Vertex) {
         assert!(
             root >= 1 && (root as usize) < self.distance.len(),
             "vertex {root} is outside 1..={}",
@@ -176,6 +201,35 @@ impl ShortestPathTree {
         self.root = root;
         self.distance[root as usize] = 0.0;
         self.touched.push(root);
+    }
+
+    /// Starts a run where every vertex is at distance 0 with no parent, as
+    /// if a virtual root had a 0-weight arc to each (Bellman-Ford's
+    /// whole-graph question, Johnson's potentials). The root stays
+    /// `NO_VERTEX`.
+    pub(super) fn begin_everywhere(&mut self) {
+        self.reset();
+        let n = self.vertex_count() as Vertex;
+        for v in 1..=n {
+            self.distance[v as usize] = 0.0;
+            self.touched.push(v);
+        }
+    }
+
+    /// Ends a label-correcting run: every reached vertex is final, and the
+    /// order lists them by distance (then id), as a settle order would.
+    pub(super) fn settle_touched(&mut self) {
+        for &v in &self.touched {
+            self.settled[(v >> 6) as usize] |= 1u64 << (v & 63);
+        }
+        self.order.clear();
+        self.order.extend_from_slice(&self.touched);
+        let distance = &self.distance;
+        self.order.sort_unstable_by(|&a, &b| {
+            distance[a as usize]
+                .total_cmp(&distance[b as usize])
+                .then(a.cmp(&b))
+        });
     }
 
     /// Drops the estimates of vertices that were reached but not settled
@@ -193,9 +247,21 @@ impl ShortestPathTree {
     /// Writes `vertex parent distance` per line, like the search trees: the
     /// root's parent is `0`; unreached vertices get `- -`.
     pub fn write_to<W: Write>(&self, w: W) -> io::Result<()> {
+        self.write_with_header(w, "root", "parent")
+    }
+
+    /// [`write_to`](Self::write_to) for a tree grown toward its root
+    /// ([`bellman_ford_to`](super::bellman_ford_to)): the header names the
+    /// root a target and the parents successors, `vertex successor
+    /// distance`, the distance being from the vertex to the target.
+    pub fn write_toward_root_to<W: Write>(&self, w: W) -> io::Result<()> {
+        self.write_with_header(w, "target", "successor")
+    }
+
+    fn write_with_header<W: Write>(&self, w: W, root: &str, parent: &str) -> io::Result<()> {
         let mut w = io::BufWriter::new(w);
-        writeln!(w, "# root {}", self.root)?;
-        writeln!(w, "# vertex parent distance")?;
+        writeln!(w, "# {root} {}", self.root)?;
+        writeln!(w, "# vertex {parent} distance")?;
         for v in 1..self.distance.len() as Vertex {
             match self.distance(v) {
                 None => writeln!(w, "{v} - -")?,

@@ -183,3 +183,107 @@ export function pathTo(parents: number[], root: number, v: number): number[] {
   while (path[path.length - 1] !== root) path.push(parents[path[path.length - 1]]);
   return path.reverse();
 }
+
+// ---- Part 3: the directed sample --------------------------------------------
+//
+// The sample's six edges read as arcs ([tail, head], in the sample's order),
+// two of them negative, around one cycle 2 → 4 → 5 → 3 → 2 of weight 1: the
+// graph of the library page's Part 3 chapters (tests/wiki.rs runs the same).
+
+export const DIRECTED_ARCS: Edge[] = [
+  [1, 2],
+  [1, 3],
+  [3, 2],
+  [2, 4],
+  [5, 3],
+  [4, 5],
+];
+export const DIRECTED_WEIGHTS = [4, 2, -1, 2, 2, -2];
+/** The same arcs with 5 → 3 at -1: the cycle 2 → 4 → 5 → 3 → 2 weighs -2. */
+export const NEGATIVE_CYCLE_WEIGHTS = [4, 2, -1, 2, -1, -2];
+export const NEGATIVE_CYCLE: number[] = [2, 4, 5, 3, 2];
+
+/** Bellman-Ford's answer: distances and parents (passes until nothing
+    changes; the order does not change the answer, only the work). */
+export function bellmanFord(
+  n: number,
+  arcs: Edge[],
+  weights: number[],
+  root: number,
+): ShortestPaths {
+  const distances = new Array<number>(n + 1).fill(Infinity);
+  const parents = new Array<number>(n + 1).fill(0);
+  distances[root] = 0;
+  for (let pass = 0; pass < n; pass++) {
+    let changed = false;
+    arcs.forEach(([u, v], i) => {
+      if (distances[u] + weights[i] < distances[v]) {
+        distances[v] = distances[u] + weights[i];
+        parents[v] = u;
+        changed = true;
+      }
+    });
+    if (!changed) break;
+  }
+  const order = Array.from({ length: n }, (_, i) => i + 1)
+    .filter((v) => distances[v] < Infinity)
+    .sort((a, b) => distances[a] - distances[b] || a - b);
+  return { order, parents, distances };
+}
+
+/** Floyd-Warshall's table, D[i][j] (1-based, row and column 0 unused). */
+export function floydWarshall(n: number, arcs: Edge[], weights: number[]): number[][] {
+  const d = Array.from({ length: n + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === j ? 0 : Infinity)),
+  );
+  arcs.forEach(([u, v], i) => {
+    d[u][v] = Math.min(d[u][v], weights[i]);
+  });
+  for (let k = 1; k <= n; k++) {
+    for (let i = 1; i <= n; i++) {
+      for (let j = 1; j <= n; j++) {
+        if (d[i][k] + d[k][j] < d[i][j]) d[i][j] = d[i][k] + d[k][j];
+      }
+    }
+  }
+  return d;
+}
+
+/** Strongly connected components, numbered 1.. in a topological order of
+    the condensation (as the library's iterative Tarjan numbers them). */
+export function strongComponents(n: number, arcs: Edge[]): number[] {
+  const out: number[][] = Array.from({ length: n + 1 }, () => []);
+  for (const [u, v] of arcs) out[u].push(v);
+  const index = new Array<number>(n + 1).fill(0);
+  const low = new Array<number>(n + 1).fill(0);
+  const onStack = new Array<boolean>(n + 1).fill(false);
+  const stack: number[] = [];
+  const found: number[][] = [];
+  let next = 1;
+  const visit = (v: number) => {
+    index[v] = low[v] = next++;
+    stack.push(v);
+    onStack[v] = true;
+    for (const w of out[v]) {
+      if (!index[w]) {
+        visit(w);
+        low[v] = Math.min(low[v], low[w]);
+      } else if (onStack[w]) low[v] = Math.min(low[v], index[w]);
+    }
+    if (low[v] === index[v]) {
+      const members: number[] = [];
+      let w = 0;
+      do {
+        w = stack.pop()!;
+        onStack[w] = false;
+        members.push(w);
+      } while (w !== v);
+      found.push(members);
+    }
+  };
+  for (let v = 1; v <= n; v++) if (!index[v]) visit(v);
+  // Tarjan finishes sinks first: reversed, the ids run along the arcs.
+  const label = new Array<number>(n + 1).fill(0);
+  found.reverse().forEach((members, i) => members.forEach((v) => (label[v] = i + 1)));
+  return label;
+}

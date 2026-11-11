@@ -60,7 +60,18 @@ interface Props {
   /** A note per vertex (index 0 unused), written just outside the drawing's
       centre from it, like a distance beside its vertex. */
   notes?: string[];
+  /** Every edge [u, v] is the arc u → v: a small filled head at v. */
+  directed?: boolean;
+  /** A negative cycle, closed (its first vertex last too): drawn in the
+      cycle's red, over everything. */
+  cycle?: number[];
 }
+
+/** An arc's head: its length and half-width, and the room left for the
+    vertex's circle. */
+const HEAD = 7;
+const HEAD_HALF = 3.6;
+const RADIUS = 12;
 
 export default function GraphFigure({
   edges,
@@ -73,6 +84,8 @@ export default function GraphFigure({
   marks,
   weights,
   notes,
+  directed = false,
+  cycle,
 }: Props) {
   const n = positions.length - 1;
   const pos = positions;
@@ -88,13 +101,18 @@ export default function GraphFigure({
   const notePlace = (v: number): [number, number] => {
     const [dx, dy] = [pos[v][0] - centre[0], pos[v][1] - centre[1]];
     const length = Math.hypot(dx, dy) || 1;
-    return [pos[v][0] + (dx / length) * NOTE_OFFSET, pos[v][1] + (dy / length) * NOTE_OFFSET];
+    return [
+      round(pos[v][0] + (dx / length) * NOTE_OFFSET),
+      round(pos[v][1] + (dy / length) * NOTE_OFFSET),
+    ];
   };
 
   const maxLevel = levels ? Math.max(0, ...levels.filter((l) => l !== UNREACHED)) : 0;
   const onPath = new Set<string>();
   if (path) for (let i = 1; i < path.length; i++) onPath.add(key(path[i - 1], path[i]));
   if (kept) for (const [u, v] of kept) onPath.add(key(u, v));
+  const onCycle = new Set<string>();
+  if (cycle) for (let i = 1; i < cycle.length; i++) onCycle.add(key(cycle[i - 1], cycle[i]));
   const marked = new Set(marks ?? []);
   const coloured = components !== undefined || levels !== undefined;
 
@@ -107,7 +125,30 @@ export default function GraphFigure({
   const isTree = (u: number, v: number) =>
     parents !== undefined && (parents[u] === v || parents[v] === u);
   const kind = (u: number, v: number) =>
-    onPath.has(key(u, v)) ? 'path' : isTree(u, v) ? 'tree' : undefined;
+    onCycle.has(key(u, v))
+      ? 'cycle'
+      : onPath.has(key(u, v))
+        ? 'path'
+        : isTree(u, v)
+          ? 'tree'
+          : undefined;
+  /** Where an arc's line ends and its head sits: short of the head's circle. */
+  const arc = (u: number, v: number) => {
+    const [x1, y1] = pos[u];
+    const [x2, y2] = pos[v];
+    const length = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const [ux, uy] = [(x2 - x1) / length, (y2 - y1) / length];
+    const tip: [number, number] = [x2 - ux * (RADIUS + 1.5), y2 - uy * (RADIUS + 1.5)];
+    const base: [number, number] = [tip[0] - ux * HEAD, tip[1] - uy * HEAD];
+    const head = [
+      tip,
+      [base[0] - uy * HEAD_HALF, base[1] + ux * HEAD_HALF],
+      [base[0] + uy * HEAD_HALF, base[1] - ux * HEAD_HALF],
+    ]
+      .map(([x, y]) => `${round(x)},${round(y)}`)
+      .join(' ');
+    return { end: [round(base[0]), round(base[1])], head };
+  };
 
   return (
     <svg
@@ -116,17 +157,29 @@ export default function GraphFigure({
       style={{ width: width * PX_PER_UNIT }}
       aria-hidden="true"
     >
-      {edges.map(([u, v]) => (
-        <line
-          key={`${u}-${v}`}
-          x1={pos[u][0]}
-          y1={pos[u][1]}
-          x2={pos[v][0]}
-          y2={pos[v][1]}
-          className={styles.edge}
-          data-kind={kind(u, v)}
-        />
-      ))}
+      {edges.map(([u, v]) => {
+        const end = directed ? arc(u, v).end : pos[v];
+        return (
+          <line
+            key={`${u}-${v}`}
+            x1={pos[u][0]}
+            y1={pos[u][1]}
+            x2={end[0]}
+            y2={end[1]}
+            className={styles.edge}
+            data-kind={kind(u, v)}
+          />
+        );
+      })}
+      {directed &&
+        edges.map(([u, v]) => (
+          <polygon
+            key={`h${u}-${v}`}
+            points={arc(u, v).head}
+            className={styles.head}
+            data-kind={kind(u, v)}
+          />
+        ))}
       {weights &&
         edges.map(([u, v], i) => (
           <text
@@ -146,7 +199,7 @@ export default function GraphFigure({
           <circle
             cx={pos[v][0]}
             cy={pos[v][1]}
-            r={12}
+            r={RADIUS}
             style={{ fill: fill(v) }}
             data-coloured={coloured || undefined}
           />
@@ -179,6 +232,12 @@ export default function GraphFigure({
       ))}
     </svg>
   );
+}
+
+/** Two decimals: the server and the browser can differ in a float's last
+    digit, and the drawing must hydrate to the same attributes. */
+function round(x: number) {
+  return Math.round(x * 100) / 100;
 }
 
 function key(u: number, v: number) {

@@ -163,3 +163,62 @@ parsing or writing results.
   two weeks on `grafo_W_7` (Apple M5). The study runs
   it under `--dijkstra-budget`, reporting the runs that finished or an
   estimate from the run cut short, like the Part 1 matrix memory refusals.
+
+---
+
+# Assignment, Part 3 (COS 242, 2026/2)
+
+Source: `docs/trabalho-P3.pdf` (Portuguese). This is a faithful English
+summary; the design that answers it is `spec/PHASE3.md`.
+
+## Deliverables
+
+- Same pair, same library: Part 3 **uses and extends** the Part 1 and Part 2
+  library, it is not a new program.
+- A **report** of at most 5 pages: design and implementation decisions,
+  the answers to the case-study questions, the source-code URL.
+- An **8-minute presentation** of design decisions, implementation
+  particularities and the case-study results.
+
+## Required library features
+
+1. **Directed weighted graphs.** Represent directed graphs with real edge
+   weights using an adjacency list or an adjacency vector (the matrix is
+   optional). The file format is Part 2's (`n`, then `u v w` per line), and
+   a **user-given parameter** says whether the graph is directed. When it
+   is, each line is the arc **from the first vertex to the second**.
+2. **Algorithms on directed graphs.** BFS, DFS and Dijkstra must run on
+   directed graphs.
+3. **Bellman-Ford.** The distance and shortest path **from every vertex to
+   one given vertex** (a target, not a source). It returns the distances,
+   the shortest-path tree, and **whether the graph has a negative cycle**.
+   Implement **the two optimisations discussed in class** (our reading:
+   stop as soon as a pass changes nothing, and only re-examine vertices
+   whose distance changed in the previous pass; see `spec/PHASE3.md` §4).
+4. **Floyd-Warshall.** The distance and shortest path between **all pairs**.
+   It returns the distances, **the shortest-path tree from each vertex**,
+   and whether the graph has a negative cycle. Implement **the memory
+   optimisation discussed in class** (one `n × n` table updated in place
+   instead of one table per `k`).
+
+## Case-study questions (for each case-study graph)
+
+1. **Bellman-Ford:** the distance from vertices **10, 20 and 30 to vertex
+   100**, in a table.
+2. **Floyd-Warshall:** the distances between the pairs of
+   **{10, 20, 30, 40, 50}**, in a table.
+3. The **mean running time of each algorithm** over **10 runs**, without
+   disk reads or writes, in a table (seconds).
+4. **Bellman-Ford for all pairs** (one run per vertex) against
+   Floyd-Warshall, mean of 10 runs: which was more efficient, and why?
+
+**Timing rule** (unchanged): the algorithm only, not parsing or writing.
+
+## The files
+
+Not published yet (2026-11-11). The handout does not say which graphs the
+case study uses. If they are the Part 2 files (`grafo_W_3` with 100,000
+vertices and up), Floyd-Warshall's `n × n` table does not fit
+(`spec/PHASE3.md` §5) and its cells become budgeted refusals with an
+estimate, like the Part 1 matrix and the Part 2 vector. Record the real
+files here, with their quirks, when they are out.

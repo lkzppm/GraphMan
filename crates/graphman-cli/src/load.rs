@@ -2,7 +2,9 @@
 
 use crate::ui::{self, Ui};
 use anyhow::{Context, Result, bail};
-use graphman::{AnyGraph, EdgeList, MemoryBudget, Representation, Vertex, VertexNames};
+use graphman::{
+    AnyGraph, EdgeList, MemoryBudget, Orientation, Representation, Vertex, VertexNames,
+};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -20,6 +22,10 @@ pub struct GraphArgs {
     /// Build even if the representation exceeds this machine's memory.
     #[arg(long)]
     pub force: bool,
+
+    /// Read every line `u v` as the arc from u to v, not as an undirected edge.
+    #[arg(short = 'D', long)]
+    pub directed: bool,
 }
 
 impl GraphArgs {
@@ -29,6 +35,11 @@ impl GraphArgs {
         } else {
             MemoryBudget::Machine
         }
+    }
+
+    /// Whether lines are edges or arcs.
+    pub fn orientation(&self) -> Orientation {
+        Orientation::from_directed(self.directed)
     }
 
     /// The file name without extension, used to name outputs.
@@ -42,10 +53,15 @@ impl GraphArgs {
     /// Parses the file (reporting what was normalised away).
     pub fn edges(&self, ui: &Ui) -> Result<EdgeList> {
         let start = Instant::now();
-        let edges = EdgeList::from_path(&self.graph)
+        let edges = EdgeList::from_path_with(&self.graph, self.orientation())
             .with_context(|| format!("reading {}", self.graph.display()))?;
+        let directed = edges.is_directed();
+        let (edge, edges_name) = match directed {
+            true => ("arc", "arcs"),
+            false => ("edge", "edges"),
+        };
         ui.step(&format!(
-            "parsed {} in {}: {} vertices, {} {}edges",
+            "parsed {} in {}: {} vertices, {} {}{edges_name}",
             self.graph.display(),
             ui::duration(start.elapsed()),
             edges.vertex_count(),
@@ -56,16 +72,25 @@ impl GraphArgs {
             ui.kv(
                 "normalised",
                 format!(
-                    "{} self-loops and {} duplicate edges dropped",
+                    "{} self-loops and {} duplicate {edges_name} dropped",
                     edges.self_loops_dropped(),
                     edges.duplicates_dropped()
                 ),
             );
         }
-        if let Some(edge) = edges.negative_edge() {
+        if let Some(negative) = edges.negative_edge() {
+            let arrow = if directed { "->" } else { "-" };
             ui.warn(&format!(
-                "edge {}-{} has the negative weight {}: shortest paths will be refused",
-                edge.u, edge.v, edge.weight
+                "{edge} {}{arrow}{} has the negative weight {}: Dijkstra will refuse the graph (Bellman-Ford takes it)",
+                negative.u, negative.v, negative.weight
+            ));
+        }
+        if let Some(first) = edges.negative_loops().first() {
+            ui.warn(&format!(
+                "{} negative self-loop(s), the first at {} ({}): a negative cycle of one {edge}",
+                edges.negative_loops().len(),
+                first.u,
+                first.weight
             ));
         }
         Ok(edges)

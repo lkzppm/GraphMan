@@ -21,8 +21,13 @@
 //!
 //! The first edge line decides which of the two a file is; every other line
 //! must have the same columns.
+//!
+//! Nothing in the file says whether a line is an edge or an arc: the caller
+//! does, with an [`Orientation`] ([`EdgeList::parse_with`]). Parsed as
+//! [`Orientation::Directed`], each line `u v` is the arc from `u` to `v`
+//! (Part 3).
 
-use crate::graph::{Vertex, Weight, WeightedEdge};
+use crate::graph::{Orientation, Vertex, Weight, WeightedEdge};
 #[cfg(feature = "mmap")]
 use core::mem::size_of;
 use memchr::memchr_iter;
@@ -35,27 +40,38 @@ use memchr::memchr_iter;
 /// sorted order is what lets the builders produce ascending neighbour rows
 /// without sorting anything themselves.
 ///
+/// A directed list is normalised the same way minus the orientation: each
+/// arc stays `[tail, head]`, so `1 2` and `2 1` are two different arcs, and
+/// the list sorted by `(tail, head)` is exactly the out-rows, ascending.
+///
 /// A weighted list keeps its weights in a second array parallel to the
 /// edges. A duplicated edge keeps its smallest weight, the only one a
 /// shortest path could use, and the first edge with a negative weight is
 /// recorded so that algorithms needing non-negative weights can refuse the
-/// graph without looking at it again.
+/// graph without looking at it again. A self-loop with a negative weight is
+/// a negative cycle of one arc: it is dropped from the edges like any loop,
+/// but recorded in [`negative_loops`](Self::negative_loops).
 #[derive(Debug)]
 pub struct EdgeList {
     vertex_count: usize,
+    orientation: Orientation,
     edges: EdgeStore<[Vertex; 2]>,
     /// `None` for a file without a weight column.
     weights: Option<EdgeStore<Weight>>,
     self_loops_dropped: usize,
     duplicates_dropped: usize,
     negative_edge: Option<WeightedEdge>,
+    /// One per vertex (its smallest weight), by vertex.
+    negative_loops: Vec<WeightedEdge>,
 }
 
 impl PartialEq for EdgeList {
     fn eq(&self, other: &Self) -> bool {
         self.vertex_count == other.vertex_count
+            && self.orientation == other.orientation
             && self.edges() == other.edges()
             && self.weights() == other.weights()
+            && self.negative_loops == other.negative_loops
     }
 }
 
@@ -242,8 +258,15 @@ pub enum ParseError {
 }
 
 impl EdgeList {
-    /// Parses the text format from memory, with or without a weight column.
+    /// Parses the text format from memory, with or without a weight column,
+    /// as an undirected graph.
     pub fn parse(bytes: &[u8]) -> Result<Self, ParseError> {
+        Self::parse_with(bytes, Orientation::Undirected)
+    }
+
+    /// Parses the text format from memory with the given orientation: as
+    /// [`Orientation::Directed`], each line `u v` is the arc `u → v`.
+    pub fn parse_with(bytes: &[u8], orientation: Orientation) -> Result<Self, ParseError> {
         let mut lines = Lines::new(bytes);
         let (line_no, header) = loop {
             match lines.next() {
@@ -277,7 +300,7 @@ impl EdgeList {
                 }
                 raw.push([u, v]);
             }
-            return Ok(Self::normalise(vertex_count, raw));
+            return Ok(Self::normalise(vertex_count, raw, orientation));
         }
         let mut raw = EdgeStore::with_capacity(capacity);
         for (line_no, line) in edge_lines {
@@ -292,12 +315,21 @@ impl EdgeList {
             })?;
             raw.push(WeightedRecord { u, v, weight });
         }
-        Self::normalise_weighted(vertex_count, raw)
+        Self::normalise_weighted(vertex_count, raw, orientation)
     }
 
-    /// Reads and parses a file. With the `mmap` feature the file is memory
-    /// mapped and parsed in place; otherwise it is read into memory first.
+    /// Reads and parses a file as an undirected graph.
     pub fn from_path(path: impl AsRef<std::path::Path>) -> Result<Self, ParseError> {
+        Self::from_path_with(path, Orientation::Undirected)
+    }
+
+    /// Reads and parses a file with the given orientation. With the `mmap`
+    /// feature the file is memory mapped and parsed in place; otherwise it is
+    /// read into memory first.
+    pub fn from_path_with(
+        path: impl AsRef<std::path::Path>,
+        orientation: Orientation,
+    ) -> Result<Self, ParseError> {
         let file = std::fs::File::open(path)?;
         #[cfg(feature = "mmap")]
         {
@@ -306,34 +338,55 @@ impl EdgeList {
             let map = unsafe { memmap2::Mmap::map(&file)? };
             #[cfg(unix)]
             let _ = map.advise(memmap2::Advice::Sequential);
-            Self::parse(&map)
+            Self::parse_with(&map, orientation)
         }
         #[cfg(not(feature = "mmap"))]
         {
             let mut bytes = Vec::new();
             std::io::Read::read_to_end(&mut &file, &mut bytes)?;
-            Self::parse(&bytes)
+            Self::parse_with(&bytes, orientation)
         }
     }
 
-    /// Builds an unweighted edge list from in-memory edges (mainly for tests
-    /// and generators).
+    /// Builds an unweighted, undirected edge list from in-memory edges
+    /// (mainly for tests and generators).
     pub fn from_edges(
         vertex_count: usize,
         edges: impl IntoIterator<Item = (Vertex, Vertex)>,
+    ) -> Result<Self, ParseError> {
+        Self::from_edges_with(vertex_count, edges, Orientation::Undirected)
+    }
+
+    /// [`from_edges`](Self::from_edges) with the given orientation.
+    pub fn from_edges_with(
+        vertex_count: usize,
+        edges: impl IntoIterator<Item = (Vertex, Vertex)>,
+        orientation: Orientation,
     ) -> Result<Self, ParseError> {
         let mut raw = EdgeStore::Heap(Vec::new());
         for (index, (u, v)) in edges.into_iter().enumerate() {
             check_vertices(index + 2, [u as u64, v as u64], vertex_count)?;
             raw.push([u, v]);
         }
-        Ok(Self::normalise(vertex_count, raw))
+        Ok(Self::normalise(vertex_count, raw, orientation))
     }
 
-    /// Builds a weighted edge list from in-memory `(u, v, weight)` triples.
+    /// Builds a weighted, undirected edge list from in-memory `(u, v,
+    /// weight)` triples.
     pub fn from_weighted_edges(
         vertex_count: usize,
         edges: impl IntoIterator<Item = (Vertex, Vertex, Weight)>,
+    ) -> Result<Self, ParseError> {
+        Self::from_weighted_edges_with(vertex_count, edges, Orientation::Undirected)
+    }
+
+    /// [`from_weighted_edges`](Self::from_weighted_edges) with the given
+    /// orientation: as [`Orientation::Directed`], `(u, v, weight)` is the arc
+    /// `u → v`.
+    pub fn from_weighted_edges_with(
+        vertex_count: usize,
+        edges: impl IntoIterator<Item = (Vertex, Vertex, Weight)>,
+        orientation: Orientation,
     ) -> Result<Self, ParseError> {
         let edges = edges.into_iter();
         // Sized at once: doubling on the way holds half as much again beside it.
@@ -349,18 +402,24 @@ impl EdgeList {
             }
             raw.push(WeightedRecord { u, v, weight });
         }
-        Self::normalise_weighted(vertex_count, raw)
+        Self::normalise_weighted(vertex_count, raw, orientation)
     }
 
-    fn normalise(vertex_count: usize, mut raw: EdgeStore<[Vertex; 2]>) -> Self {
-        // Drop self-loops and orient every edge as [min, max], compacting in place.
+    fn normalise(
+        vertex_count: usize,
+        mut raw: EdgeStore<[Vertex; 2]>,
+        orientation: Orientation,
+    ) -> Self {
+        // Drop self-loops and orient every undirected edge as [min, max]
+        // (an arc keeps its direction), compacting in place.
+        let directed = orientation.is_directed();
         let edges = raw.as_mut_slice();
         let before = edges.len();
         let mut kept = 0;
         for i in 0..before {
             let [a, b] = edges[i];
             if a != b {
-                edges[kept] = if a < b { [a, b] } else { [b, a] };
+                edges[kept] = if a < b || directed { [a, b] } else { [b, a] };
                 kept += 1;
             }
         }
@@ -383,11 +442,13 @@ impl EdgeList {
         raw.shrink_to_fit();
         Self {
             vertex_count,
+            orientation,
             edges: raw,
             weights: None,
             self_loops_dropped,
             duplicates_dropped,
             negative_edge: None,
+            negative_loops: Vec::new(),
         }
     }
 
@@ -397,20 +458,28 @@ impl EdgeList {
     fn normalise_weighted(
         vertex_count: usize,
         mut raw: EdgeStore<WeightedRecord>,
+        orientation: Orientation,
     ) -> Result<Self, ParseError> {
+        let directed = orientation.is_directed();
         let records = raw.as_mut_slice();
         let before = records.len();
         let mut kept = 0;
+        let mut negative_loops = Vec::new();
         for i in 0..before {
             let WeightedRecord { u, v, weight } = records[i];
             if u != v {
-                let (u, v) = if u < v { (u, v) } else { (v, u) };
+                let (u, v) = if u < v || directed { (u, v) } else { (v, u) };
                 records[kept] = WeightedRecord { u, v, weight };
                 kept += 1;
+            } else if weight < 0.0 {
+                negative_loops.push(WeightedEdge { u, v, weight });
             }
         }
         let self_loops_dropped = before - kept;
         raw.truncate(kept);
+        // One loop per vertex, the smallest: the only one a walk would take.
+        negative_loops.sort_unstable_by(|a, b| a.u.cmp(&b.u).then(a.weight.total_cmp(&b.weight)));
+        negative_loops.dedup_by_key(|edge| edge.u);
 
         // Sorting by weight within an edge puts the smallest copy of a
         // duplicated edge first, so keeping the first copy keeps the minimum.
@@ -445,6 +514,9 @@ impl EdgeList {
                 negative_edge = Some(WeightedEdge { u, v, weight });
             }
         }
+        for edge in &negative_loops {
+            total += edge.weight.abs();
+        }
         // Every path weighs at most the sum of all weights; if that sum is
         // not a finite float, a distance could overflow to infinity and a
         // reachable vertex would look unreached.
@@ -453,11 +525,13 @@ impl EdgeList {
         }
         Ok(Self {
             vertex_count,
+            orientation,
             edges,
             weights: Some(weights),
             self_loops_dropped,
             duplicates_dropped,
             negative_edge,
+            negative_loops,
         })
     }
 
@@ -466,12 +540,23 @@ impl EdgeList {
         self.vertex_count
     }
 
-    /// Number of unique, loop-free undirected edges.
+    /// Whether the lines were read as edges or as arcs.
+    pub fn orientation(&self) -> Orientation {
+        self.orientation
+    }
+
+    /// Whether the lines were read as arcs.
+    pub fn is_directed(&self) -> bool {
+        self.orientation.is_directed()
+    }
+
+    /// Number of unique, loop-free edges (arcs when directed).
     pub fn edge_count(&self) -> usize {
         self.edges().len()
     }
 
-    /// The edges as sorted `[min, max]` pairs.
+    /// The edges as sorted `[min, max]` pairs; when directed, the arcs as
+    /// `[tail, head]` pairs sorted by tail, then head.
     pub fn edges(&self) -> &[[Vertex; 2]] {
         self.edges.as_slice()
     }
@@ -504,6 +589,12 @@ impl EdgeList {
         self.negative_edge
     }
 
+    /// The self-loops with a negative weight (dropped from the edges like
+    /// every loop), one per vertex with its smallest weight, by vertex.
+    pub fn negative_loops(&self) -> &[WeightedEdge] {
+        &self.negative_loops
+    }
+
     /// Self-loops (`u u`) that were discarded.
     pub fn self_loops_dropped(&self) -> usize {
         self.self_loops_dropped
@@ -515,14 +606,83 @@ impl EdgeList {
         self.duplicates_dropped
     }
 
-    /// Degree of every vertex, indexed by vertex (index `0` is unused).
+    /// Degree of every vertex, indexed by vertex (index `0` is unused): the
+    /// length of its neighbour row, so its out-degree when directed.
     pub fn degrees(&self) -> Vec<u32> {
         let mut degrees = vec![0u32; self.vertex_count + 1];
+        let directed = self.is_directed();
         for &[u, v] in self.edges() {
             degrees[u as usize] += 1;
+            if !directed {
+                degrees[v as usize] += 1;
+            }
+        }
+        degrees
+    }
+
+    /// In-degree of every vertex, indexed by vertex: the arcs into it when
+    /// directed, its degree otherwise.
+    pub fn in_degrees(&self) -> Vec<u32> {
+        if !self.is_directed() {
+            return self.degrees();
+        }
+        let mut degrees = vec![0u32; self.vertex_count + 1];
+        for &[_, v] in self.edges() {
             degrees[v as usize] += 1;
         }
         degrees
+    }
+
+    /// The list with every arc reversed, sorted again: the input of the
+    /// reverse graph (`O(m log m)`). An undirected list is its own
+    /// transpose; this returns a copy.
+    pub fn transpose(&self) -> Self {
+        let m = self.edge_count();
+        let mut order: Vec<usize> = (0..m).collect();
+        let edges = self.edges();
+        if self.is_directed() {
+            // The arcs are unique, so the reversed pairs are too: no ties.
+            order.sort_unstable_by_key(|&i| (edges[i][1], edges[i][0]));
+        }
+        let flip = |[u, v]: [Vertex; 2]| match self.is_directed() {
+            true => [v, u],
+            false => [u, v],
+        };
+        let mut reversed = EdgeStore::with_capacity(m);
+        for &i in &order {
+            reversed.push(flip(edges[i]));
+        }
+        let weights = self.weights().map(|weights| {
+            let mut store = EdgeStore::with_capacity(m);
+            for &i in &order {
+                store.push(weights[i]);
+            }
+            store
+        });
+        let negative_edge = match (&weights, self.negative_edge) {
+            (Some(store), Some(_)) => {
+                let weights = store.as_slice();
+                (0..m).find(|&i| weights[i] < 0.0).map(|i| {
+                    let [u, v] = reversed.as_slice()[i];
+                    WeightedEdge {
+                        u,
+                        v,
+                        weight: weights[i],
+                    }
+                })
+            }
+            _ => None,
+        };
+        Self {
+            vertex_count: self.vertex_count,
+            orientation: self.orientation,
+            edges: reversed,
+            weights,
+            self_loops_dropped: self.self_loops_dropped,
+            duplicates_dropped: self.duplicates_dropped,
+            negative_edge,
+            negative_loops: self.negative_loops.clone(),
+        }
     }
 
     /// Writes the list back in the course's text format (with the weight

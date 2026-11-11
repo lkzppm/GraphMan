@@ -18,7 +18,12 @@ drawn for.
    accent edge of a surface, flagged values. A lighter blue (`--accent-2`)
    exists only so the level ramp has a far end. One green (`--target`,
    `#16a34a`) exists for exactly one thing: the destination of a distance
-   query, on the canvas and in the path balls. No red, no amber.
+   query, on the canvas and in the path balls. One red (`--cycle`,
+   `#e5484d`) exists for exactly one thing too: negative weights that stop
+   an algorithm, a negative cycle that Bellman-Ford returns or the negative
+   edges Dijkstra refuses a graph for, on the canvas, in their balls and in
+   the library's figure of a negative cycle.
+   No amber.
 3. **Light first, dark on request.** White paper is the default (it is
    what the icon was drawn for); a dark theme redefines the same tokens on
    `:root[data-theme='dark']`. A visitor who has not chosen gets the
@@ -52,6 +57,7 @@ drawn for.
 | `--level-0` (level ramp start)                   | `#002f66`                             |
 | `--node` / `--node-dim`                          | `#8f8f8f` / `#d6d6d6`                 |
 | `--edge` / `--edge-dim`                          | ink at 14 % / 6 %                     |
+| `--canvas-edge` / `--canvas-edge-dim`            | ink at 34 % / 12 % (dark: 32 % / 12 %), the observatory canvas |
 | Radii                                            | 2 / 4 / 6 px                          |
 | `--tracking`                                     | `0.1em` (labels), `0.3em` (eyebrows)  |
 | `--glow`                                         | `0 6px 24px -6px var(--accent-muted)` |
@@ -176,14 +182,27 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   focus squashes flat, stretches tall and settles (0.6 s, about its own
   centre). The focus walks the vertices every 1.8 s and follows the
   pointer while the figure is hovered.
-- **Library** (`components/Wiki.tsx`): a manual in eight chapters on the
-  sample graph (the pentagon with one chord the home draws three ways,
-  `lib/sample.ts`), more minimal than the home. A rail fixed on the left
-  and centred on the viewport lists the eight chapters as vertices on one
-  vertical edge; the edge is drawn in blue down to the current stop, whose
+- **Library** (`components/Wiki.tsx`): a manual in nineteen chapters on
+  the sample graph (the pentagon with one chord the home draws three ways,
+  `lib/sample.ts`; the Part 3 chapters read its six edges as arcs, two
+  negative, around one cycle), more minimal than the home, in two parts:
+  **the library** (how it is built: start, the format, representations,
+  direction, weights, visitors, names, cuts, the command line) and
+  **algorithms** (every one: BFS and DFS, distance and components, the
+  diameter, Dijkstra and its priority queues, Bellman-Ford and its
+  schedules, Floyd-Warshall, Johnson, strong components). Each part opens
+  with a mono number in the accent, a 34 px title and one grey paragraph;
+  the chapters are numbered across both. A rail fixed on the left
+  and centred on the room under the nav lists the chapters as vertices on one
+  vertical edge (34 px a stop, less when nineteen would not fit the
+  viewport); the edge is drawn in blue down to the current stop, whose
   vertex is filled and larger (hidden below 1240 px; it fades out when the
   footer scrolls up to it and returns when the footer leaves). One 760 px column,
-  centred, with no head of its own: the first chapter opens the page.
+  centred, with no head of its own: the first part opens the page. The
+  figures draw arcs with small filled heads, a negative cycle in the
+  `--cycle` red, and Floyd-Warshall's table as a table; their coordinates
+  are rounded to two decimals, so the server's drawing and the browser's
+  hydrate alike.
   Each chapter: mono index, title, a link to the source file
   it documents, one paragraph, the Rust example (plain usage with results
   in comments, never tests) and a fixed drawing of what it computes. Code
@@ -306,7 +325,45 @@ shrinking back into it (0.34 s) while the canvas gives or takes the room
 (opening also glides the camera to frame the graph in the room left, as
 the strip grows);
 its icon names the structure (a row of cards for the queue,
-layers for the stack, brackets for the vector, a tree for the heap). Closed by default, the choice remembered;
+layers for the stack, brackets for the vector, a tree for the heap, a
+table for Bellman-Ford, a grid for Floyd-Warshall). The two dynamic
+programmes show their table instead of a structure, read off a trace the
+library records (every lowering, in order) at the moment the step's vertex
+got its final distance (the replay draws vertices in that order: by their
+last lowering for Bellman-Ford, by the round of the largest intermediate
+vertex on the path for Floyd-Warshall, so parents come first): Bellman-Ford's
+`d_k[v]` with one row per pass up to the one running and one column per
+vertex in replay order; Floyd-Warshall's `D_k[i][j]` after round `k`, the
+origin's row named in the accent, row and column `k` (the cross every
+update of the round reads) on a darker grey. Each holds its recurrence
+alone over it, in mono and the accent, what it means as its tooltip, and
+the replay's moment under it (`pass 3 of 7`, `k = 4 of 10`); the cells
+the step's pass or round lowered are tinted in the accent and fade in, the
+step's cell is ringed (filled in the current row), ∞ in the faint grey.
+The table fills the strip: as many columns (56 px at least) and rows
+(22 px) as fit, then stretched over the width (150 px a column at most) and
+the height (40 px a row at most), the text growing with them; a table
+larger than the strip is a window that follows the step. Floyd-Warshall replays up to 200 vertices, Bellman-Ford up to
+400,000 lowerings; past that the strip says so. Floyd-Warshall has no
+origin: its panel holds the sweep with the run button beside it (no origin
+or destination fields, no mode), then
+the table's numbers (pairs with a path, the longest distance, the time),
+the farthest pair as a link to its path, and a timeline over the rounds
+`k = 0…n` (play, slider, `k = 3` in mono; ← / → a round, ten with shift,
+↑ / ↓ ten, space plays). While no row is picked the
+canvas shows the round: the vertices 1 to k (the ones allowed in between)
+in the accent, the rest grey, the pivot k selected (its out-arcs solid,
+its in-arcs dashed: row k and column k of the table), and the strip's
+matrix follows the pivot. A click on a vertex, or on a row's label in
+the matrix, reads its row: its shortest-path tree, shown whole at once
+(nothing ran, so nothing replays; the timeline can still replay it); a
+double click on another the path between them, off the same tables and
+walked as any path is. A double click with no tree selected has no other
+end: it just selects the vertex's tree.
+A click on the blank canvas, or the panel's undo button, unselects the
+tree and goes back to the table; the trash drops Floyd-Warshall's whole
+result. No legend shows while no row is picked: there is no
+origin to name. Closed by default, the choice remembered;
 not on phones. Its top
 edge resizes it like the sidebar's (a horizontal grip pill in the middle,
 `row-resize`, 120–560 px and at least 220 px of canvas left, remembered,
@@ -378,8 +435,17 @@ off its axis; both charts stay mounted, and switching grows the new bars
 from the axis, staggered left to right, as the old ones sink into it),
 component bar; the summary, the memory view and the components browser
 swap in place without a jump: the old view fades out, the next rises in,
-and the panel eases its height between them); Search: the algorithm
-as a full-width three-way segmented control (BFS / DFS / Dijkstra), under
+and the panel eases its height between them; on a directed graph the
+components browser holds a "Fortemente conexas" switch, the Directed one's
+look, centred under the component's measurements: on, the browser, the canvas, the arrow keys and the legend go
+through the strong components instead of the weak ones, ranked by size
+the same way, the header saying "fortemente conexo" or "acíclico" when
+there is one, or one per vertex; a component's density counts arcs both
+ways on a directed graph); Search: the algorithm
+as a full-width segmented control in rows (BFS / DFS / Dijkstra over the
+two dynamic programmes, Bellman-Ford / Floyd-Warshall: each row cut in
+equal columns so no name wraps, the thumb
+measured onto the chosen segment and gliding there, across rows too), under
 it mode (Max, the whole traversal / Distance) and, for Dijkstra only, the
 priority queue ("Fila de prioridade": Vector / Heap, the course's two
 versions, so their times can be compared on the spot; the code calls it
@@ -404,7 +470,19 @@ the path's vertices grow 1.6× with the `--fg` ring and wear the same
 gradient, its edges are thick gradient segments drawn over everything
 (appearing with the wave, never dropped by the sampling), every vertex
 off the path shrinks to a third (the fit button frames the path; the
-view otherwise stays where it was); the legend reads origin ·
+view otherwise stays where it was; its smallest frame is a fifth of the
+drawing, at most 220 world units, so a small graph's path fills the view);
+when Bellman-Ford's origin reaches a negative cycle, the same card holds
+the cycle instead (red balls in `--cycle`, the first vertex repeated last,
+a fit and a clear button, and under them a note with its weight edged in
+red), the canvas draws the cycle whole in red over a greyed, shrunk graph
+and frames it; when Dijkstra refuses a graph with negative weights, the
+card names the first three negative edges as red balls with their weights
+(and counts the rest), a note edged in red says why and offers to run
+Bellman-Ford instead, and the canvas draws every negative edge (arcs with
+their heads) as a thick red segment over the plain graph, framed when there
+are at most 64; a fit and a clear button stand beside it, and any other
+search, graph or clear takes it away; the legend reads origin ·
 destination · not reached. In Distance a
 click on the canvas picks the target once the origin is set;
 **Dijkstra** reads like a BFS whose levels are distance bands: the origin
@@ -448,12 +526,17 @@ up), fit (button, F, double click) and follow glide over about a quarter
 second, the zoom eased on a log scale; the wheel and pinch stay direct, and
 only the auto-fit while a new layout settles moves the camera at once. Vertex numbers are a 2D canvas over
 the WebGPU one, drawn only when discs are at least 5 px. On a weighted
-graph the same canvas draws each edge's weight at its middle, in a small
-pill (background fill, grey hairline, 10 px mono grey text), under the
-vertex numbers and only where the edge on screen is long enough to hold it.
-The selected vertex's edges, and the edges of Dijkstra's tree as the
-replay reaches them, turn their pills blue (accent hairline, accent-muted
-tint, accent text), drawn last so they sit on top.
+graph the same canvas draws each edge's weight in a small pill (background
+fill, grey hairline, 10 px mono grey text), under the vertex numbers and
+only where the edge on screen is long enough to hold it. A pill never
+covers a vertex or another pill: the vertices on screen claim their room
+on a coarse grid first (room for the rings and a path's growth), then
+each pill takes the first free spot along its edge, the middle first,
+then further out on either side, or is not drawn. The selected vertex's
+edges, and the edges of a shortest-path tree as the replay reaches them,
+turn their pills blue (accent hairline, accent-muted tint, accent text),
+placed first and drawn last so they sit on top; one with no free spot
+still shows at its middle.
 
 ## Icons
 
@@ -630,9 +713,8 @@ tint, accent text), drawn last so they sit on top.
   toggles (edge weights, a weight icon, only on a weighted graph; vertex
   numbers `#`; follow), on the right the layout menu
   (`Shapes`). The menu is a popover like the help one, hung under the
-  cluster: Force (springs and repulsion), Radial levels (BFS rings around
-  the origin), Layered (a tree drawn level by level: the BFS tree, or after
-  a Dijkstra its shortest-path tree, levels counting tree edges), Degree circle
+  cluster: Force (springs and repulsion), Radial levels (rings around the
+  origin), Layered (a tree drawn level by level), Degree circle
   (sorted by degree, edges as chords), each a `menuitemradio` with an icon,
   name and one-line hint; while Force is current a footer row holds the
   simulation toggle (magnet) and reheat, and while Layered is current one
@@ -646,11 +728,20 @@ tint, accent text), drawn last so they sit on top.
   right there. Picking a layout slides every
   vertex to its new place over 700 ms and glides the view to fit; the
   level layouts start at the search origin (or the selected vertex, else
-  1. and re-arrange when a new search runs (Layered also when a Dijkstra
-     replaces another search or the reverse), the view then framing the
-     origin's component only (the rest just makes room). Every component
-     gets the layout: radial components are packed as discs around the
-     origin's, layered ones stand side by side with level 0 on one line.
+  1. and re-arrange when a new search runs, the view then framing the
+     origin's component only (the rest just makes room). Both draw the
+     tree of the search on screen, and their hints say which: after a BFS
+     its tree, rings and levels its levels; after a DFS its tree, one ring
+     or level per step down (deep and narrow, as a DFS is); after
+     Dijkstra, Bellman-Ford or Floyd-Warshall the shortest-path tree, its
+     rings the distance from the smallest one in bands (fractional, so a
+     vertex sits where its distance puts it) and its levels its edges.
+     Without a search, a BFS tree from the root. Every component gets the
+     layout: radial components are packed as discs around the origin's,
+     layered ones stand side by side with level 0 on one line; on a
+     directed graph the vertices of the origin's component its search
+     cannot reach go round one ring further (radial) or stand alone
+     beside the tree (layered).
 
 ## Responsive rules
 

@@ -9,15 +9,22 @@ import {
   SAMPLE_TEXT,
   SAMPLE_WEIGHTED_TEXT,
   SAMPLE_WEIGHTS,
+  DIRECTED_ARCS,
+  DIRECTED_WEIGHTS,
+  NEGATIVE_CYCLE,
+  NEGATIVE_CYCLE_WEIGHTS,
   TWO_COMPONENT_EDGES,
   TWO_COMPONENT_POSITIONS,
   UNREACHED,
+  bellmanFord,
   bfs,
   components,
   dfs,
   dijkstra,
+  floydWarshall,
   pathTo,
   shortestPath,
+  strongComponents,
 } from '@/lib/sample';
 import Code from './Code';
 import Rail from './Rail';
@@ -38,32 +45,47 @@ type ChapterId =
   | 'start'
   | 'format'
   | 'representations'
-  | 'traversals'
-  | 'visitors'
-  | 'distance'
-  | 'diameter'
+  | 'direction'
   | 'weights'
-  | 'dijkstra'
-  | 'frontiers'
+  | 'visitors'
   | 'names'
   | 'subgraphs'
-  | 'cli';
+  | 'cli'
+  | 'traversals'
+  | 'distance'
+  | 'diameter'
+  | 'dijkstra'
+  | 'frontiers'
+  | 'bellman_ford'
+  | 'schedules'
+  | 'floyd_warshall'
+  | 'johnson'
+  | 'strong_components';
 
-/** Every chapter and the source file it documents. */
-const CHAPTERS: { id: ChapterId; source: string }[] = [
-  { id: 'start', source: 'src/lib.rs' },
-  { id: 'format', source: 'src/io/edge_list.rs' },
-  { id: 'representations', source: 'src/graph/mod.rs' },
-  { id: 'traversals', source: 'src/algo/traversal.rs' },
-  { id: 'visitors', source: 'src/algo/traversal.rs' },
-  { id: 'distance', source: 'src/algo/distance.rs' },
-  { id: 'diameter', source: 'src/algo/diameter.rs' },
-  { id: 'weights', source: 'src/graph/mod.rs' },
-  { id: 'dijkstra', source: 'src/algo/shortest_path.rs' },
-  { id: 'frontiers', source: 'src/algo/frontier.rs' },
-  { id: 'names', source: 'src/io/names.rs' },
-  { id: 'subgraphs', source: 'src/algo/subgraph.rs' },
-  { id: 'cli', source: '../graphman-cli/src/main.rs' },
+/** The page's two parts: how the library is built, then its algorithms. */
+type PartId = 'library' | 'algorithms';
+
+/** Every chapter, the part it belongs to and the source file it documents. */
+const CHAPTERS: { id: ChapterId; part: PartId; source: string }[] = [
+  { id: 'start', part: 'library', source: 'src/lib.rs' },
+  { id: 'format', part: 'library', source: 'src/io/edge_list.rs' },
+  { id: 'representations', part: 'library', source: 'src/graph/mod.rs' },
+  { id: 'direction', part: 'library', source: 'src/graph/mod.rs' },
+  { id: 'weights', part: 'library', source: 'src/graph/mod.rs' },
+  { id: 'visitors', part: 'library', source: 'src/algo/traversal.rs' },
+  { id: 'names', part: 'library', source: 'src/io/names.rs' },
+  { id: 'subgraphs', part: 'library', source: 'src/algo/subgraph.rs' },
+  { id: 'cli', part: 'library', source: '../graphman-cli/src/main.rs' },
+  { id: 'traversals', part: 'algorithms', source: 'src/algo/traversal.rs' },
+  { id: 'distance', part: 'algorithms', source: 'src/algo/distance.rs' },
+  { id: 'diameter', part: 'algorithms', source: 'src/algo/diameter.rs' },
+  { id: 'dijkstra', part: 'algorithms', source: 'src/algo/shortest_path.rs' },
+  { id: 'frontiers', part: 'algorithms', source: 'src/algo/frontier.rs' },
+  { id: 'bellman_ford', part: 'algorithms', source: 'src/algo/bellman_ford.rs' },
+  { id: 'schedules', part: 'algorithms', source: 'src/algo/schedule.rs' },
+  { id: 'floyd_warshall', part: 'algorithms', source: 'src/algo/floyd_warshall.rs' },
+  { id: 'johnson', part: 'algorithms', source: 'src/algo/johnson.rs' },
+  { id: 'strong_components', part: 'algorithms', source: 'src/algo/scc.rs' },
 ];
 
 /** The rail's stops: the chapters, in order. */
@@ -79,6 +101,9 @@ const COMMANDS = [
   'graphman distance graphs/grafo_1.txt --pair 10 20 --pair 10 30',
   'graphman diameter graphs/grafo_1.txt --method bounds --budget 60',
   'graphman dijkstra samples/weighted_100.txt --from 10 --to 20 30 --frontier heap',
+  'graphman bellman-ford graphs/grafo_W_1.txt -D --to 100 --from 10 20 30 --schedule queue',
+  'graphman floyd-warshall graphs/grafo_W_1.txt -D --pairs 10 20 30 40 50 --sweep blocked',
+  'graphman scc graphs/grafo_W_1.txt -D',
   'graphman study graphs/grafo_1.txt --out studies',
 ];
 
@@ -141,6 +166,24 @@ function cutOfSample(kept: number[]) {
 const CUT_BY_SIZE = cutOfSample([1, 2]);
 const CUT_EGONET = cutOfSample([1, 2, 3]);
 
+// Part 3, on the directed sample (tests/wiki.rs runs the same graph).
+const BELLMAN = bellmanFord(N, DIRECTED_ARCS, DIRECTED_WEIGHTS, 1);
+const FLOYD = floydWarshall(N, DIRECTED_ARCS, DIRECTED_WEIGHTS);
+/** Johnson's potentials: h(v) = min over u of d(u, v), at most 0 (d(v, v)). */
+const POTENTIAL = Array.from({ length: N + 1 }, (_, v) =>
+  v === 0 ? 0 : Math.min(...FLOYD.slice(1).map((row) => row[v])),
+);
+const REWEIGHTED = DIRECTED_ARCS.map(
+  ([u, v], i) => DIRECTED_WEIGHTS[i] + POTENTIAL[u] - POTENTIAL[v],
+);
+const STRONG = strongComponents(N, DIRECTED_ARCS);
+/** A distance or a table cell as the page writes it. */
+const show = (d: number) => (d === Infinity ? '∞' : String(d));
+const FLOYD_ROWS: string[][] = [
+  ['', ...Array.from({ length: N }, (_, j) => String(j + 1))],
+  ...FLOYD.slice(1).map((row, i) => [String(i + 1), ...row.slice(1).map(show)]),
+];
+
 export default function Wiki({ examples }: { examples: Record<string, string> }) {
   const t = useT();
   const l = t.library;
@@ -186,18 +229,20 @@ export default function Wiki({ examples }: { examples: Record<string, string> })
 
       <div className={`container ${styles.layout}`}>
         <div className={styles.content}>
-          <Chapter meta={chapter('start')} index={1}>
+          <Part id="library" />
+
+          <Chapter meta={chapter('start')}>
             <Code code={CARGO} lang="toml" copyLabel={l.copy} copiedLabel={l.copied} />
             {code('start')}
             <TextToGraph />
           </Chapter>
 
-          <Chapter meta={chapter('format')} index={2}>
+          <Chapter meta={chapter('format')}>
             {code('format')}
             <Normalisation lines={FORMAT_INPUT} />
           </Chapter>
 
-          <Chapter meta={chapter('representations')} index={3}>
+          <Chapter meta={chapter('representations')}>
             <Representations />
             <Table rows={l.chapters.representations.table} />
             {code('representations')}
@@ -205,99 +250,34 @@ export default function Wiki({ examples }: { examples: Record<string, string> })
             {code('dispatch')}
           </Chapter>
 
-          <Chapter meta={chapter('traversals')} index={4}>
-            {code('traversals')}
-            <div className={styles.split}>
-              <Figure legend={l.chapters.traversals.bfs}>
-                <GraphFigure
-                  edges={SAMPLE_EDGES}
-                  positions={SAMPLE_POSITIONS}
-                  levels={BFS.levels}
-                  parents={BFS.parents}
-                />
-              </Figure>
-              <Figure legend={l.chapters.traversals.dfs}>
-                <GraphFigure
-                  edges={SAMPLE_EDGES}
-                  positions={SAMPLE_POSITIONS}
-                  levels={DFS.levels}
-                  parents={DFS.parents}
-                />
-              </Figure>
-            </div>
-          </Chapter>
-
-          <Chapter meta={chapter('visitors')} index={5}>
-            {code('visitors')}
-            <Sequence order={UNTIL_4} />
-          </Chapter>
-
-          <Chapter meta={chapter('distance')} index={6}>
-            {code('distance')}
-            <Figure legend={l.chapters.distance.legend}>
+          <Chapter meta={chapter('direction')}>
+            {code('direction')}
+            <Figure legend={l.chapters.direction.legend}>
               <GraphFigure
-                edges={TWO_COMPONENT_EDGES}
-                positions={TWO_COMPONENT_POSITIONS}
-                components={LABELS}
-                path={PATH_4_3}
-                marks={[4, 3]}
-              />
-            </Figure>
-          </Chapter>
-
-          <Chapter meta={chapter('diameter')} index={7}>
-            {code('diameter')}
-            <Figure legend={l.chapters.diameter.legend}>
-              <GraphFigure
-                edges={SAMPLE_EDGES}
+                edges={DIRECTED_ARCS}
                 positions={SAMPLE_POSITIONS}
-                path={DIAMETER_PATH}
-                marks={DIAMETER_ENDS}
+                weights={DIRECTED_WEIGHTS}
+                directed
               />
             </Figure>
           </Chapter>
 
-          <Chapter meta={chapter('weights')} index={8}>
+          <Chapter meta={chapter('weights')}>
             {code('weights')}
             <WeightedTextToGraph />
           </Chapter>
 
-          <Chapter meta={chapter('dijkstra')} index={9}>
-            {code('dijkstra')}
-            <div className={styles.split}>
-              <Figure legend={l.chapters.dijkstra.bfs}>
-                <GraphFigure
-                  edges={SAMPLE_EDGES}
-                  positions={SAMPLE_POSITIONS}
-                  weights={SAMPLE_WEIGHTS}
-                  path={BFS_PATH_5}
-                  marks={[1, 5]}
-                />
-              </Figure>
-              <Figure legend={l.chapters.dijkstra.dijkstra}>
-                <GraphFigure
-                  edges={SAMPLE_EDGES}
-                  positions={SAMPLE_POSITIONS}
-                  weights={SAMPLE_WEIGHTS}
-                  path={DIJKSTRA_PATH_5}
-                  marks={[1, 5]}
-                />
-              </Figure>
-            </div>
+          <Chapter meta={chapter('visitors')}>
+            {code('visitors')}
+            <Sequence order={UNTIL_4} />
           </Chapter>
 
-          <Chapter meta={chapter('frontiers')} index={10}>
-            <Table rows={l.chapters.frontiers.table} />
-            {code('frontiers')}
-            <Settles />
-          </Chapter>
-
-          <Chapter meta={chapter('names')} index={11}>
+          <Chapter meta={chapter('names')}>
             {code('names')}
             <Names />
           </Chapter>
 
-          <Chapter meta={chapter('subgraphs')} index={12}>
+          <Chapter meta={chapter('subgraphs')}>
             {code('subgraphs')}
             <div className={styles.split}>
               <Figure legend={l.chapters.subgraphs.size}>
@@ -321,7 +301,7 @@ export default function Wiki({ examples }: { examples: Record<string, string> })
             </div>
           </Chapter>
 
-          <Chapter meta={chapter('cli')} index={13}>
+          <Chapter meta={chapter('cli')}>
             <Flow steps={l.chapters.cli.flow} />
             <ol className={styles.commands}>
               {COMMANDS.map((command, i) => (
@@ -332,6 +312,149 @@ export default function Wiki({ examples }: { examples: Record<string, string> })
               ))}
             </ol>
           </Chapter>
+
+          <Part id="algorithms" />
+
+          <Chapter meta={chapter('traversals')}>
+            {code('traversals')}
+            <div className={styles.split}>
+              <Figure legend={l.chapters.traversals.bfs}>
+                <GraphFigure
+                  edges={SAMPLE_EDGES}
+                  positions={SAMPLE_POSITIONS}
+                  levels={BFS.levels}
+                  parents={BFS.parents}
+                />
+              </Figure>
+              <Figure legend={l.chapters.traversals.dfs}>
+                <GraphFigure
+                  edges={SAMPLE_EDGES}
+                  positions={SAMPLE_POSITIONS}
+                  levels={DFS.levels}
+                  parents={DFS.parents}
+                />
+              </Figure>
+            </div>
+          </Chapter>
+
+          <Chapter meta={chapter('distance')}>
+            {code('distance')}
+            <Figure legend={l.chapters.distance.legend}>
+              <GraphFigure
+                edges={TWO_COMPONENT_EDGES}
+                positions={TWO_COMPONENT_POSITIONS}
+                components={LABELS}
+                path={PATH_4_3}
+                marks={[4, 3]}
+              />
+            </Figure>
+          </Chapter>
+
+          <Chapter meta={chapter('diameter')}>
+            {code('diameter')}
+            <Figure legend={l.chapters.diameter.legend}>
+              <GraphFigure
+                edges={SAMPLE_EDGES}
+                positions={SAMPLE_POSITIONS}
+                path={DIAMETER_PATH}
+                marks={DIAMETER_ENDS}
+              />
+            </Figure>
+          </Chapter>
+
+          <Chapter meta={chapter('dijkstra')}>
+            {code('dijkstra')}
+            <div className={styles.split}>
+              <Figure legend={l.chapters.dijkstra.bfs}>
+                <GraphFigure
+                  edges={SAMPLE_EDGES}
+                  positions={SAMPLE_POSITIONS}
+                  weights={SAMPLE_WEIGHTS}
+                  path={BFS_PATH_5}
+                  marks={[1, 5]}
+                />
+              </Figure>
+              <Figure legend={l.chapters.dijkstra.dijkstra}>
+                <GraphFigure
+                  edges={SAMPLE_EDGES}
+                  positions={SAMPLE_POSITIONS}
+                  weights={SAMPLE_WEIGHTS}
+                  path={DIJKSTRA_PATH_5}
+                  marks={[1, 5]}
+                />
+              </Figure>
+            </div>
+          </Chapter>
+
+          <Chapter meta={chapter('frontiers')}>
+            <Table rows={l.chapters.frontiers.table} />
+            {code('frontiers')}
+            <Settles />
+          </Chapter>
+
+          <Chapter meta={chapter('bellman_ford')}>
+            {code('bellman_ford')}
+            <div className={styles.split}>
+              <Figure legend={l.chapters.bellman_ford.tree}>
+                <GraphFigure
+                  edges={DIRECTED_ARCS}
+                  positions={SAMPLE_POSITIONS}
+                  weights={DIRECTED_WEIGHTS}
+                  levels={BELLMAN.distances.map((d, v) => (v === 0 ? 0 : d))}
+                  parents={BELLMAN.parents}
+                  notes={BELLMAN.distances.map((d, v) => (v === 0 ? '' : show(d)))}
+                  directed
+                />
+              </Figure>
+              <Figure legend={l.chapters.bellman_ford.cycle}>
+                <GraphFigure
+                  edges={DIRECTED_ARCS}
+                  positions={SAMPLE_POSITIONS}
+                  weights={NEGATIVE_CYCLE_WEIGHTS}
+                  cycle={NEGATIVE_CYCLE}
+                  directed
+                />
+              </Figure>
+            </div>
+          </Chapter>
+
+          <Chapter meta={chapter('schedules')}>
+            <Table rows={l.chapters.schedules.table} />
+            {code('schedules')}
+          </Chapter>
+
+          <Chapter meta={chapter('floyd_warshall')}>
+            {code('floyd_warshall')}
+            <Figure legend={l.chapters.floyd_warshall.matrix}>
+              <Table rows={FLOYD_ROWS} />
+            </Figure>
+            <Table rows={l.chapters.floyd_warshall.table} />
+          </Chapter>
+
+          <Chapter meta={chapter('johnson')}>
+            {code('johnson')}
+            <Figure legend={l.chapters.johnson.reweighted}>
+              <GraphFigure
+                edges={DIRECTED_ARCS}
+                positions={SAMPLE_POSITIONS}
+                weights={REWEIGHTED}
+                notes={POTENTIAL.map((h, v) => (v === 0 ? '' : `h ${show(h)}`))}
+                directed
+              />
+            </Figure>
+          </Chapter>
+
+          <Chapter meta={chapter('strong_components')}>
+            {code('strong_components')}
+            <Figure legend={l.chapters.strong_components.legend}>
+              <GraphFigure
+                edges={DIRECTED_ARCS}
+                positions={SAMPLE_POSITIONS}
+                components={STRONG}
+                directed
+              />
+            </Figure>
+          </Chapter>
         </div>
       </div>
     </section>
@@ -340,17 +463,32 @@ export default function Wiki({ examples }: { examples: Record<string, string> })
 
 // ---- pieces -----------------------------------------------------------------
 
+/** A part's opening: its name and what it holds, over its chapters. */
+function Part({ id }: { id: PartId }) {
+  const p = useT().library.parts[id];
+  return (
+    <Reveal as="header" className={styles.part} delay={0.05}>
+      <span className={`label ${styles.partLabel}`}>
+        {String(PARTS.indexOf(id) + 1).padStart(2, '0')}
+      </span>
+      <h2 className={styles.partTitle}>{p.title}</h2>
+      <p className={styles.partBody}>{p.body}</p>
+    </Reveal>
+  );
+}
+
+const PARTS: PartId[] = ['library', 'algorithms'];
+
 function Chapter({
   meta,
-  index,
   children,
 }: {
   meta: { id: ChapterId; source: string };
-  index: number;
   children: ReactNode;
 }) {
   const l = useT().library;
   const c = l.chapters[meta.id];
+  const index = STOPS.indexOf(meta.id) + 1;
   return (
     <Reveal as="article" id={meta.id} className={styles.chapter} delay={0.05}>
       <header className={styles.chapterHead}>

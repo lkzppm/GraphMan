@@ -111,6 +111,12 @@
   initial-value: #16a34a;
 }
 
+@property --cycle {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #e5484d;
+}
+
 @property --queue-vector {
   syntax: '<color>';
   inherits: true;
@@ -165,6 +171,21 @@
   initial-value: rgba(23, 23, 23, 0.06);
 }
 
+/* The observatory canvas's edges: darker than the figures' --edge, since a
+   sparse graph there is a few thin lines on a large canvas (dense graphs
+   fade themselves to a fixed coverage whatever the alpha). */
+@property --canvas-edge {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(23, 23, 23, 0.34);
+}
+
+@property --canvas-edge-dim {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(23, 23, 23, 0.12);
+}
+
 /* Everything here sits in one cascade layer, below the (unlayered) CSS
    modules. Next.js orders global and module stylesheets differently in
    development and production, so an element that carries both a global
@@ -201,6 +222,8 @@
     --on-ramp-far: #ffffff;
     /* The one green: the destination of a distance query. */
     --target: #16a34a;
+    /* The one red: a negative cycle, on the canvas and in its balls. */
+    --cycle: #e5484d;
     --warning: var(--accent);
     /* The priority queues, wherever they are compared side by side: six
      hues told apart by colour-blind readers too (validated in this order,
@@ -221,6 +244,8 @@
     --node-dim: #d6d6d6;
     --edge: rgba(23, 23, 23, 0.14);
     --edge-dim: rgba(23, 23, 23, 0.06);
+    --canvas-edge: rgba(23, 23, 23, 0.34);
+    --canvas-edge-dim: rgba(23, 23, 23, 0.12);
 
     --font-sans: var(--font-geist-sans), 'Inter', system-ui, -apple-system, sans-serif;
     --font-mono: var(--font-geist-mono), ui-monospace, 'SF Mono', Menlo, monospace;
@@ -266,6 +291,7 @@
     --on-ramp-near: #0a0a0a;
     --on-ramp-far: #ffffff;
     --target: #009342;
+    --cycle: #e5484d;
 
     --queue-vector: #e0622e;
     --queue-lazy-heap: #c48600;
@@ -277,6 +303,8 @@
     --node-dim: #2e2e2e;
     --edge: rgba(237, 237, 237, 0.14);
     --edge-dim: rgba(237, 237, 237, 0.06);
+    --canvas-edge: rgba(237, 237, 237, 0.32);
+    --canvas-edge-dim: rgba(237, 237, 237, 0.12);
 
     --shadow-hover: 0 8px 24px -12px rgba(0, 0, 0, 0.7);
   }
@@ -304,6 +332,7 @@
       --on-ramp-near 0.6s cubic-bezier(0.4, 0, 0.2, 1),
       --on-ramp-far 0.6s cubic-bezier(0.4, 0, 0.2, 1),
       --target 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --cycle 0.6s cubic-bezier(0.4, 0, 0.2, 1),
       --queue-vector 0.6s cubic-bezier(0.4, 0, 0.2, 1),
       --queue-lazy-heap 0.6s cubic-bezier(0.4, 0, 0.2, 1),
       --queue-quad-heap 0.6s cubic-bezier(0.4, 0, 0.2, 1),
@@ -312,7 +341,9 @@
       --node 0.6s cubic-bezier(0.4, 0, 0.2, 1),
       --node-dim 0.6s cubic-bezier(0.4, 0, 0.2, 1),
       --edge 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-      --edge-dim 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      --edge-dim 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --canvas-edge 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+      --canvas-edge-dim 0.6s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   :root[data-theme-switching] *:not([data-theme-keep]),

@@ -5,7 +5,8 @@ and a diameter study. Part 2 (`docs/trabalho-P2.pdf`, summarised in
 `spec/ASSIGNMENT.md`) is now out and is narrower than first guessed:
 **undirected graphs with real weights, and Dijkstra written once over
 interchangeable stores of distance estimates** (a vector and a heap with
-decrease-key). Direction and flows are left for Part 3. This document
+decrease-key). Part 3 (direction, Bellman-Ford, Floyd-Warshall) is
+designed in `spec/PHASE3.md`. This document
 records how the core grew without breaking Part 1 (sections 3 and 4 are
 implemented; the case-study runner and the web are next), how Part 2 is
 answered, and how the library relates to `petgraph`, the Rust graph
@@ -66,7 +67,7 @@ same three representations, the same `AnyGraph`/`dispatch!`, the same
 Graph               vertex_count, edge_count, degree, neighbors, has_edge     (unchanged)
 Weighted: Graph     weighted_neighbors -> (Vertex, Weight), weight(u, v),
                     is_weighted, negative_edge                                  (Part 2)
-Directed: Graph     out_neighbors, in_neighbors, out_degree, in_degree          (Part 3)
+Graph::is_directed, Build::transpose                                           (Part 3, PHASE3 §2)
 ```
 
 - **One weight type.** `graphman::Weight = f64`. The plan was a generic
@@ -115,11 +116,12 @@ overflow to infinity and pass for "unreached"). Normalisation is the Part 1
   vertex (sorted, so a stray huge index costs one entry, not a table that
   long) and a name-sorted list for exact lookup by binary search, and offers an
   accent- and case-insensitive `search` for "did you mean" suggestions.
-- **`Directed`** (Part 3). `neighbors` on a directed graph means
-  out-neighbours, so BFS, DFS and components (weakly connected) work
-  unchanged. `in_neighbors` comes from a reverse CSR built on demand and
-  cached, since only a few algorithms (reverse search, residual graphs)
-  need it.
+- **Direction** (Part 3, superseded by `spec/PHASE3.md` §2). `neighbors`
+  on a directed graph means out-neighbours, so BFS, DFS and Dijkstra run
+  unchanged. The planned `Directed` trait with a cached reverse CSR became
+  a `Graph::is_directed` flag and a `Build::transpose` that is itself a
+  graph, since Bellman-Ford to a target is Bellman-Ford from it on the
+  transpose; weak components use a union-find instead of BFS.
 
 ## 4. Dijkstra for Part 2 (implemented)
 
@@ -296,9 +298,10 @@ heap (4 B a vertex) ends smaller than the vector (8 B), the pairing heap
 | Minimum spanning tree | Prim over `HeapFrontier`; Kruskal with a union-find |
 | Weighted eccentricity, diameter | iFUB and Takes-Kosters hold for any non-negative metric with Dijkstra in place of BFS |
 
-Part 3 adds `Directed`, then `Flow` (Ford-Fulkerson with BFS augmenting
-paths, then Dinic) on top of `Directed + Weighted`, using the cached
-reverse CSR for the residual graph.
+Part 3 turned out to be direction, Bellman-Ford and Floyd-Warshall, not
+flows: its design is `spec/PHASE3.md`. Bellman-Ford and A* above move
+there (Bellman-Ford as a `Schedule`, the frontier story again); flows stay
+a non-graded idea.
 
 ## 5. `feat/petgraph`: the bridge
 

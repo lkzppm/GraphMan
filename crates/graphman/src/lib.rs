@@ -44,7 +44,7 @@
 //! assert_eq!(tree.parent(3), Some(5));
 //! assert_eq!(tree.level(3), Some(2));
 //!
-//! let diameter = algo::diameter(&graph, algo::DiameterMethod::Exact);
+//! let diameter = algo::diameter(&graph, algo::DiameterMethod::Exact).unwrap();
 //! assert_eq!(diameter.value, 2);
 //!
 //! // The same shape with weights (Part 2), one Dijkstra, any frontier.
@@ -68,11 +68,12 @@ pub mod io;
 pub mod metrics;
 
 pub use algo::{
-    Components, Control, DegreeStats, DfsKind, Diameter, DiameterMethod, FrontierKind,
-    NegativeWeight, RecursionLimit, SearchTree, ShortestPathTree, Visitor, bfs, dfs, dijkstra,
+    Components, Control, DegreeStats, DfsKind, Diameter, DiameterError, DiameterMethod,
+    FrontierKind, NegativeCycle, NegativeWeight, RecursionLimit, ScheduleKind, SearchTree,
+    ShortestPathTree, Visitor, bellman_ford, bfs, dfs, dijkstra,
 };
 pub use graph::{
     AdjacencyList, AdjacencyMatrix, AnyGraph, Build, BuildError, Csr, Graph, MemoryBudget,
-    NO_VERTEX, Representation, UNIT_WEIGHT, Vertex, Weight, Weighted, WeightedEdge,
+    NO_VERTEX, Orientation, Representation, UNIT_WEIGHT, Vertex, Weight, Weighted, WeightedEdge,
 };
 pub use io::{EdgeList, ParseError, VertexNames};

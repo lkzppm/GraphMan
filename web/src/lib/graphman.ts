@@ -6,7 +6,10 @@ import { WASM_URL } from '@/wasm/manifest';
 export type {
   DegreeSummary,
   DiameterResult,
+  FloydRun,
+  FloydTrace,
   Graph,
+  LoweringTrace,
   MemoryReport,
   NetworkBuilder,
   PathBetween,
@@ -66,6 +69,30 @@ export const UNWEIGHTED_SAMPLE = exampleFile(false);
 
 /** The example with a weight per edge (the optional third column). */
 export const WEIGHTED_SAMPLE = exampleFile(true);
+
+/** The same ten vertices read as arcs (`u v w` is the arc u → v, Part 3),
+    with two negative arcs, 6 → 3 and 9 → 4, and an arc 10 → 1 back to the
+    start. Every cycle still weighs more than 0, so Bellman-Ford answers;
+    Dijkstra refuses. The lightest path from 1 to 10 takes the negative arc:
+    1, 2, 5, 6, 3, 7, 10 weighs 2.25. Also `samples/directed.txt`. */
+const DIRECTED_ARCS: readonly (readonly [number, number, number])[] = [
+  ...EXAMPLE_EDGES,
+  [6, 3, -2],
+  [9, 4, -1.5],
+  [10, 1, 2],
+];
+
+const arcsFile = (arcs: readonly (readonly [number, number, number])[]) =>
+  ['10', ...arcs.map(([u, v, w]) => `${u} ${v} ${w}`)].join('\n') + '\n';
+
+/** The directed example: negative arcs, no negative cycle. */
+export const DIRECTED_SAMPLE = arcsFile(DIRECTED_ARCS);
+
+/** The directed example plus the arc 7 → 5 of weight -3, which closes
+    negative cycles reachable from 1 (5 → 6 → 7 → 5 weighs -1.25, and with
+    the arc 6 → 3, 3 → 7 → 5 → 6 → 3 weighs -3.75): Bellman-Ford returns
+    one instead of distances. Also `samples/directed_cycle.txt`. */
+export const NEGATIVE_CYCLE_SAMPLE = arcsFile([...DIRECTED_ARCS, [7, 5, -3]]);
 
 /** The named example: `samples/collaboration.txt` and its names file. A
     synthetic co-authorship network shaped like the course's: the six

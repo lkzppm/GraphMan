@@ -11,7 +11,8 @@
   position: fixed;
   z-index: 5;
   left: max(24px, calc((100vw - var(--container)) / 2 - 220px));
-  top: 50%;
+  /* Centred on the room under the sticky nav, not on the whole viewport. */
+  top: calc(50% + var(--nav-height) / 2);
   transform: translateY(-50%);
   animation: railIn 0.7s var(--ease) 0.15s backwards;
   transition:
@@ -33,7 +34,9 @@
 }
 
 .rail ol {
-  --step: 34px;
+  /* A stop's height: 34 px, smaller when many stops would not fit the
+     viewport (the library's nineteen chapters on a laptop). */
+  --step: clamp(22px, calc((100vh - var(--nav-height) - 120px) / var(--stops)), 34px);
   position: relative;
   list-style: none;
   display: flex;
@@ -58,8 +61,12 @@
   transform-origin: top;
 }
 
+/* The grey edge grows down with the stops, reaching each one as it eases
+   in: it starts at the first stop's entrance and takes one stagger step
+   (0.06 s) per stop, at a steady pace, so a long rail (the library's
+   nineteen chapters) forms as one motion instead of the line racing ahead. */
 .rail ol::before {
-  animation: edgeIn 0.6s var(--ease) 0.35s backwards;
+  animation: edgeIn calc((var(--stops) - 1) * 0.06s) linear 0.4s backwards;
 }
 
 .rail ol::after {
