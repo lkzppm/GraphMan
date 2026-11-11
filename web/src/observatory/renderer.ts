@@ -36,6 +36,7 @@ import {
   COMPOSITE_SHADER,
   EDGE_SHADER,
   MORPH_SHADER,
+  NEGATIVE_SHADER,
   NODE_SHADER,
   PATH_SHADER,
   SIM_SHADER,
@@ -238,6 +239,8 @@ export class Renderer {
   private inTargets: Uint32Array = new Uint32Array(0);
   /** The path of a distance query, as thick segments over everything. */
   private pathEdges: Draw;
+  /** The negative edges Dijkstra refused the graph for, thick and red over everything. */
+  private negativeEdges: Draw;
   private composite: Effect;
   private sim: Compute;
   private morph: Compute;
@@ -275,6 +278,9 @@ export class Renderer {
   private pathVertices: Uint32Array | null = null;
   /** The extra edge segments ([a, b] pairs): the selected vertex's edges, then the path's. */
   private extras: StorageBuffer | null = null;
+  /** The negative edges as [a, b] pairs, and how many are drawn (0 = none). */
+  private negative: StorageBuffer | null = null;
+  private negativeCount = 0;
   /** 1 per vertex, then per edge (from slot n + 1), that a distribution
       column lit: one buffer, as the vertex stage binds eight at most. */
   private marks: StorageBuffer | null = null;
@@ -371,6 +377,12 @@ export class Renderer {
       label: 'path',
       blend: 'premultiplied',
       vertices: 6, // one quad per segment
+    });
+    this.negativeEdges = draw(gpu, {
+      shader: NEGATIVE_SHADER,
+      label: 'negative',
+      blend: 'premultiplied',
+      vertices: 9, // a quad and, on a directed graph, a head per edge
     });
     this.composite = effect(gpu, COMPOSITE_SHADER, { label: 'composite', blend: 'premultiplied' });
     this.sim = compute(gpu, SIM_SHADER, { label: 'layout' });
@@ -490,6 +502,9 @@ export class Renderer {
     this.path.write(new Uint32Array(1));
     this.extras = storage(gpu, 8, 'read');
     this.extras.write(new Uint32Array(2));
+    this.negative = storage(gpu, 8, 'read');
+    this.negative.write(new Uint32Array(2));
+    this.negativeCount = 0;
     this.marks = storage(gpu, (slots + Math.max(this.edgeCount, 1)) * 4, 'read');
     this.marks.write(new Uint32Array(slots + Math.max(this.edgeCount, 1)));
 
@@ -538,6 +553,7 @@ export class Renderer {
     };
     for (const edgeDraw of this.edgeDraws) edgeDraw.set(edgeBindings);
     this.pathEdges.set({ view: this.view, ranks: this.ranks, path: this.path });
+    this.negativeEdges.set({ view: this.view, pairs: this.negative });
     this.nodes.set({
       view: this.view,
       levels: this.levels,
@@ -667,6 +683,8 @@ export class Renderer {
     this.path = null;
     this.pathVertices = null;
     this.extras = null;
+    this.negative = null;
+    this.negativeCount = 0;
     this.marks = null;
     this.morphFrom = null;
     this.morphDest = null;
@@ -813,6 +831,27 @@ export class Renderer {
     this.pathVertices = length > 0 ? path : null;
     this.viewValues.pathLength = length;
     this.updateExtras();
+    this.touch(true);
+  }
+
+  /**
+   * Draws the edges Dijkstra refuses the graph for (`[u, v]` pairs, the
+   * arcs u -> v on a directed graph) as thick segments in the cycle's red
+   * over everything, never dropped by the sampling. Only these pairs are
+   * uploaded. `null` clears.
+   */
+  setNegative(pairs: Uint32Array | null) {
+    if (!this.negative) return;
+    const count = pairs ? pairs.length >> 1 : 0;
+    if (count === 0 && this.negativeCount === 0) return;
+    if (count > 0 && pairs) {
+      if (this.negative.size < pairs.byteLength) {
+        this.negative = storage(this.gpu, pairs.byteLength, 'read');
+      }
+      this.negative.write(bytes(pairs));
+      this.negativeEdges.set({ pairs: this.negative });
+    }
+    this.negativeCount = count;
     this.touch(true);
   }
 
@@ -1136,6 +1175,7 @@ export class Renderer {
         const current = this.positions.read;
         for (const edgeDraw of this.edgeDraws) edgeDraw.set({ positions: current });
         this.pathEdges.set({ positions: current });
+        this.negativeEdges.set({ positions: current });
         this.nodes.set({ positions: current });
       }
       // While the picture keeps moving draw a sample of the edges and of
@@ -1172,6 +1212,9 @@ export class Renderer {
             if (arrows) pass.draw(this.extraHeads, { vertices: incident * 3 });
           }
           if (this.pathSegments > 0) pass.draw(this.pathEdges, { instances: this.pathSegments });
+          if (this.negativeCount > 0) {
+            pass.draw(this.negativeEdges, { instances: this.negativeCount });
+          }
         });
       }
       this.dirty = false;

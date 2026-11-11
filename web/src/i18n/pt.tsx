@@ -682,8 +682,10 @@ export const pt: Dictionary = {
       `Um ciclo negativo, de peso ${w}, alcançado desta origem: não há caminhos mínimos, cada volta encurta um passeio.`,
     passes: 'Passadas',
     negativeWeights: (n: number) => (n === 1 ? '1 peso negativo' : `${n} pesos negativos`),
-    refusal: (u: number, v: number, w: string) =>
-      `O Dijkstra recusa este grafo: a aresta ${u} ${v} pesa ${w}, e o Dijkstra precisa de pesos de pelo menos 0. O Bellman-Ford aceita pesos negativos.`,
+    refusal: (n: number, count: string) =>
+      `O Dijkstra recusa este grafo: ele tem ${n === 1 ? 'um peso negativo' : `${count} pesos negativos`}, em vermelho, e o Dijkstra precisa de pesos de pelo menos 0. O Bellman-Ford aceita pesos negativos.`,
+    refusalMore: (count: string) => `e mais ${count}`,
+    runBellmanFord: 'Rodar o Bellman-Ford no lugar',
     distanceAt: (d: string) => `distância ${d}`,
     mode: 'Modo',
     modeSearch: 'Max',
@@ -703,6 +705,9 @@ export const pt: Dictionary = {
     cycle: 'Ciclo negativo',
     fitCycle: 'Enquadrar o ciclo na tela',
     clearCycle: 'Limpar o ciclo',
+    negativeEdges: 'Pesos negativos',
+    fitNegative: 'Enquadrar os pesos negativos na tela',
+    clearRefusal: 'Limpar os pesos negativos',
     reached: 'Alcançados',
     eccentricity: 'Excentric.',
     depth: 'Profundidade',

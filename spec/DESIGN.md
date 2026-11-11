@@ -19,8 +19,10 @@ drawn for.
    exists only so the level ramp has a far end. One green (`--target`,
    `#16a34a`) exists for exactly one thing: the destination of a distance
    query, on the canvas and in the path balls. One red (`--cycle`,
-   `#e5484d`) exists for exactly one thing too: a negative cycle that
-   Bellman-Ford returns, on the canvas and in its balls. No amber.
+   `#e5484d`) exists for exactly one thing too: negative weights that stop
+   an algorithm, a negative cycle that Bellman-Ford returns or the negative
+   edges Dijkstra refuses a graph for, on the canvas and in their balls.
+   No amber.
 3. **Light first, dark on request.** White paper is the default (it is
    what the icon was drawn for); a dark theme redefines the same tokens on
    `:root[data-theme='dark']`. A visitor who has not chosen gets the
@@ -431,7 +433,13 @@ when Bellman-Ford's origin reaches a negative cycle, the same card holds
 the cycle instead (red balls in `--cycle`, the first vertex repeated last,
 a fit and a clear button, and under them a note with its weight edged in
 red), the canvas draws the cycle whole in red over a greyed, shrunk graph
-and frames it; the legend reads origin ·
+and frames it; when Dijkstra refuses a graph with negative weights, the
+card names the first three negative edges as red balls with their weights
+(and counts the rest), a note edged in red says why and offers to run
+Bellman-Ford instead, and the canvas draws every negative edge (arcs with
+their heads) as a thick red segment over the plain graph, framed when there
+are at most 64; a fit and a clear button stand beside it, and any other
+search, graph or clear takes it away; the legend reads origin ·
 destination · not reached. In Distance a
 click on the canvas picks the target once the origin is set;
 **Dijkstra** reads like a BFS whose levels are distance bands: the origin

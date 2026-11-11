@@ -42,7 +42,7 @@ struct View {
   edgeDim: vec4f,
   edgeTree: vec4f,
   colorTarget: vec4f, // the destination of a distance query
-  colorCycle: vec4f,  // a negative cycle, the one red
+  colorCycle: vec4f,  // a negative cycle or Dijkstra's refused negative edges, the one red
 }
 @group(0) @binding(0) var<uniform> view: View;
 
@@ -269,6 +269,62 @@ struct VOut {
 
 @fragment fn fs_main(in: VOut) -> @location(0) vec4f {
   return vec4f(in.color.rgb * in.color.a, in.color.a);
+}
+`;
+
+/**
+ * The negative edges Dijkstra refuses a graph for, as thick segments in the
+ * cycle's red (one instanced quad per edge, as wide as a path's), and on a
+ * directed graph a filled head at each arc's end: nine vertices an
+ * instance, the last three culled on an undirected graph.
+ */
+export const NEGATIVE_SHADER = /* wgsl */ `
+${VIEW}
+@group(0) @binding(1) var<storage, read> positions: array<vec2f>;
+// The negative edges as [a, b] pairs (the arc a -> b on a directed graph).
+@group(0) @binding(2) var<storage, read> pairs: array<u32>;
+
+struct VOut {
+  @builtin(position) pos: vec4f,
+}
+
+@vertex fn vs_main(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
+  var out: VOut;
+  out.pos = vec4f(0.0, 0.0, 2.0, 1.0);
+  let pa = (positions[pairs[2u * ii]] - view.offset) * view.scale;
+  let pb = (positions[pairs[2u * ii + 1u]] - view.offset) * view.scale;
+  let d = pb - pa;
+  let len = length(d);
+  if (len < 1e-3) { return out; }
+  let dir = d / len;
+  let perp = vec2f(-dir.y, dir.x);
+  let half = clamp(view.radius * 0.45, 1.5, 4.0);
+  // The head's tip stops short of b's disc and the line stops inside the
+  // head, so the thick line never shows past the tip.
+  let tip = pb - dir * min(view.radius + 1.0, 0.5 * len);
+  let size = min(view.radius + 4.0 + 2.0 * half, 0.4 * len);
+  var end = pb;
+  if (view.arrows != 0u) { end = tip - dir * (0.5 * size); }
+  if (vi < 6u) {
+    let n = perp * half;
+    var corners = array<vec2f, 6>(
+      pa - n, end - n, pa + n,
+      pa + n, end - n, end + n);
+    out.pos = toClip(corners[vi]);
+    return out;
+  }
+  if (view.arrows == 0u) { return out; }
+  var head = array<vec2f, 3>(
+    tip,
+    tip - dir * size + perp * (0.5 * size),
+    tip - dir * size - perp * (0.5 * size));
+  out.pos = toClip(head[vi - 6u]);
+  return out;
+}
+
+@fragment fn fs_main() -> @location(0) vec4f {
+  let a = 0.95;
+  return vec4f(view.colorCycle.rgb * a, a);
 }
 `;
 
