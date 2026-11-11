@@ -677,7 +677,6 @@ export const pt: Dictionary = {
     floydTooLarge: (n: string, limit: string) =>
       `O Floyd-Warshall roda aqui em até ${limit} vértices: a tabela cresce como n² e o tempo como n³, e este grafo tem ${n}. A CLI aceita (graphman floyd-warshall).`,
     runFloyd: 'Rodar o Floyd-Warshall em todos os pares',
-    floydRunHint: 'Todos os pares de uma vez: sem origem para escolher.',
     floydHint:
       'O Floyd-Warshall preenche uma tabela com a distância entre cada par de vértices. Rode, acompanhe as rodadas e depois clique num vértice para ler a linha dele (um duplo clique em outro: o caminho entre os dois).',
     floydPairs: 'Pares com caminho',
