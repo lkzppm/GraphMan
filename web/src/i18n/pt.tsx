@@ -1035,6 +1035,7 @@ export const pt: Dictionary = {
         bellmanTitle: 'd_k[v]: a estimativa de v depois da passada k',
         floydTitle: 'D_k[i][j]: de i a j passando pelos vértices 1 a k',
         pass: 'passada',
+        showPath: (from: string, to: string) => `Mostrar o caminho de ${from} até ${to}`,
         passOf: (k: string, total: string) => `passada ${k} de ${total}`,
         roundOf: (k: string, n: string) => `k = ${k} de ${n}`,
         start: 'k = 0: só os arcos',

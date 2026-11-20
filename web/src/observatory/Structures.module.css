@@ -794,6 +794,23 @@
   color: #fff;
 }
 
+/* A cell is a distance, so it opens its path: it answers the pointer as
+   the headers do, with an accent ring on hover and on keyboard focus. */
+.dpCell[data-pick] {
+  cursor: pointer;
+  transition: box-shadow 0.15s var(--ease);
+}
+
+.dpCell[data-pick]:hover,
+.dpCell[data-pick]:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.dpCell[data-pick]:active {
+  background: var(--accent-muted);
+}
+
 @keyframes dpLowered {
   from {
     background: color-mix(in srgb, var(--accent) 45%, transparent);
