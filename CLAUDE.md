@@ -38,7 +38,8 @@ or slides: a comma, a colon or a full stop takes its place.
   the planned `petgraph` bridge (test oracle now, shared traits later).
 - `spec/PHASE3.md` — the Part 3 design: direction as a flag plus a
   transpose, Bellman-Ford over a `Schedule`, Floyd-Warshall over a
-  `SweepKind`, Johnson, SCC, the study runner and the order of work.
+  `Sweep` (the `SweepKind`s built in), Johnson, SCC, the study runner and
+  the order of work.
 
 ## Layout
 
@@ -131,7 +132,10 @@ cd web && pnpm run typecheck && pnpm run lint # must be green (CI enforces)
   vertices is a new `Schedule`, never a second Bellman-Ford. Its negative
   cycles are returned as the cycle, not a boolean. Floyd-Warshall keeps
   one `n × n` table updated in place and is priced and refused by the
-  memory budget like the matrix.
+  memory budget like the matrix; it is written once over a `Sweep`, which
+  only orders the updates through a `SweepTable` (the library does every
+  update), so a new way of walking the table is a new `Sweep`, never a
+  second Floyd-Warshall, and it must pass `check_sweep`.
 - Every representation keeps neighbour rows ascending; tests rely on all
   representations producing identical search trees.
 - Timings in studies exclude parsing and file output (course rule).

@@ -499,6 +499,47 @@ fn floyd_warshall() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn sweeps() -> Result<(), Box<dyn std::error::Error>> {
+    // wiki:start sweeps
+    use core::ops::ControlFlow;
+    use graphman::algo::{Sweep, SweepKind, SweepTable};
+    use graphman::{Build, Csr, EdgeList, MemoryBudget, Orientation, algo};
+
+    let text = b"5\n1 2 4\n1 3 2\n3 2 -1\n2 4 2\n4 5 -2\n5 3 2\n";
+    let graph = Csr::build(&EdgeList::parse_with(text, Orientation::Directed)?)?;
+
+    // One Floyd-Warshall, many orders: a sweep decides which rows or tiles
+    // go through which round, the library does the update. Your own sweep
+    // is a type: here each round runs from the last row up.
+    struct Backwards;
+
+    impl Sweep for Backwards {
+        fn run(&mut self, table: &mut SweepTable<'_>) -> ControlFlow<()> {
+            for k in 0..table.n() {
+                table.round_rows(k, (0..table.n()).rev());
+                table.rounds_done(k + 1)?; // a negative cycle or a cancel stops it
+            }
+            ControlFlow::Continue(())
+        }
+
+        fn name(&self) -> &str {
+            "backwards"
+        }
+    }
+
+    let mine = algo::floyd_warshall(&graph, Backwards, MemoryBudget::Machine)?;
+    let blocked = algo::floyd_warshall(&graph, SweepKind::Blocked, MemoryBudget::Machine)?;
+    // A sweep can be wrong (the order must keep the recurrence):
+    // check_sweep compares it with the plain sweep on any graph.
+    let checked = algo::check_sweep(&graph, Backwards); // Ok(())
+    // wiki:end
+    assert_eq!(mine.distance(4, 2), Some(-1.0));
+    assert_eq!(blocked.distance(4, 2), Some(-1.0));
+    assert_eq!(checked, Ok(()));
+    Ok(())
+}
+
+#[test]
 fn johnson() -> Result<(), Box<dyn std::error::Error>> {
     // wiki:start johnson
     use graphman::algo::ScheduleKind;

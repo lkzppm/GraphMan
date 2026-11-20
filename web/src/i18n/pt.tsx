@@ -253,8 +253,12 @@ export const pt: Dictionary = {
       },
       floyd_warshall: {
         title: 'Floyd-Warshall',
-        body: 'floyd_warshall responde a todos os pares de uma vez. A recorrência D_k[i][j] = min(D_k−1[i][j], D_k−1[i][k] + D_k−1[k][j]) se lê como n + 1 tabelas, mas a rodada k nunca muda a linha k nem a coluna k, então uma só tabela n × n é atualizada no lugar: a otimização de memória que a disciplina pede. Os predecessores seguem a mesma regra, então a linha i da tabela é a árvore a partir de i, sem memória extra. A 12 bytes por célula, a tabela é orçada e recusada além do limite de memória, como a matriz (1,2 GB com 10 000 vértices). Um ciclo negativo aparece na diagonal e volta como o ciclo. FloydRounds roda a mesma tabela uma rodada por vez e diz quais células cada rodada baixou: o observatório a reproduz.',
+        body: 'floyd_warshall responde a todos os pares de uma vez. A recorrência D_k[i][j] = min(D_k−1[i][j], D_k−1[i][k] + D_k−1[k][j]) se lê como n + 1 tabelas, mas a rodada k nunca muda a linha k nem a coluna k, então uma só tabela n × n é atualizada no lugar: a otimização de memória que a disciplina pede. Os predecessores seguem a mesma regra, então a linha i da tabela é a árvore a partir de i, sem memória extra. A 12 bytes por célula, a tabela é orçada e recusada além do limite de memória, como a matriz (1,2 GB com 10 000 vértices). Um ciclo negativo aparece na diagonal e volta como o ciclo. O laço é escrito uma vez, sobre uma Sweep que decide a ordem das atualizações (próximo capítulo). FloydRounds roda a mesma tabela uma rodada por vez e diz quais células cada rodada baixou: o observatório a reproduz.',
         matrix: 'D_n, a tabela depois de todas as rodadas: a linha 1 é a árvore a partir de 1',
+      },
+      sweeps: {
+        title: 'Varreduras',
+        body: 'Uma Sweep decide como o Floyd-Warshall percorre a tabela: quais linhas ou blocos passam por qual rodada, em que ordem, em quantos núcleos. A biblioteca continua orçando e preenchendo a tabela, fazendo cada atualização (vetorizada), achando o ciclo negativo e informando o progresso, pela SweepTable que a varredura recebe; uma nova ordem é uma nova Sweep, nunca um segundo Floyd-Warshall. Diferente de uma ordem do Bellman-Ford, uma varredura pode errar (a rodada k precisa ler a linha k e a coluna k como a rodada k as encontrou), então check_sweep a compara com a varredura plain em qualquer grafo, e uma varredura que retorna antes da última rodada entra em pânico. As quatro da biblioteca são as SweepKind; qualquer tipo que implemente Sweep é uma quinta.',
         table: [
           ['Varredura', 'Como o laço triplo percorre a tabela'],
           ['plain', 'para k, para i, para j na tabela plana, a linha k separada: a do livro'],
@@ -1630,7 +1634,7 @@ export const pt: Dictionary = {
           eyebrow: '05',
           title: 'Um Floyd-Warshall, escrito uma vez',
           driver:
-            '// o laço é escrito uma vez, numa tabela n × n; uma varredura só muda a ordem em que visita as células',
+            '// escrito uma vez sobre uma Sweep: a biblioteca faz cada atualização numa tabela n × n, a varredura só escolhe a ordem',
           price: (
             fits: string,
             fitsBytes: string,
@@ -1675,7 +1679,7 @@ export const pt: Dictionary = {
               caption: '// blocos: o da diagonal, sua linha e sua coluna, depois o resto',
             },
           ],
-          ties: '// toda varredura dá as mesmas distâncias; o estudo cronometra as quatro',
+          ties: '// uma nova ordem é uma nova Sweep, nunca um segundo Floyd-Warshall; toda varredura dá as mesmas distâncias',
         },
         target: {
           eyebrow: '07',
