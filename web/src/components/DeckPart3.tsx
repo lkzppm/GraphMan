@@ -301,6 +301,7 @@ const BF_NAMES = ['Schedule', 'Weighted', 'bellman_ford_into', 'NegativeCycle'];
 const KEYWORDS = [
   'pub',
   'trait',
+  'impl',
   'enum',
   'fn',
   'mut',
@@ -1077,8 +1078,8 @@ export function Cycle({ t, studies }: { t: T; studies: DirectedStudy[] }) {
 }
 
 /* ---- 05 one Floyd-Warshall: the code, and the tables folding into one ----
-   The sweep enum, the entry point and the round loop as the library writes
-   them, beside the sample's run. First the recurrence as it reads: n + 1
+   The sweep trait, the handle a sweep is given and the entry point as the
+   library writes them, beside the sample's run. First the recurrence as it reads: n + 1
    tables, D⁰ to Dⁿ, dealt one on top of the other with their values, each
    lighting the row and column of its k (which it copies unchanged) and the
    cells it lowered. Then they collide back into the first one, and the
@@ -1086,23 +1087,21 @@ export function Cycle({ t, studies }: { t: T; studies: DirectedStudy[] }) {
    column k, and every cell that improves through k flashes and takes its
    new value. Beside it, what that one table costs on the course graphs. */
 
-const FW_CODE = `pub enum SweepKind { Plain, Pruned, Parallel, Blocked }
+const FW_CODE = `pub trait Sweep {
+    fn run(&mut self, table: &mut SweepTable<'_>) -> ControlFlow<()>;
+    fn name(&self) -> &str;
+}
 
-pub fn floyd_warshall<G: Weighted>(
-    graph: &G, sweep: SweepKind, budget: MemoryBudget,
-) -> Result<AllPairs, FloydError>
+impl SweepTable<'_> {
+    pub fn round(&mut self, k: usize, keep: impl Fn(usize, Weight) -> bool);
+    pub fn rounds_done(&mut self, rounds: usize) -> ControlFlow<()>;
+    …
+}
 
-for k in 0..n {
-    row_k.copy_from_slice(&distance[k * n..(k + 1) * n]);
-    for (i, row) in distance.chunks_mut(n).enumerate() {
-        let through = row[k];
-        if i == k || (pruned && through == INFINITY) {
-            continue;
-        }
-        relax(row, through, &row_k);
-    }
-}`;
-const FW_NAMES = ['SweepKind', 'floyd_warshall', 'AllPairs', 'FloydError', 'row_k'];
+pub fn floyd_warshall<G: Weighted, S: Sweep>(
+    graph: &G, sweep: S, budget: MemoryBudget,
+) -> Result<AllPairs, FloydError>`;
+const FW_NAMES = ['Sweep', 'SweepTable', 'floyd_warshall', 'AllPairs', 'FloydError', 'Weighted'];
 
 interface Round {
   k: number;

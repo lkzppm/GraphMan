@@ -251,8 +251,12 @@ export const en = {
       },
       floyd_warshall: {
         title: 'Floyd-Warshall',
-        body: 'floyd_warshall answers every pair at once. The recurrence D_k[i][j] = min(D_k−1[i][j], D_k−1[i][k] + D_k−1[k][j]) reads as n + 1 tables, but round k never changes row k or column k, so one n × n table is updated in place: the memory optimisation the course asks for. Predecessors follow the same rule, so row i of the table is the tree from i, with no extra memory. At 12 bytes a cell, the table is priced and refused past the memory budget like the matrix (1.2 GB at 10 000 vertices). A negative cycle shows on the diagonal and comes back as the cycle. FloydRounds runs the same table one round at a time and says which cells each round lowered: the observatory replays it.',
+        body: 'floyd_warshall answers every pair at once. The recurrence D_k[i][j] = min(D_k−1[i][j], D_k−1[i][k] + D_k−1[k][j]) reads as n + 1 tables, but round k never changes row k or column k, so one n × n table is updated in place: the memory optimisation the course asks for. Predecessors follow the same rule, so row i of the table is the tree from i, with no extra memory. At 12 bytes a cell, the table is priced and refused past the memory budget like the matrix (1.2 GB at 10 000 vertices). A negative cycle shows on the diagonal and comes back as the cycle. The loop is written once, over a Sweep that decides the order of the updates (next chapter). FloydRounds runs the same table one round at a time and says which cells each round lowered: the observatory replays it.',
         matrix: 'D_n, the table once every round is done: row 1 is the tree from 1',
+      },
+      sweeps: {
+        title: 'Sweeps',
+        body: "A Sweep decides how Floyd-Warshall walks its table: which rows or tiles go through which round, in what order, on how many cores. The library still prices and fills the table, does every update (vectorised), finds the negative cycle and reports progress, through the SweepTable a sweep is handed; a new order is a new Sweep, never a second Floyd-Warshall. Unlike a schedule, a sweep can be wrong (round k must read row k and column k as round k found them), so check_sweep compares one with the plain sweep on any graph, and a sweep that returns before its last round panics. The library's four are the SweepKinds; any type implementing Sweep is a fifth.",
         table: [
           ['Sweep', 'How the triple loop walks the table'],
           ['plain', 'for k, for i, for j on the flat table, row k hoisted: the textbook'],
@@ -1610,7 +1614,7 @@ export const en = {
           eyebrow: '05',
           title: 'One Floyd-Warshall, written once',
           driver:
-            '// the loop is written once, on one n × n table; a sweep only changes the order it visits the cells',
+            '// written once over a Sweep: the library does every update on one n × n table, a sweep only picks the order',
           price: (
             fits: string,
             fitsBytes: string,
@@ -1654,7 +1658,7 @@ export const en = {
               caption: '// tiles: the diagonal one, its row and column, then the rest',
             },
           ],
-          ties: '// every sweep gives the same distances; the study times all four',
+          ties: '// a new order is a new Sweep, never a second Floyd-Warshall; every sweep gives the same distances',
         },
         target: {
           eyebrow: '07',

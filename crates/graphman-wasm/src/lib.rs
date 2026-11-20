@@ -1455,7 +1455,7 @@ impl WasmGraph {
     pub fn floyd_warshall(&self, sweep: SweepType) -> Result<FloydRun, JsError> {
         let budget = MemoryBudget::Bytes(AllPairs::required_bytes(FLOYD_LIMIT));
         let start = now();
-        let run = dispatch!(&self.graph, g => algo::floyd_warshall(g, sweep.into(), budget));
+        let run = dispatch!(&self.graph, g => algo::floyd_warshall(g, algo::SweepKind::from(sweep), budget));
         let elapsed_ms = now() - start;
         match run {
             Ok(all) => Ok(FloydRun {
