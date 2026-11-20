@@ -59,6 +59,7 @@ type ChapterId =
   | 'bellman_ford'
   | 'schedules'
   | 'floyd_warshall'
+  | 'sweeps'
   | 'johnson'
   | 'strong_components';
 
@@ -84,6 +85,7 @@ const CHAPTERS: { id: ChapterId; part: PartId; source: string }[] = [
   { id: 'bellman_ford', part: 'algorithms', source: 'src/algo/bellman_ford.rs' },
   { id: 'schedules', part: 'algorithms', source: 'src/algo/schedule.rs' },
   { id: 'floyd_warshall', part: 'algorithms', source: 'src/algo/floyd_warshall.rs' },
+  { id: 'sweeps', part: 'algorithms', source: 'src/algo/floyd_warshall.rs' },
   { id: 'johnson', part: 'algorithms', source: 'src/algo/johnson.rs' },
   { id: 'strong_components', part: 'algorithms', source: 'src/algo/scc.rs' },
 ];
@@ -428,7 +430,11 @@ export default function Wiki({ examples }: { examples: Record<string, string> })
             <Figure legend={l.chapters.floyd_warshall.matrix}>
               <Table rows={FLOYD_ROWS} />
             </Figure>
-            <Table rows={l.chapters.floyd_warshall.table} />
+          </Chapter>
+
+          <Chapter meta={chapter('sweeps')}>
+            <Table rows={l.chapters.sweeps.table} />
+            {code('sweeps')}
           </Chapter>
 
           <Chapter meta={chapter('johnson')}>

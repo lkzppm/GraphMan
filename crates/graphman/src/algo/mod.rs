@@ -45,7 +45,8 @@ pub use components::Components;
 pub use diameter::{Diameter, DiameterError, DiameterMethod, diameter, diameter_with_progress};
 pub use distance::{distance, distance_into, eccentricity, eccentricity_into};
 pub use floyd_warshall::{
-    AllPairs, FloydError, FloydRounds, SweepKind, floyd_warshall, floyd_warshall_with_progress,
+    AllPairs, FloydError, FloydRounds, Sweep, SweepKind, SweepMismatch, SweepTable, check_sweep,
+    floyd_warshall, floyd_warshall_with_progress,
 };
 pub use frontier::{
     DaryHeapFrontier, Frontier, FrontierCounts, FrontierEntry, FrontierKind, HeapFrontier,

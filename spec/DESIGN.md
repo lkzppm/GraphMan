@@ -673,8 +673,8 @@ still shows at its middle.
   cycle** (a token lapping a cycle of weight −1 as `hops[1]` climbs, then
   the cycle in `--cycle` with `Σ = −1`; beside it each course graph's
   certificates, to the target and anywhere); **Floyd-Warshall** (the
-  Bellman-Ford layout: the sweep enum, the entry point and the round loop
-  in a code card, what the table costs on the course graphs under it;
+  Bellman-Ford layout: the `Sweep` trait, the `SweepTable` a sweep is
+  handed and the generic entry point in a code card, what the table costs on the course graphs under it;
   beside it D⁰ to Dⁿ dealt one on another with their values, row and
   column k washed and lowered cells blue, colliding back into D⁰, which
   then runs the rounds in place, improved cells flashing; a replay

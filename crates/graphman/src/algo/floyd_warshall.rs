@@ -10,10 +10,15 @@
 //! `i` of the predecessor table *is* the shortest-path tree from `i`, with no
 //! extra memory and no rebuild.
 //!
-//! How the triple loop walks memory is a [`SweepKind`]: on `10¹²` updates
-//! it is the whole running time.
+//! How the triple loop walks memory is a [`Sweep`]: on `10¹²` updates it
+//! is the whole running time. [`floyd_warshall`] is written once over it,
+//! the way Bellman-Ford is over a [`Schedule`](super::Schedule): the
+//! library owns the table, the update and the negative cycle, and a sweep
+//! only decides the order of the updates, through a [`SweepTable`]. The
+//! library's sweeps are the [`SweepKind`]s; a sweep of one's own is a type
+//! implementing [`Sweep`], checked against the plain one by [`check_sweep`].
 //!
-//! | Sweep | What changes |
+//! | [`SweepKind`] | What changes |
 //! |---|---|
 //! | `plain` | `for k, for i, for j` on the flat table, row `k` hoisted: the textbook with the memory optimisation |
 //! | `pruned` | rows with `D[i][k] = ∞` skipped: on a sparse digraph most early rounds touch few rows |
@@ -43,6 +48,7 @@ use super::traversal::Control;
 use crate::graph::{MemoryBudget, NO_VERTEX, Vertex, Weight, Weighted};
 use core::fmt;
 use core::mem::size_of;
+use core::ops::{ControlFlow, Range};
 use core::str::FromStr;
 use std::io::{self, Write};
 
@@ -264,7 +270,8 @@ impl AllPairs {
     }
 }
 
-/// Floyd-Warshall with the given sweep, within `budget`.
+/// Floyd-Warshall with the given sweep (a [`SweepKind`], or a [`Sweep`] of
+/// one's own), within `budget`.
 ///
 /// ```
 /// use graphman::{Build, Csr, EdgeList, MemoryBudget, Orientation};
@@ -277,20 +284,26 @@ impl AllPairs {
 /// assert_eq!(all.path(3, 1), Some(vec![3, 2, 1]));
 /// assert_eq!(all.tree(1).path_to(2), Some(vec![1, 3, 2]));
 /// ```
-pub fn floyd_warshall<G: Weighted>(
+pub fn floyd_warshall<G: Weighted, S: Sweep>(
     graph: &G,
-    sweep: SweepKind,
+    sweep: S,
     budget: MemoryBudget,
 ) -> Result<AllPairs, FloydError> {
     floyd_warshall_with_progress(graph, sweep, budget, &|_| Control::Continue)
 }
 
 /// [`floyd_warshall`] with a callback that receives the number of rounds
-/// done (a round per `k`; the blocked sweep reports a tile's worth at once)
-/// and may stop the run, which then ends with [`FloydError::Cancelled`].
-pub fn floyd_warshall_with_progress<G: Weighted>(
+/// done (as the sweep reports them: a round per `k`, a tile's worth at once
+/// for the blocked sweep) and may stop the run, which then ends with
+/// [`FloydError::Cancelled`].
+///
+/// # Panics
+///
+/// When the sweep returns before reporting all `n` rounds and without
+/// being stopped: it broke the [`Sweep`] contract.
+pub fn floyd_warshall_with_progress<G: Weighted, S: Sweep>(
     graph: &G,
-    sweep: SweepKind,
+    mut sweep: S,
     budget: MemoryBudget,
     progress: &(dyn Fn(usize) -> Control + Sync),
 ) -> Result<AllPairs, FloydError> {
@@ -300,26 +313,420 @@ pub fn floyd_warshall_with_progress<G: Weighted>(
         return Err(NegativeCycle::new(vec![edge.u], edge.weight).into());
     }
     let mut all = initial(graph, budget)?;
-    let mut table = Table {
-        n,
-        distance: &mut all.distance,
-        parent: &mut all.parent,
+    let stop = {
+        let mut table = SweepTable::new(n, &mut all.distance, &mut all.parent, progress);
+        let _ = sweep.run(&mut table);
+        if table.stop.is_none() {
+            assert_eq!(
+                table.done,
+                n,
+                "the sweep {:?} returned after {} of {n} rounds",
+                sweep.name(),
+                table.done,
+            );
+        }
+        table.stop
     };
-    let negative = match sweep {
-        SweepKind::Plain => table.rounds(false, false, progress),
-        SweepKind::Pruned => table.rounds(true, false, progress),
-        SweepKind::Parallel => table.rounds(true, true, progress),
-        SweepKind::Blocked => table.blocked(progress),
-    }?;
-    if let Some(i) = negative {
-        let cycle = all
-            .cycle_through(graph, i)
-            .or_else(|| negative_cycle(graph, ScheduleKind::Queue))
-            .expect("a negative diagonal is a closed walk of negative weight");
-        return Err(cycle.into());
+    match stop {
+        Some(Stop::Cycle(i)) => {
+            let i = i as Vertex + 1;
+            let cycle = all
+                .cycle_through(graph, i)
+                .or_else(|| negative_cycle(graph, ScheduleKind::Queue))
+                .expect("a negative diagonal is a closed walk of negative weight");
+            return Err(cycle.into());
+        }
+        Some(Stop::Cancelled(rounds)) => return Err(FloydError::Cancelled { rounds, of: n }),
+        None => {}
     }
     all.regrow_looping_rows(graph);
     Ok(all)
+}
+
+/// How Floyd-Warshall walks its table: the **order** of the updates, never
+/// the updates themselves.
+///
+/// The library prices and fills the table, owns the update
+/// `D[i][j] = min(D[i][j], D[i][k] + D[k][j])` (vectorised, the predecessor
+/// following), finds the negative cycle and reports progress; a sweep only
+/// says which rows or tiles go through which rounds, in what order and on
+/// how many cores, through the [`SweepTable`] it is handed. A new way of
+/// walking the table is a new `Sweep`, never a second Floyd-Warshall.
+///
+/// # The contract
+///
+/// Unlike a [`Schedule`](super::Schedule), a sweep can be wrong: round `k`
+/// must read row `k` and column `k` as round `k` found them, or the
+/// distances come out wrong with no error. So a sweep
+///
+/// * runs the rounds `k = 0..n` on every row in order, or in an order that
+///   reads the same values (as the blocked sweep's tiles do);
+/// * skips a row of round `k` only when the round cannot change it (a row
+///   with `D[i][k] = ∞`, which [`SweepTable::round`]'s filter sees);
+/// * reports rounds as they complete with [`SweepTable::rounds_done`], up to
+///   `n`, and returns as soon as it answers [`ControlFlow::Break`] (a
+///   negative cycle, or the progress callback stopped the run).
+///
+/// A run panics when a sweep returns early without being stopped, and
+/// [`check_sweep`] compares a sweep with the plain one on any graph.
+///
+/// ```
+/// use core::ops::ControlFlow;
+/// use graphman::{Build, Csr, EdgeList, MemoryBudget, Orientation};
+/// use graphman::algo::{self, Sweep, SweepTable};
+///
+/// /// Each round from the last row up.
+/// struct Backwards;
+///
+/// impl Sweep for Backwards {
+///     fn run(&mut self, table: &mut SweepTable<'_>) -> ControlFlow<()> {
+///         for k in 0..table.n() {
+///             table.round_rows(k, (0..table.n()).rev());
+///             table.rounds_done(k + 1)?;
+///         }
+///         ControlFlow::Continue(())
+///     }
+///
+///     fn name(&self) -> &str {
+///         "backwards"
+///     }
+/// }
+///
+/// let edges = EdgeList::parse_with(b"3\n1 2 4\n1 3 3\n3 2 -2\n2 1 1\n", Orientation::Directed).unwrap();
+/// let graph = Csr::build(&edges).unwrap();
+/// let all = algo::floyd_warshall(&graph, Backwards, MemoryBudget::Machine).unwrap();
+/// assert_eq!(all.distance(3, 1), Some(-1.0));
+/// assert_eq!(algo::check_sweep(&graph, Backwards), Ok(()));
+/// ```
+pub trait Sweep {
+    /// Runs every round on `table`, in an order that keeps the recurrence.
+    fn run(&mut self, table: &mut SweepTable<'_>) -> ControlFlow<()>;
+
+    /// What the sweep is called, in reports and panics.
+    fn name(&self) -> &str;
+}
+
+impl<S: Sweep + ?Sized> Sweep for &mut S {
+    fn run(&mut self, table: &mut SweepTable<'_>) -> ControlFlow<()> {
+        (**self).run(table)
+    }
+
+    fn name(&self) -> &str {
+        (**self).name()
+    }
+}
+
+impl<S: Sweep + ?Sized> Sweep for Box<S> {
+    fn run(&mut self, table: &mut SweepTable<'_>) -> ControlFlow<()> {
+        (**self).run(table)
+    }
+
+    fn name(&self) -> &str {
+        (**self).name()
+    }
+}
+
+/// The library's four sweeps.
+impl Sweep for SweepKind {
+    fn run(&mut self, table: &mut SweepTable<'_>) -> ControlFlow<()> {
+        match self {
+            // The textbook: every row, branch-free.
+            SweepKind::Plain => {
+                for k in 0..table.n() {
+                    table.round(k, |_, _| true);
+                    table.rounds_done(k + 1)?;
+                }
+            }
+            // A row that cannot reach `k` yet cannot improve through it.
+            SweepKind::Pruned => {
+                for k in 0..table.n() {
+                    table.round(k, |_, through| through != Weight::INFINITY);
+                    table.rounds_done(k + 1)?;
+                }
+            }
+            SweepKind::Parallel => {
+                for k in 0..table.n() {
+                    table.par_round(k, |_, through| through != Weight::INFINITY);
+                    table.rounds_done(k + 1)?;
+                }
+            }
+            // Venkataraman-Sahni-Mukhopadhyaya: for each tile `K` of the
+            // diagonal, run the rounds `k ∈ K` on the diagonal tile, then on
+            // the tiles of its row and its column (which read the diagonal
+            // tile), then on every other tile (which reads one tile of each).
+            // Each update reads values the plain order would have produced
+            // by then, so the distances are the same; each tile fits in
+            // cache, so its rounds cost cache hits instead of memory
+            // bandwidth.
+            SweepKind::Blocked => {
+                const TILE: usize = 64;
+                let n = table.n();
+                let tiles = n.div_ceil(TILE);
+                let span = |t: usize| t * TILE..((t + 1) * TILE).min(n);
+                for kt in 0..tiles {
+                    let ks = span(kt);
+                    table.tile(ks.clone(), ks.clone(), ks.clone());
+                    for t in (0..tiles).filter(|&t| t != kt) {
+                        table.tile(ks.clone(), span(t), ks.clone());
+                        table.tile(span(t), ks.clone(), ks.clone());
+                    }
+                    for it in (0..tiles).filter(|&t| t != kt) {
+                        for jt in (0..tiles).filter(|&t| t != kt) {
+                            table.tile(span(it), span(jt), ks.clone());
+                        }
+                    }
+                    table.rounds_done(ks.end)?;
+                }
+            }
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn name(&self) -> &str {
+        self.label()
+    }
+}
+
+/// Why a run ended before its last round.
+#[derive(Debug, Clone, Copy)]
+enum Stop {
+    /// A negative diagonal at this vertex (0-based).
+    Cycle(usize),
+    /// The progress callback stopped the run after this many rounds.
+    Cancelled(usize),
+}
+
+/// The tables a [`Sweep`] walks, and the only ways it may change them.
+/// Rows, columns and rounds are 0-based here: vertex `v` is index `v - 1`.
+pub struct SweepTable<'a> {
+    n: usize,
+    distance: &'a mut [Weight],
+    parent: &'a mut [Vertex],
+    /// Row `k` of each table, copied out so the other rows can be updated
+    /// while it is read, one after another or all at once.
+    row_k: Vec<Weight>,
+    parents_k: Vec<Vertex>,
+    progress: &'a (dyn Fn(usize) -> Control + Sync),
+    /// Rounds reported done.
+    done: usize,
+    stop: Option<Stop>,
+}
+
+impl<'a> SweepTable<'a> {
+    fn new(
+        n: usize,
+        distance: &'a mut [Weight],
+        parent: &'a mut [Vertex],
+        progress: &'a (dyn Fn(usize) -> Control + Sync),
+    ) -> Self {
+        Self {
+            n,
+            distance,
+            parent,
+            row_k: vec![0.0; n],
+            parents_k: vec![NO_VERTEX; n],
+            progress,
+            done: 0,
+            stop: None,
+        }
+    }
+
+    /// The number of vertices: rounds, rows and columns are `0..n`.
+    pub fn n(&self) -> usize {
+        self.n
+    }
+
+    /// `D[i][j]` as the table holds it now.
+    pub fn distance(&self, i: usize, j: usize) -> Weight {
+        self.distance[i * self.n + j]
+    }
+
+    /// Rounds reported done so far.
+    pub fn rounds(&self) -> usize {
+        self.done
+    }
+
+    /// Copies row `k` out (`n` cells, against the `n²` updates of a round).
+    fn copy_row(&mut self, k: usize) {
+        let n = self.n;
+        self.row_k
+            .copy_from_slice(&self.distance[k * n..(k + 1) * n]);
+        self.parents_k
+            .copy_from_slice(&self.parent[k * n..(k + 1) * n]);
+    }
+
+    /// Round `k` on every row `i` for which `keep(i, D[i][k])`, in order.
+    /// Row `k` is never updated (round `k` cannot change it).
+    pub fn round(&mut self, k: usize, keep: impl Fn(usize, Weight) -> bool) {
+        self.copy_row(k);
+        let n = self.n;
+        for (i, (row, parents)) in self
+            .distance
+            .chunks_mut(n)
+            .zip(self.parent.chunks_mut(n))
+            .enumerate()
+        {
+            let through = row[k];
+            if i != k && keep(i, through) {
+                relax(row, parents, through, &self.row_k, &self.parents_k);
+            }
+        }
+    }
+
+    /// Round `k` on the given rows, in the given order.
+    pub fn round_rows(&mut self, k: usize, rows: impl IntoIterator<Item = usize>) {
+        self.copy_row(k);
+        let n = self.n;
+        for i in rows {
+            if i == k {
+                continue;
+            }
+            let through = self.distance[i * n + k];
+            let row = &mut self.distance[i * n..(i + 1) * n];
+            let parents = &mut self.parent[i * n..(i + 1) * n];
+            relax(row, parents, through, &self.row_k, &self.parents_k);
+        }
+    }
+
+    /// [`round`](Self::round) with the rows shared out over every core
+    /// (they are independent once row `k` is read); one after another
+    /// without the `parallel` feature, as in the browser.
+    pub fn par_round(&mut self, k: usize, keep: impl Fn(usize, Weight) -> bool + Sync) {
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+            self.copy_row(k);
+            let n = self.n;
+            let (row_k, parents_k) = (&self.row_k, &self.parents_k);
+            self.distance
+                .par_chunks_mut(n)
+                .zip(self.parent.par_chunks_mut(n))
+                .enumerate()
+                .for_each(|(i, (row, parents))| {
+                    let through = row[k];
+                    if i != k && keep(i, through) {
+                        relax(row, parents, through, row_k, parents_k);
+                    }
+                });
+        }
+        #[cfg(not(feature = "parallel"))]
+        self.round(k, keep);
+    }
+
+    /// The rounds `ks`, in order, on the tile of rows `is` and columns `js`
+    /// (rows that cannot improve skipped). A tile reads the cells of row
+    /// `k` and column `k` as the table holds them, so the order of the
+    /// tiles is the sweep's to get right.
+    pub fn tile(&mut self, is: Range<usize>, js: Range<usize>, ks: Range<usize>) {
+        let n = self.n;
+        for k in ks {
+            for i in is.clone() {
+                let through = self.distance[i * n + k];
+                if i == k || through == Weight::INFINITY {
+                    continue;
+                }
+                // Rows `i` and `k` are distinct: split the tables between them.
+                let (row, row_k) = two_rows(self.distance, n, i, k);
+                let (parents, parents_k) = two_rows(self.parent, n, i, k);
+                relax(
+                    &mut row[js.clone()],
+                    &mut parents[js.clone()],
+                    through,
+                    &row_k[js.clone()],
+                    &parents_k[js.clone()],
+                );
+            }
+        }
+    }
+
+    /// Reports the rounds `0..rounds` complete. [`ControlFlow::Break`]
+    /// when the run must end (a negative cycle on the diagonal, or the
+    /// progress callback said so): the sweep returns then.
+    ///
+    /// # Panics
+    ///
+    /// When `rounds` is not past the rounds already reported, or past `n`.
+    pub fn rounds_done(&mut self, rounds: usize) -> ControlFlow<()> {
+        assert!(
+            rounds > self.done && rounds <= self.n,
+            "rounds reported out of order: {rounds} after {} of {}",
+            self.done,
+            self.n,
+        );
+        self.done = rounds;
+        if let Some(i) = negative_diagonal(self.distance, self.n) {
+            self.stop = Some(Stop::Cycle(i));
+            return ControlFlow::Break(());
+        }
+        if (self.progress)(rounds) == Control::Break {
+            self.stop = Some(Stop::Cancelled(rounds));
+            return ControlFlow::Break(());
+        }
+        ControlFlow::Continue(())
+    }
+}
+
+/// How a sweep's answer differs from the plain sweep's.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum SweepMismatch {
+    /// One found a negative cycle and the other did not.
+    #[error("the plain sweep {} a negative cycle, the sweep {}", if *.plain { "found" } else { "did not find" }, if *.plain { "did not" } else { "did" })]
+    Cycle {
+        /// Whether the plain sweep found it.
+        plain: bool,
+    },
+    /// The first cell (in row order) where the distances differ.
+    #[error("d({from}, {to}) is {sweep:?}, the plain sweep says {plain:?}")]
+    Distance {
+        /// The cell's row vertex.
+        from: Vertex,
+        /// The cell's column vertex.
+        to: Vertex,
+        /// The plain sweep's distance.
+        plain: Option<Weight>,
+        /// The sweep's distance.
+        sweep: Option<Weight>,
+    },
+    /// A run failed for another reason (the table did not fit...).
+    #[error(transparent)]
+    Failed(FloydError),
+}
+
+/// Runs `sweep` and the plain sweep on `graph` and compares their answers:
+/// `Ok` when every distance agrees (to rounding) or both find a negative
+/// cycle. The test a [`Sweep`] of one's own should pass on many graphs.
+pub fn check_sweep<G: Weighted, S: Sweep>(graph: &G, sweep: S) -> Result<(), SweepMismatch> {
+    let budget = MemoryBudget::Machine;
+    let plain = floyd_warshall(graph, SweepKind::Plain, budget);
+    let other = floyd_warshall(graph, sweep, budget);
+    match (plain, other) {
+        (Ok(plain), Ok(other)) => {
+            let n = plain.vertex_count() as Vertex;
+            for from in 1..=n {
+                for to in 1..=n {
+                    let (a, b) = (plain.distance(from, to), other.distance(from, to));
+                    let same = match (a, b) {
+                        (None, None) => true,
+                        (Some(x), Some(y)) => (x - y).abs() <= 1e-9 * x.abs().max(y.abs()).max(1.0),
+                        _ => false,
+                    };
+                    if !same {
+                        return Err(SweepMismatch::Distance {
+                            from,
+                            to,
+                            plain: a,
+                            sweep: b,
+                        });
+                    }
+                }
+            }
+            Ok(())
+        }
+        (Err(FloydError::NegativeCycle(_)), Err(FloydError::NegativeCycle(_))) => Ok(()),
+        (Err(FloydError::NegativeCycle(_)), Ok(_)) => Err(SweepMismatch::Cycle { plain: true }),
+        (Ok(_), Err(FloydError::NegativeCycle(_))) => Err(SweepMismatch::Cycle { plain: false }),
+        (Err(error), _) | (_, Err(error)) => Err(SweepMismatch::Failed(error)),
+    }
 }
 
 impl AllPairs {
@@ -433,13 +840,6 @@ fn initial<G: Weighted>(graph: &G, budget: MemoryBudget) -> Result<AllPairs, Flo
     Ok(all)
 }
 
-/// The two tables while a sweep runs.
-struct Table<'a> {
-    n: usize,
-    distance: &'a mut [Weight],
-    parent: &'a mut [Vertex],
-}
-
 /// One round's update of a stretch of row `i`: `D[i][j] = min(D[i][j],
 /// D[i][k] + D[k][j])` for the `j` of the stretch, the predecessor following.
 /// Written as compare-then-select so the compiler can vectorise it.
@@ -464,135 +864,9 @@ fn relax(
     }
 }
 
-impl Table<'_> {
-    /// The first vertex (0-based) with a negative diagonal, if any.
-    fn negative_diagonal(&self) -> Option<usize> {
-        (0..self.n).find(|&i| self.distance[i * self.n + i] < 0.0)
-    }
-
-    /// Round after round, `k` in order. Row `k` is copied out (`n` cells a
-    /// round, `n²` in all, against `n³` updates) so the other rows can be
-    /// updated while it is read, one after another or all at once.
-    fn rounds(
-        &mut self,
-        pruned: bool,
-        parallel: bool,
-        progress: &(dyn Fn(usize) -> Control + Sync),
-    ) -> Result<Option<Vertex>, FloydError> {
-        let n = self.n;
-        let mut row_k = vec![0.0; n];
-        let mut parents_k = vec![NO_VERTEX; n];
-        for k in 0..n {
-            row_k.copy_from_slice(&self.distance[k * n..(k + 1) * n]);
-            parents_k.copy_from_slice(&self.parent[k * n..(k + 1) * n]);
-            let update = |i: usize, row: &mut [Weight], parents: &mut [Vertex]| {
-                let through = row[k];
-                if i == k || (pruned && through == Weight::INFINITY) {
-                    return;
-                }
-                relax(row, parents, through, &row_k, &parents_k);
-            };
-            match parallel {
-                #[cfg(feature = "parallel")]
-                true => {
-                    use rayon::prelude::*;
-                    self.distance
-                        .par_chunks_mut(n)
-                        .zip(self.parent.par_chunks_mut(n))
-                        .enumerate()
-                        .for_each(|(i, (row, parents))| update(i, row, parents));
-                }
-                _ => {
-                    for (i, (row, parents)) in self
-                        .distance
-                        .chunks_mut(n)
-                        .zip(self.parent.chunks_mut(n))
-                        .enumerate()
-                    {
-                        update(i, row, parents);
-                    }
-                }
-            }
-            if let Some(i) = self.negative_diagonal() {
-                return Ok(Some(i as Vertex + 1));
-            }
-            if progress(k + 1) == Control::Break {
-                return Err(FloydError::Cancelled {
-                    rounds: k + 1,
-                    of: n,
-                });
-            }
-        }
-        Ok(None)
-    }
-
-    /// Venkataraman-Sahni-Mukhopadhyaya: for each tile `K` of the diagonal,
-    /// run the rounds `k ∈ K` on the diagonal tile, then on the tiles of its
-    /// row and its column (which read the diagonal tile), then on every
-    /// other tile (which reads one tile of each). Each update reads values
-    /// the plain order would have produced by then, so the distances are the
-    /// same; each tile fits in cache, so the rounds of a tile cost cache
-    /// hits instead of memory bandwidth.
-    fn blocked(
-        &mut self,
-        progress: &(dyn Fn(usize) -> Control + Sync),
-    ) -> Result<Option<Vertex>, FloydError> {
-        const TILE: usize = 64;
-        let n = self.n;
-        let tiles = n.div_ceil(TILE);
-        let span = |t: usize| t * TILE..((t + 1) * TILE).min(n);
-        for kt in 0..tiles {
-            let ks = span(kt);
-            self.tile(ks.clone(), ks.clone(), ks.clone());
-            for t in (0..tiles).filter(|&t| t != kt) {
-                self.tile(ks.clone(), span(t), ks.clone());
-                self.tile(span(t), ks.clone(), ks.clone());
-            }
-            for it in (0..tiles).filter(|&t| t != kt) {
-                for jt in (0..tiles).filter(|&t| t != kt) {
-                    self.tile(span(it), span(jt), ks.clone());
-                }
-            }
-            if let Some(i) = self.negative_diagonal() {
-                return Ok(Some(i as Vertex + 1));
-            }
-            if progress(ks.end) == Control::Break {
-                return Err(FloydError::Cancelled {
-                    rounds: ks.end,
-                    of: n,
-                });
-            }
-        }
-        Ok(None)
-    }
-
-    /// The rounds `k ∈ ks` on the tile of rows `is` and columns `js`.
-    fn tile(
-        &mut self,
-        is: core::ops::Range<usize>,
-        js: core::ops::Range<usize>,
-        ks: core::ops::Range<usize>,
-    ) {
-        let n = self.n;
-        for k in ks {
-            for i in is.clone() {
-                let through = self.distance[i * n + k];
-                if i == k || through == Weight::INFINITY {
-                    continue;
-                }
-                // Rows `i` and `k` are distinct: split the tables between them.
-                let (row, row_k) = two_rows(self.distance, n, i, k);
-                let (parents, parents_k) = two_rows(self.parent, n, i, k);
-                relax(
-                    &mut row[js.clone()],
-                    &mut parents[js.clone()],
-                    through,
-                    &row_k[js.clone()],
-                    &parents_k[js.clone()],
-                );
-            }
-        }
-    }
+/// The first vertex (0-based) with a negative diagonal, if any.
+fn negative_diagonal(distance: &[Weight], n: usize) -> Option<usize> {
+    (0..n).find(|&i| distance[i * n + i] < 0.0)
 }
 
 /// Floyd-Warshall one round at a time, for a replay: the plain sweep's
@@ -683,12 +957,7 @@ impl<'g, G: Weighted> FloydRounds<'g, G> {
             }
         }
         self.k += 1;
-        let table = Table {
-            n,
-            distance: &mut self.all.distance,
-            parent: &mut self.all.parent,
-        };
-        if let Some(i) = table.negative_diagonal() {
+        if let Some(i) = negative_diagonal(&self.all.distance, n) {
             let i = i as Vertex + 1;
             return Err(self
                 .all

@@ -263,9 +263,25 @@ impl AllPairs {
     fn tree(&self, i) -> TreeView<'_>;        // row i of parent: the shortest-path tree from i
     fn write_tree_to(&self, i, w);            // the same `vertex parent distance` file as Dijkstra
 }
-pub fn floyd_warshall<G: Weighted>(g: &G, sweep: SweepKind, budget: MemoryBudget)
+pub fn floyd_warshall<G: Weighted, S: Sweep>(g: &G, sweep: S, budget: MemoryBudget)
     -> Result<AllPairs, FloydError>;          // NegativeCycle, TooLarge, AllocationFailed, Cancelled
 pub fn floyd_warshall_with_progress(g, sweep, budget, progress: &dyn Fn(rounds) -> Control);
+
+pub trait Sweep {                             // the order of the updates, never the updates
+    fn run(&mut self, table: &mut SweepTable<'_>) -> ControlFlow<()>;
+    fn name(&self) -> &str;
+}
+impl SweepTable<'_> {                         // the only ways a sweep changes the table
+    fn n(&self) -> usize;
+    fn distance(&self, i, j) -> Weight;       // read-only, 0-based
+    fn round(&mut self, k, keep: impl Fn(i, D[i][k]) -> bool);   // rows in order
+    fn round_rows(&mut self, k, rows: impl IntoIterator<usize>); // rows in any order
+    fn par_round(&mut self, k, keep);         // rayon; sequential without `parallel`
+    fn tile(&mut self, is, js, ks);           // rounds ks on one tile
+    fn rounds_done(&mut self, rounds) -> ControlFlow<()>;        // cycle check + progress
+}
+impl Sweep for SweepKind { .. }               // the library's four
+pub fn check_sweep<G: Weighted, S: Sweep>(g: &G, sweep: S) -> Result<(), SweepMismatch>;
 ```
 
 - **Implemented** (`algo/floyd_warshall.rs`, `tests/floyd_warshall.rs`
@@ -312,7 +328,21 @@ pub fn floyd_warshall_with_progress(g, sweep, budget, progress: &dyn Fn(rounds) 
 ### The sweeps
 
 The algorithm is the triple loop; how the loop walks memory is the
-strategy, and on 10¹² updates it is the whole running time:
+strategy, and on 10¹² updates it is the whole running time. It is a trait,
+`Sweep`, as Bellman-Ford's order is a `Schedule`: `floyd_warshall` is
+written once over it and a user can bring a sixth. The split is narrower
+than a schedule's, because a sweep can be wrong (round `k` must read row
+`k` and column `k` as round `k` found them, or the distances are silently
+wrong): the library keeps the budget, the initial table, the vectorised
+update, the negative diagonal, the cycle read back, the zero-weight
+regrowth and progress, and hands the sweep a `SweepTable` whose methods
+only choose rows, tiles, order and cores. A sweep that returns before
+reporting all `n` rounds panics; `check_sweep` compares any sweep with the
+plain one (exactly, to rounding, or both finding a cycle) and the tests run
+it on a user-defined sweep, a wrong one (caught) and the four built-ins.
+`SweepKind` stays the enum of the built-ins (CLI, serde, study labels,
+wasm) and implements `Sweep`; a run on it costs the same as before the
+trait (same kernels, monomorphised).
 
 | `SweepKind` | What changes | Why it matters |
 |---|---|---|

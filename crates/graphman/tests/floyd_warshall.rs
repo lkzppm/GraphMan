@@ -445,3 +445,142 @@ fn rounds_one_at_a_time_stop_on_a_negative_cycle() {
     assert_eq!(cycle.cycle, vec![2, 3]);
     assert_eq!(cycle.weight, -1.0);
 }
+
+/* ---- sweeps of one's own --------------------------------------------------- */
+
+use core::ops::ControlFlow;
+use graphman::algo::{Sweep, SweepMismatch, SweepTable};
+
+/// A user's sweep: each round from the last row up, the rows that cannot
+/// improve skipped.
+struct Backwards;
+
+impl Sweep for Backwards {
+    fn run(&mut self, table: &mut SweepTable<'_>) -> ControlFlow<()> {
+        let n = table.n();
+        for k in 0..n {
+            let rows: Vec<usize> = (0..n)
+                .rev()
+                .filter(|&i| table.distance(i, k) != Weight::INFINITY)
+                .collect();
+            table.round_rows(k, rows);
+            table.rounds_done(k + 1)?;
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn name(&self) -> &str {
+        "backwards"
+    }
+}
+
+/// A wrong sweep: it never updates row 0 after the first round.
+struct ForgetsRowZero;
+
+impl Sweep for ForgetsRowZero {
+    fn run(&mut self, table: &mut SweepTable<'_>) -> ControlFlow<()> {
+        for k in 0..table.n() {
+            table.round(k, |i, _| k == 0 || i != 0);
+            table.rounds_done(k + 1)?;
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn name(&self) -> &str {
+        "forgets-row-zero"
+    }
+}
+
+/// A sweep that stops halfway without being told to.
+struct Quits;
+
+impl Sweep for Quits {
+    fn run(&mut self, table: &mut SweepTable<'_>) -> ControlFlow<()> {
+        for k in 0..table.n() / 2 {
+            table.round(k, |_, _| true);
+            table.rounds_done(k + 1)?;
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn name(&self) -> &str {
+        "quits"
+    }
+}
+
+#[test]
+fn a_sweep_of_ones_own_runs_through_the_same_floyd_warshall() {
+    for seed in 0..8 {
+        let edges = potential_digraph(seed, 60, 240);
+        let graph = Csr::build(&edges).unwrap();
+        assert_eq!(algo::check_sweep(&graph, Backwards), Ok(()), "seed {seed}");
+        let mine = algo::floyd_warshall(&graph, Backwards, UNLIMITED).unwrap();
+        let plain = algo::floyd_warshall(&graph, SweepKind::Plain, UNLIMITED).unwrap();
+        assert_eq!(mine.vertex_count(), plain.vertex_count());
+        for i in 1..=60 {
+            for j in 1..=60 {
+                assert_eq!(mine.distance(i, j), plain.distance(i, j));
+            }
+        }
+        assert_valid(&graph, &mine);
+        // By reference, boxed and behind `dyn`, as a library user may hold it.
+        let mut boxed: Box<dyn Sweep> = Box::new(Backwards);
+        assert_eq!(algo::check_sweep(&graph, &mut boxed), Ok(()));
+        assert_eq!(algo::check_sweep(&graph, boxed), Ok(()));
+    }
+    // The library's own sweeps pass the same check.
+    let graph = Csr::build(&potential_digraph(9, 150, 600)).unwrap();
+    for sweep in SweepKind::ALL {
+        assert_eq!(algo::check_sweep(&graph, sweep), Ok(()), "{sweep}");
+    }
+}
+
+#[test]
+fn a_wrong_sweep_is_caught_by_the_check() {
+    let found = (0..8).find_map(|seed| {
+        let graph = Csr::build(&potential_digraph(seed, 40, 160)).unwrap();
+        algo::check_sweep(&graph, ForgetsRowZero).err()
+    });
+    let Some(SweepMismatch::Distance { from, .. }) = found else {
+        panic!("the check missed a sweep that skips row 0: {found:?}");
+    };
+    assert_eq!(from, 1);
+}
+
+#[test]
+#[should_panic(expected = "the sweep \"quits\" returned after 20 of 40 rounds")]
+fn a_sweep_that_quits_early_panics() {
+    let graph = Csr::build(&potential_digraph(1, 40, 160)).unwrap();
+    let _ = algo::floyd_warshall(&graph, Quits, UNLIMITED);
+}
+
+#[test]
+fn a_sweep_of_ones_own_finds_cycles_and_can_be_stopped() {
+    let edges = EdgeList::from_weighted_edges_with(
+        4,
+        vec![(1, 2, 1.0), (2, 3, -3.0), (3, 2, 1.0), (3, 4, 2.0)],
+        DIRECTED,
+    )
+    .unwrap();
+    let graph = Csr::build(&edges).unwrap();
+    let Err(FloydError::NegativeCycle(cycle)) = algo::floyd_warshall(&graph, Backwards, UNLIMITED)
+    else {
+        panic!("no cycle found");
+    };
+    assert_eq!((cycle.cycle, cycle.weight), (vec![2, 3], -2.0));
+    assert_eq!(algo::check_sweep(&graph, Backwards), Ok(()));
+
+    let graph = Csr::build(&potential_digraph(1, 200, 800)).unwrap();
+    let stop = |rounds: usize| match rounds < 100 {
+        true => Control::Continue,
+        false => Control::Break,
+    };
+    let error = algo::floyd_warshall_with_progress(&graph, Backwards, UNLIMITED, &stop);
+    assert_eq!(
+        error,
+        Err(FloydError::Cancelled {
+            rounds: 100,
+            of: 200
+        })
+    );
+}
