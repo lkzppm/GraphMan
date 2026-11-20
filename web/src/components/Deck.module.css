@@ -1190,7 +1190,7 @@
 /* ---- keyframes ------------------------------------------------------------
    Redeclared here: CSS modules scope animation names. */
 
-/* ---- cover: the switch between the two parts -------------------------- */
+/* ---- cover: the switch between the three parts ------------------------ */
 
 .coverText > :nth-child(5) {
   animation-delay: 0.34s;
@@ -1207,7 +1207,7 @@
 .parts {
   position: relative;
   display: inline-grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   padding: 3px;
   border: 1px solid var(--border-2);
   border-radius: var(--radius);
@@ -1219,7 +1219,7 @@
   top: 3px;
   bottom: 3px;
   left: 3px;
-  width: calc(50% - 3px);
+  width: calc((100% - 6px) / 3);
   border-radius: calc(var(--radius) - 2px);
   background: var(--accent-muted);
   transition: transform 0.4s var(--ease);
@@ -1227,6 +1227,10 @@
 
 .parts[data-part='2'] .partsThumb {
   transform: translateX(100%);
+}
+
+.parts[data-part='3'] .partsThumb {
+  transform: translateX(200%);
 }
 
 .partButton {
@@ -1738,9 +1742,24 @@
   grid-template-columns: 170px 130px minmax(0, 1fr) 150px;
 }
 
-/* Six bars a graph: tighter than the other sheets' three. */
+/* Six places a graph, tighter than the other sheets' three; a family
+   with fewer bars folds the rest away and its bars sit in the middle. */
 .timingRow .group {
-  gap: 2px;
+  justify-content: center;
+  gap: 0;
+  min-height: calc(6 * 17px);
+}
+
+.timingRow .barRow {
+  height: 17px;
+  transition:
+    height 0.5s var(--ease),
+    opacity 0.3s var(--ease);
+}
+
+.timingRow .barRow[data-placeholder] {
+  height: 0;
+  opacity: 0;
 }
 
 .timingRow .track {
@@ -1808,13 +1827,27 @@
   color: var(--accent);
 }
 
-/* Once the scale has changed, the bars slide to their new length instead
-   of growing again; the one left out of the scale shrinks away. */
-.sheet[data-moved] .timingRow .fill {
+/* These bars grow by a transition rather than an animation, so a new
+   length is a new target: they grow in, staggered, when the slide comes
+   up, and once the family has changed they slide to their new length at
+   once, colour and all. */
+.timingRow .fill {
+  width: 0;
+  transition:
+    width 0.9s var(--ease) var(--d, 0s),
+    opacity 0.4s var(--ease);
+}
+
+.slideCurrent .timingRow .fill {
   animation: none;
   width: var(--w);
+}
+
+.sheet[data-moved] .timingRow .fill {
   transition:
     width 0.7s var(--ease),
+    background-color 0.4s var(--ease),
+    border-color 0.4s var(--ease),
     opacity 0.4s var(--ease);
 }
 
@@ -2610,9 +2643,11 @@
     animation: none !important;
   }
 
-  .fill {
+  .fill,
+  .timingRow .fill {
     width: var(--w, 0);
     animation: none !important;
+    transition: none !important;
   }
 
   .wordNode {
@@ -2704,6 +2739,740 @@
 
   .pathTrack[data-drawn]::before {
     transform: none;
+    animation: none !important;
+  }
+}
+
+/* ---- part 3 · the sample digraph and its timelines ------------------------ */
+
+/* 01: the file, the normalising step, the digraph, the transpose step, the
+   transpose. */
+.directionMap {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.62fr) 118px minmax(0, 1fr) 132px minmax(0, 1fr);
+  align-items: center;
+  gap: 0 8px;
+  margin-bottom: 28px;
+}
+
+.p3Panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+.p3PanelLabel {
+  font-size: 12px;
+  color: var(--accent);
+  text-align: center;
+}
+
+.p3Graph {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 248 / 200;
+  overflow: visible;
+}
+
+/* An arc draws from its tail; its head lands once the line has. */
+.p3Arc {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.p3Head {
+  fill: var(--accent);
+  opacity: 0;
+}
+
+[data-muted] > .p3Arc {
+  stroke: var(--border-2);
+}
+
+[data-muted] > .p3Head {
+  fill: var(--border-2);
+}
+
+.slideCurrent .p3Arc {
+  animation: draw 0.5s var(--ease) var(--d, 0s) both;
+}
+
+.slideCurrent .p3Head {
+  animation: fade 0.25s var(--ease) var(--d, 0s) both;
+}
+
+.p3Vertex {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+}
+
+.p3Vertex circle {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+
+.p3Vertex text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-anchor: middle;
+  fill: var(--fg);
+}
+
+/* The target of the cycle figure: the one green. */
+.p3Vertex[data-target] circle {
+  stroke: var(--target);
+}
+
+.slideCurrent .p3Vertex {
+  animation: pop 0.4s var(--ease-spring) var(--d, 0s) both;
+}
+
+.p3Weight {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-anchor: middle;
+  fill: var(--fg-2);
+}
+
+.p3Negative {
+  fill: var(--bg);
+  stroke: var(--fg-3);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+/* What a timeline shows for a while: it appears at --d and leaves at --e
+   (never, without one). The later animation wins once it starts. */
+.p3Show {
+  opacity: 0;
+}
+
+.slideCurrent .p3Show {
+  animation:
+    fade 0.3s var(--ease) var(--d, 0s) both,
+    p3Leave 0.3s var(--ease) var(--e, 9999s) forwards;
+}
+
+/* 02: the figure beside the code, its caption and replay under it. */
+.p3Figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+}
+
+.p3Big {
+  display: block;
+  width: 100%;
+  max-height: min(54vh, 500px);
+  overflow: visible;
+}
+
+.p3FigureFoot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.p3Replay {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg-3);
+  transition:
+    color 0.2s var(--ease),
+    border-color 0.2s var(--ease);
+}
+
+.p3Replay:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.p3Pass {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  text-anchor: middle;
+  fill: var(--accent);
+}
+
+.p3Code {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  fill: var(--fg-2);
+}
+
+.p3Tree {
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.p3TreeHead {
+  fill: var(--accent);
+}
+
+.p3Ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.3;
+  stroke-dasharray: 3 2.5;
+}
+
+.p3Pill {
+  fill: var(--bg);
+  stroke: var(--border-2);
+  stroke-width: 1;
+}
+
+.p3PillText {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-anchor: middle;
+  fill: var(--fg-3);
+}
+
+.p3PillText[data-lowered] {
+  fill: var(--accent);
+  font-weight: 500;
+}
+
+.p3QueueBox {
+  fill: var(--accent-muted);
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+
+.p3QueueText {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-anchor: middle;
+  fill: var(--fg);
+}
+
+/* 03: early stop's two sweeps, and the estimates the first one lowers. */
+.p3ScanTwice {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  opacity: 0;
+}
+
+.slideCurrent .p3ScanTwice {
+  animation: scan 2.4s linear var(--d, 0s) 2 both;
+}
+
+.p3Lowered {
+  fill: var(--accent-muted);
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+
+/* 04: the cycle, its walk going round, and the red it ends in. */
+.cycleSlide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: 0 56px;
+  margin-bottom: 28px;
+}
+
+.p3Token {
+  fill: var(--accent);
+  transform-box: view-box;
+}
+
+.slideCurrent .p3Token {
+  animation: p3Lap var(--lap, 1s) linear var(--d, 0s) var(--laps, 1) both;
+}
+
+.p3CycleArc {
+  stroke: var(--cycle);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+.p3CycleHead {
+  fill: var(--cycle);
+}
+
+.p3CycleText {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  fill: var(--cycle);
+}
+
+.p3Centre {
+  text-anchor: middle;
+}
+
+.certGrid {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 14px 20px;
+  margin-top: 14px;
+}
+
+.certHead {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.certCycle {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--cycle);
+  font-size: 13px;
+}
+
+.certDetail {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.certNone {
+  font-size: 13px;
+  color: var(--fg-3);
+}
+
+/* 05: the recurrence's tables dealt one on another, colliding back into
+   the first, which then runs the rounds in place. */
+.p3Captions {
+  display: grid;
+}
+
+.p3Captions > * {
+  grid-area: 1 / 1;
+  text-align: center;
+}
+
+.p3CardFrame {
+  fill: var(--bg);
+  stroke: var(--border-2);
+  stroke-width: 1;
+}
+
+.p3Card,
+.p3Base {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Dealt from a little further up the stack, then, at --c, accelerating
+   onto D⁰ (--x, --y away) and melting into it as it lands. */
+.slideCurrent .p3Card {
+  animation:
+    p3Deal 0.45s var(--ease) var(--d, 0s) both,
+    p3Collide 0.75s cubic-bezier(0.55, 0, 0.85, 0.3) var(--c, 9999s) forwards;
+}
+
+/* D⁰ fades in, then gives a little as the stack lands on it. */
+.slideCurrent .p3Base {
+  animation:
+    fade 0.4s var(--ease) var(--d, 0s) both,
+    p3Land 0.5s var(--ease) var(--c, 9999s);
+}
+
+.p3Cross {
+  fill: var(--accent-muted);
+}
+
+.p3Flash {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.4;
+}
+
+.p3CellText {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-anchor: middle;
+  fill: var(--fg);
+}
+
+.p3CellText[data-infinite] {
+  fill: var(--fg-3);
+}
+
+.p3CellText[data-improved] {
+  fill: var(--accent);
+  font-weight: 500;
+}
+
+/* 06: four sweeps, the same round walked four ways. */
+.steps[data-count='4'] {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.p3Outline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 2 1.5;
+}
+
+.p3Pulse {
+  fill: var(--accent-muted);
+  stroke: var(--accent);
+  stroke-width: 0.8;
+  opacity: 0;
+}
+
+.slideCurrent .p3Pulse {
+  animation: p3Pulse 3.6s var(--ease) var(--d, 0s) infinite;
+}
+
+.slideCurrent .p3Pulse[data-long] {
+  animation-name: p3PulseLong;
+}
+
+.p3TileLine {
+  fill: none;
+  stroke: var(--fg-3);
+  stroke-width: 1;
+}
+
+/* 07: the distances to the target, and each run's work after them. */
+.targetGrid {
+  grid-template-columns: 110px repeat(var(--targets), minmax(0, 1fr)) 120px;
+}
+
+.targetCycle {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 0 16px;
+  border-color: color-mix(in srgb, var(--cycle) 40%, var(--border));
+}
+
+/* The case-study page's ring, as tall as a row of distances; its arcs
+   draw when the slide comes up rather than when the deck loads. */
+.targetRing {
+  position: relative;
+  flex: none;
+  width: 190px;
+  height: 92px;
+}
+
+/* 08: the same ring over the table a cycle leaves undefined, the dotted
+   cells showing faintly through a light material. */
+.pairsRing {
+  position: absolute;
+  inset: 0;
+  grid-column: 2 / span var(--n, 5);
+  grid-row: 2 / span var(--n, 5);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(1.5px);
+  -webkit-backdrop-filter: blur(1.5px);
+  animation: fade 0.35s var(--ease) both;
+}
+
+.targetRing path[pathLength],
+.pairsRing path[pathLength] {
+  animation: none;
+}
+
+.slideCurrent .targetRing path[pathLength] {
+  animation: draw 0.8s var(--ease) calc(0.8s + var(--k, 0) * 0.3s) forwards;
+}
+
+.slideCurrent .pairsRing path[pathLength] {
+  animation: draw 0.8s var(--ease) calc(0.3s + var(--k, 0) * 0.3s) forwards;
+}
+
+.workCell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+}
+
+/* 08: the five vertices' table, the pill with a place per graph. */
+.pairsSlide {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 0 56px;
+}
+
+.graphViews {
+  grid-template-columns: repeat(var(--count, 3), 1fr);
+}
+
+.graphViews .partsThumb {
+  width: calc((100% - 6px) / var(--count, 3));
+}
+
+/* The table spans its panel: equal columns, cells as wide as they get. */
+.pairsGrid {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px repeat(var(--n, 5), minmax(0, 1fr));
+  align-items: center;
+  gap: 6px;
+}
+
+.pairsGrid .cell {
+  width: 100%;
+  min-width: 0;
+  height: clamp(40px, 6.2vh, 56px);
+  font-size: 16px;
+  transition:
+    background-color 0.35s var(--ease),
+    border-color 0.35s var(--ease),
+    color 0.35s var(--ease);
+}
+
+/* A value that changed with the graph rises into place. */
+.pairValue {
+  display: inline-block;
+  animation: pairValue 0.4s var(--ease) both;
+}
+
+/* The cycle's line keeps its room, so the panel does not jump. */
+.pairsCycle {
+  min-height: 2.9em;
+}
+
+@keyframes pairValue {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pairsNotes {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.pairsNote {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  position: relative;
+}
+
+.pairsNote::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 36px;
+  height: 2px;
+  background: var(--accent);
+}
+
+/* A cell that stopped at a negative cycle: the one red, after its value. */
+.p3AtCycle {
+  color: var(--cycle);
+}
+
+/* 09 and 10: a family's bars keep six places, so a row keeps its height. */
+.sheetHead.allPairsRow,
+.row.allPairsRow {
+  grid-template-columns: 170px 130px minmax(0, 1fr) 150px 110px;
+}
+
+@keyframes p3Leave {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes p3Lap {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  33.33% {
+    transform: translate(var(--x1), var(--y1));
+  }
+
+  66.67% {
+    transform: translate(var(--x2), var(--y2));
+  }
+}
+
+@keyframes p3Deal {
+  from {
+    opacity: 0;
+    transform: translate(8px, -8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes p3Collide {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+
+  80% {
+    opacity: 1;
+    transform: translate(var(--x), var(--y));
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(var(--x), var(--y));
+  }
+}
+
+@keyframes p3Land {
+  0%,
+  100% {
+    transform: none;
+  }
+
+  35% {
+    transform: scale(0.975);
+  }
+}
+
+@keyframes p3Pulse {
+  0% {
+    opacity: 0;
+  }
+
+  5%,
+  14% {
+    opacity: 1;
+  }
+
+  22%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes p3PulseLong {
+  0% {
+    opacity: 0;
+  }
+
+  5%,
+  60% {
+    opacity: 1;
+  }
+
+  75%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Part 3's layouts, narrower. */
+@media (max-width: 1280px) {
+  .directionMap {
+    grid-template-columns: minmax(140px, 0.6fr) 100px minmax(0, 1fr) 110px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .directionMap,
+  .cycleSlide,
+  .pairsSlide {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px 0;
+  }
+
+  .steps[data-count='4'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px 24px;
+  }
+
+  .targetGrid {
+    grid-template-columns: 90px repeat(var(--targets), minmax(0, 1fr)) 100px;
+  }
+
+  .sheetHead.allPairsRow,
+  .row.allPairsRow {
+    grid-template-columns: 110px minmax(0, 1fr) 90px;
+  }
+
+  .allPairsRow > :nth-child(2),
+  .allPairsRow > :nth-child(5) {
+    display: none;
+  }
+}
+
+/* Without motion every timeline shows its last state at once. */
+@media (prefers-reduced-motion: reduce) {
+  .pairValue,
+  .pairsRing {
+    animation: none;
+  }
+
+  .slideCurrent .targetRing path[pathLength],
+  .slideCurrent .pairsRing path[pathLength] {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+
+  .p3Arc {
+    stroke-dashoffset: 0;
+    animation: none !important;
+  }
+
+  .p3Head,
+  .p3Vertex,
+  .p3Base {
+    opacity: 1;
+    animation: none !important;
+  }
+
+  .p3Show {
+    opacity: 0;
+    animation: none !important;
+  }
+
+  .p3Show[data-final] {
+    opacity: 1;
+  }
+
+  .p3Card,
+  .p3ScanTwice,
+  .p3Token,
+  .p3Pulse {
+    opacity: 0;
     animation: none !important;
   }
 }

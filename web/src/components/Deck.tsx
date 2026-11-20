@@ -26,9 +26,27 @@ import {
   Timing,
   Weights,
 } from './DeckPart2';
+import {
+  AllPairs,
+  BellmanFord,
+  Cycle,
+  Direction,
+  Floyd,
+  Pairs,
+  Schedules,
+  Sweeps,
+  Target,
+  Timing as TimingPart3,
+} from './DeckPart3';
 import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/lib/format';
 import { logScale } from '@/lib/scale';
-import type { DiameterMethod, GraphStudy, Representation, WeightedStudy } from '@/lib/studies';
+import type {
+  DiameterMethod,
+  DirectedStudy,
+  GraphStudy,
+  Representation,
+  WeightedStudy,
+} from '@/lib/studies';
 import BrandIcon from './BrandIcon';
 import RepresentationPicto, { REPR_KINDS } from './RepresentationPicto';
 import Constellation from './Constellation';
@@ -39,9 +57,10 @@ import styles from './Deck.module.css';
 
 const STACK_ICONS = [siRust, siWebassembly, siWebgpu, siNextdotjs, siVercel];
 /** The project's parts; the cover's switch picks which one the deck tells. */
-type Part = 1 | 2;
-/** The address of Part 2's deck, so a reload (or a shared link) keeps it. */
-const PART_2_HASH = '#part-2';
+type Part = 1 | 2 | 3;
+/** The address of each later part's deck, so a reload (or a shared link)
+    keeps it; Part 1 has none. */
+const PART_HASH: Record<Part, string> = { 1: '', 2: '#part-2', 3: '#part-3' };
 
 function subscribeHash(onChange: () => void) {
   window.addEventListener('hashchange', onChange);
@@ -49,14 +68,15 @@ function subscribeHash(onChange: () => void) {
 }
 
 function readPart(): Part {
-  return window.location.hash === PART_2_HASH ? 2 : 1;
+  const hash = window.location.hash;
+  return hash === PART_HASH[3] ? 3 : hash === PART_HASH[2] ? 2 : 1;
 }
 
 /** Switches the deck by rewriting the address in place (no history entry),
     then tells the subscribers, which `replaceState` alone does not. */
 function setPart(part: Part) {
   const { pathname, search } = window.location;
-  window.history.replaceState(null, '', part === 2 ? PART_2_HASH : pathname + search);
+  window.history.replaceState(null, '', part === 1 ? pathname + search : PART_HASH[part]);
   window.dispatchEvent(new HashChangeEvent('hashchange'));
 }
 /** Horizontal travel that counts as a swipe between slides. */
@@ -64,9 +84,11 @@ const SWIPE = 60;
 
 /**
  * The 8-minute presentations, one per part of the project, behind a switch
- * on the shared cover: Part 1 (architecture, decisions, benchmark) and
- * Part 2 (weights, one Dijkstra over three frontiers, vector against heap,
- * shortest paths), both ending on the QR code. Each slide
+ * on the shared cover: Part 1 (architecture, decisions, benchmark), Part 2
+ * (weights, one Dijkstra over six frontiers, vector against heap, shortest
+ * paths) and Part 3 (direction, one Bellman-Ford over six schedules, the
+ * negative cycle, one Floyd-Warshall over four sweeps, the four questions),
+ * all ending on the QR code. Each slide
  * fills the viewport under the nav; ← → (space, PageUp/Down, a swipe or the
  * buttons) move, Home/End jump, F toggles full screen. Everything animated
  * is gated on the current slide, so moving away and back replays the
@@ -79,13 +101,15 @@ const SWIPE = 60;
 export default function Deck({
   studies,
   weighted,
+  directed,
 }: {
   studies: GraphStudy[];
   weighted: WeightedStudy[];
+  directed: DirectedStudy[];
 }) {
   const t = useT();
   const p = t.presentation;
-  // The part lives in the address (`#part-2` opens Part 2's deck), so a
+  // The part lives in the address (`#part-2`, `#part-3`), so a
   // reload or a shared link keeps it; the server renders Part 1.
   const part = useSyncExternalStore(subscribeHash, readPart, () => 1 as Part);
   const [index, setIndex] = useState(0);
@@ -102,19 +126,34 @@ export default function Deck({
           <Benchmark key="benchmark" t={t} studies={studies} />,
           <TryIt key="try" t={t} eyebrow={p.slides.observatory.eyebrow} />,
         ]
-      : [
-          <Cover key="cover" t={t} part={part} onPart={setPart} />,
-          <Weights key="weights" t={t} />,
-          <Dijkstra key="dijkstra" t={t} />,
-          <Frontiers key="frontiers" t={t} />,
-          <Memory key="memory" t={t} />,
-          <Timing key="timing" t={t} studies={weighted} />,
-          <MemoryMeasured key="memory-measured" t={t} studies={weighted} />,
-          <Paths key="paths" t={t} studies={weighted} />,
-          <Names key="names" t={t} />,
-          <Network key="network" t={t} studies={weighted} />,
-          <TryIt key="try" t={t} eyebrow={p.slides.part2.observatory} />,
-        ];
+      : part === 2
+        ? [
+            <Cover key="cover" t={t} part={part} onPart={setPart} />,
+            <Weights key="weights" t={t} />,
+            <Dijkstra key="dijkstra" t={t} />,
+            <Frontiers key="frontiers" t={t} />,
+            <Memory key="memory" t={t} />,
+            <Timing key="timing" t={t} studies={weighted} />,
+            <MemoryMeasured key="memory-measured" t={t} studies={weighted} />,
+            <Paths key="paths" t={t} studies={weighted} />,
+            <Names key="names" t={t} />,
+            <Network key="network" t={t} studies={weighted} />,
+            <TryIt key="try" t={t} eyebrow={p.slides.part2.observatory} />,
+          ]
+        : [
+            <Cover key="cover" t={t} part={part} onPart={setPart} />,
+            <Direction key="direction" t={t} />,
+            <BellmanFord key="bellman-ford" t={t} />,
+            <Schedules key="schedules" t={t} />,
+            <Cycle key="cycle" t={t} studies={directed} />,
+            <Floyd key="floyd" t={t} studies={directed} />,
+            <Sweeps key="sweeps" t={t} />,
+            <Target key="target" t={t} studies={directed} />,
+            <Pairs key="pairs" t={t} studies={directed} />,
+            <TimingPart3 key="timing" t={t} studies={directed} />,
+            <AllPairs key="all-pairs" t={t} studies={directed} />,
+            <TryIt key="try" t={t} eyebrow={p.slides.part3.observatory} />,
+          ];
   const count = slides.length;
 
   const go = useCallback(
@@ -147,9 +186,9 @@ export default function Deck({
         setIndex(0);
       } else if (event.key === 'End') {
         setIndex(count - 1);
-      } else if (event.key === '1' || event.key === '2') {
+      } else if (event.key === '1' || event.key === '2' || event.key === '3') {
         // The part's number: its deck, from the cover.
-        setPart(event.key === '1' ? 1 : 2);
+        setPart(Number(event.key) as Part);
         setIndex(0);
       } else if (event.key === 'f' || event.key === 'F') {
         toggleFullscreen();
@@ -280,7 +319,7 @@ function Cover({ t, part, onPart }: { t: T; part: Part; onPart: (part: Part) => 
                   role="radio"
                   aria-checked={part === i + 1}
                   className={styles.partButton}
-                  onClick={() => onPart(i === 0 ? 1 : 2)}
+                  onClick={() => onPart((i + 1) as Part)}
                 >
                   {label}
                 </button>
@@ -900,7 +939,9 @@ function spell(word: string) {
   const nodes = letters.map((letter, i) => ({
     letter,
     x: n > 1 ? 64 + (i * 672) / (n - 1) : 400,
-    y: 172 + 62 * Math.sin(i * 0.95 + 0.6),
+    // Rounded: Math.sin differs in its last digit between Node and the
+    // browser, and a different attribute would break hydration.
+    y: Number((172 + 62 * Math.sin(i * 0.95 + 0.6)).toFixed(2)),
   }));
   const edges: [number, number][] = [];
   for (let i = 0; i + 1 < n; i++) edges.push([i, i + 1]);

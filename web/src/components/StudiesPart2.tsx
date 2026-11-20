@@ -158,50 +158,53 @@ export default function StudiesPart2({ studies }: { studies: WeightedStudy[] }) 
   return (
     <>
       <nav className={styles.menu}>
-        <div
-          className={`container ${styles.menuInner}`}
-          role="tablist"
-          aria-label={t.studies.part2.views}
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === null}
-            tabIndex={view === null ? 0 : -1}
-            ref={(el) => {
-              tabs.current[0] = el;
-            }}
-            className={styles.pick}
-            data-active={view === null || undefined}
-            onClick={() => choose(null)}
-          >
-            <span className={`mono ${styles.pickBall}`}>
-              <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
-                <circle cx="5" cy="5" r="3" fill="currentColor" />
-              </svg>
-            </span>
-            <span className={styles.pickName}>{t.studies.overview}</span>
-          </button>
-          {studies.map((s, i) => (
+        <div className={`container ${styles.menuInner}`}>
+          <span className={styles.menuLabel} aria-hidden="true">
+            {t.studies.graphsLabel}
+          </span>
+          <div className={styles.menuTrack} role="tablist" aria-label={t.studies.part2.views}>
             <button
-              key={s.name}
+              title={t.studies.overview}
               type="button"
               role="tab"
-              aria-selected={view === i}
-              tabIndex={view === i ? 0 : -1}
+              aria-selected={view === null}
+              tabIndex={view === null ? 0 : -1}
               ref={(el) => {
-                tabs.current[i + 1] = el;
+                tabs.current[0] = el;
               }}
               className={styles.pick}
-              data-active={view === i || undefined}
-              onClick={() => choose(i)}
+              data-active={view === null || undefined}
+              onClick={() => choose(null)}
             >
               <span className={`mono ${styles.pickBall}`}>
-                {s.names_file ? <Users size={13} aria-hidden="true" /> : weightedName(s.name)}
+                <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
+                  <circle cx="5" cy="5" r="3" fill="currentColor" />
+                </svg>
               </span>
-              <span className={styles.pickName}>{studyTitle(t, s)}</span>
+              <span className={styles.pickName}>{t.studies.overview}</span>
             </button>
-          ))}
+            {studies.map((s, i) => (
+              <button
+                title={studyTitle(t, s)}
+                key={s.name}
+                type="button"
+                role="tab"
+                aria-selected={view === i}
+                tabIndex={view === i ? 0 : -1}
+                ref={(el) => {
+                  tabs.current[i + 1] = el;
+                }}
+                className={styles.pick}
+                data-active={view === i || undefined}
+                onClick={() => choose(i)}
+              >
+                <span className={`mono ${styles.pickBall}`}>
+                  {s.names_file ? <Users size={13} aria-hidden="true" /> : weightedName(s.name)}
+                </span>
+                <span className={styles.pickName}>{studyTitle(t, s)}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </nav>
       <div className={`container ${styles.content}`}>
@@ -396,7 +399,7 @@ function ScaleSwitch({
 /** A switch between a few choices: the nav's switch, a thumb sliding under
     the chosen one. A hidden switch stays laid out, faded and inert, so the
     heading keeps its layout. */
-function ChoiceSwitch<K extends string>({
+export function ChoiceSwitch<K extends string>({
   label,
   choices,
   value,

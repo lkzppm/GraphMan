@@ -1,0 +1,428 @@
+{
+  "name": "grafo_W_1",
+  "file": "graphs/Part3/grafo_W_1.txt",
+  "directed": true,
+  "vertices": 25000,
+  "edges": 549953,
+  "self_loops_dropped": 0,
+  "duplicates_dropped": 0,
+  "negative_loops": 0,
+  "parse_ms": 29.07975,
+  "weights": {
+    "min": -5.0,
+    "max": 10.0,
+    "mean": 4.724584100823247,
+    "negative": 4998
+  },
+  "representation": "csr",
+  "target": 100,
+  "paths": [],
+  "counts": {
+    "scans": 3170,
+    "lowered": 24999,
+    "passes": 4
+  },
+  "cycle_to_target": {
+    "cycle": [
+      10659,
+      14329
+    ],
+    "weight": -1.77
+  },
+  "cycle_anywhere": {
+    "cycle": [
+      10,
+      11278
+    ],
+    "weight": -2.0
+  },
+  "pairs": {
+    "vertices": [
+      10,
+      20,
+      30,
+      40,
+      50
+    ],
+    "distances": [],
+    "method": "floyd-warshall",
+    "table_bytes": 7500300000,
+    "refusal": null,
+    "negative_cycle": {
+      "cycle": [
+        2,
+        17332
+      ],
+      "weight": -0.55
+    }
+  },
+  "timings": [
+    {
+      "algorithm": "bellman-ford",
+      "variant": "rounds",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 0.3158999,
+        "median_ms": 0.3001875,
+        "min_ms": 0.28579099999999996,
+        "max_ms": 0.401625,
+        "stddev_ms": 0.03733236993831375,
+        "total_ms": 3.158999
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "counts": {
+        "scans": 61538,
+        "lowered": 24999,
+        "passes": 2
+      },
+      "note": "stops at a negative cycle 4885 -> 5165 -> 4885 of weight -3.7899999999999996"
+    },
+    {
+      "algorithm": "bellman-ford",
+      "variant": "early-stop",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 0.3283583,
+        "median_ms": 0.32137499999999997,
+        "min_ms": 0.315875,
+        "max_ms": 0.36125,
+        "stddev_ms": 0.015030953928846678,
+        "total_ms": 3.2835829999999997
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "counts": {
+        "scans": 61538,
+        "lowered": 24999,
+        "passes": 2
+      },
+      "note": "stops at a negative cycle 4885 -> 5165 -> 4885 of weight -3.7899999999999996"
+    },
+    {
+      "algorithm": "bellman-ford",
+      "variant": "queue",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 0.25502100000000005,
+        "median_ms": 0.23722949999999998,
+        "min_ms": 0.20475,
+        "max_ms": 0.35904200000000003,
+        "stddev_ms": 0.05140752559261684,
+        "total_ms": 2.5502100000000003
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "counts": {
+        "scans": 3170,
+        "lowered": 24999,
+        "passes": 4
+      },
+      "note": "stops at a negative cycle 10659 -> 14329 -> 10659 of weight -1.77"
+    },
+    {
+      "algorithm": "bellman-ford",
+      "variant": "yen",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 0.2427501,
+        "median_ms": 0.240542,
+        "min_ms": 0.203458,
+        "max_ms": 0.29291700000000004,
+        "stddev_ms": 0.032237806530187166,
+        "total_ms": 2.427501
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "counts": {
+        "scans": 1186,
+        "lowered": 24999,
+        "passes": 0
+      },
+      "note": "stops at a negative cycle 21263 -> 21825 -> 21263 of weight -3.6199999999999997"
+    },
+    {
+      "algorithm": "bellman-ford",
+      "variant": "random-yen",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 0.2725124,
+        "median_ms": 0.2514165,
+        "min_ms": 0.233708,
+        "max_ms": 0.395041,
+        "stddev_ms": 0.05109431351965152,
+        "total_ms": 2.725124
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "counts": {
+        "scans": 2657,
+        "lowered": 24999,
+        "passes": 0
+      },
+      "note": "stops at a negative cycle 4142 -> 8631 -> 4142 of weight -0.8599999999999999"
+    },
+    {
+      "algorithm": "bellman-ford",
+      "variant": "slf",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 0.0677958,
+        "median_ms": 0.0669585,
+        "min_ms": 0.066667,
+        "max_ms": 0.07325000000000001,
+        "stddev_ms": 0.002030157946783673,
+        "total_ms": 0.6779580000000001
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "counts": {
+        "scans": 1026,
+        "lowered": 24999,
+        "passes": 3
+      },
+      "note": "stops at a negative cycle 12764 -> 14671 -> 12764 of weight -0.73"
+    },
+    {
+      "algorithm": "floyd-warshall",
+      "variant": "plain",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 786.4582914999999,
+        "median_ms": 701.6321455,
+        "min_ms": 689.721417,
+        "max_ms": 1464.400667,
+        "stddev_ms": 239.73775472192224,
+        "total_ms": 7864.582914999999
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "note": "stops at a negative cycle 2 -> 17332 -> 2 of weight -0.55"
+    },
+    {
+      "algorithm": "floyd-warshall",
+      "variant": "pruned",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 314.6781666,
+        "median_ms": 313.9423745,
+        "min_ms": 311.492,
+        "max_ms": 321.734334,
+        "stddev_ms": 2.7620786887861177,
+        "total_ms": 3146.781666
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "note": "stops at a negative cycle 2 -> 17332 -> 2 of weight -0.55"
+    },
+    {
+      "algorithm": "floyd-warshall",
+      "variant": "parallel",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 311.2611126,
+        "median_ms": 311.59677150000005,
+        "min_ms": 309.105625,
+        "max_ms": 312.409625,
+        "stddev_ms": 1.0629675844275879,
+        "total_ms": 3112.611126
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "note": "stops at a negative cycle 2 -> 17332 -> 2 of weight -0.55"
+    },
+    {
+      "algorithm": "floyd-warshall",
+      "variant": "blocked",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 553.2193502000001,
+        "median_ms": 538.1025,
+        "min_ms": 535.886708,
+        "max_ms": 675.989042,
+        "stddev_ms": 43.45250858750473,
+        "total_ms": 5532.193502000001
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "note": "stops at a negative cycle 19 -> 205 -> 19 of weight -1.1800000000000002"
+    },
+    {
+      "algorithm": "bfs",
+      "variant": "queue",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 0.6716084,
+        "median_ms": 0.648563,
+        "min_ms": 0.645041,
+        "max_ms": 0.878375,
+        "stddev_ms": 0.07273018814800664,
+        "total_ms": 6.7160839999999995
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null
+    },
+    {
+      "algorithm": "dfs",
+      "variant": "iterative",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 1.4057000000000002,
+        "median_ms": 1.4016875,
+        "min_ms": 1.381375,
+        "max_ms": 1.4595420000000001,
+        "stddev_ms": 0.023092944117197388,
+        "total_ms": 14.057000000000002
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null
+    },
+    {
+      "algorithm": "dijkstra",
+      "variant": "heap",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": null,
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": "edge 2-13708 has the negative weight -0.97: Dijkstra needs non-negative weights (Bellman-Ford takes negative ones)"
+    }
+  ],
+  "all_pairs": [
+    {
+      "algorithm": "bellman-ford-all",
+      "variant": "queue",
+      "requested_runs": 10,
+      "budget_s": 900.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 7560.227658399999,
+        "median_ms": 7550.7950415,
+        "min_ms": 7522.2835000000005,
+        "max_ms": 7654.496625,
+        "stddev_ms": 38.41045789097191,
+        "total_ms": 75602.27658399999
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "counts": {
+        "scans": 3199,
+        "lowered": 24999,
+        "passes": 0
+      },
+      "note": "250000 target runs stopped at a negative cycle"
+    },
+    {
+      "algorithm": "floyd-warshall",
+      "variant": "pruned",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 314.6781666,
+        "median_ms": 313.9423745,
+        "min_ms": 311.492,
+        "max_ms": 321.734334,
+        "stddev_ms": 2.7620786887861177,
+        "total_ms": 3146.781666
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "note": "stops at a negative cycle 2 -> 17332 -> 2 of weight -0.55"
+    },
+    {
+      "algorithm": "floyd-warshall",
+      "variant": "parallel",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 311.2611126,
+        "median_ms": 311.59677150000005,
+        "min_ms": 309.105625,
+        "max_ms": 312.409625,
+        "stddev_ms": 1.0629675844275879,
+        "total_ms": 3112.611126
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "note": "stops at a negative cycle 2 -> 17332 -> 2 of weight -0.55"
+    },
+    {
+      "algorithm": "dijkstra-all",
+      "variant": "heap",
+      "requested_runs": 10,
+      "budget_s": 900.0,
+      "timing": null,
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": "edge 2-13708 has the negative weight -0.97: Dijkstra needs non-negative weights (Bellman-Ford takes negative ones)"
+    },
+    {
+      "algorithm": "johnson",
+      "variant": "heap",
+      "requested_runs": 10,
+      "budget_s": 900.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 0.6529166,
+        "median_ms": 0.6433125,
+        "min_ms": 0.5757909999999999,
+        "max_ms": 0.858958,
+        "stddev_ms": 0.08287738965644773,
+        "total_ms": 6.529166
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "note": "stops at a negative cycle 10 -> 11278 -> 10 of weight -2"
+    }
+  ],
+  "machine": {
+    "os": "macos",
+    "arch": "aarch64",
+    "cpu": "Apple M5",
+    "total_memory_bytes": 17179869184,
+    "threads": 10
+  },
+  "generated_at_unix": 1795171700
+}

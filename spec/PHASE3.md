@@ -201,6 +201,18 @@ pub fn negative_cycle(graph, kind) -> Option<NegativeCycle>;            // Start
   estimate, so the parents can still lead back to the root: the run then
   goes on (the estimates around the cycle keep falling, so the parent
   graph closes it) and the next `n` attempts are skipped, `O(1)` amortised.
+- **The amortised sweep** (added after the first study). Waiting for a walk
+  of `n` arcs is slow when the cycle is short: on `grafo_W_1` (25,000
+  vertices, 2-arc cycles of weight down to −4.7) the queue schedule took
+  16,460 passes and 23.6 s to report one, and the whole-graph check 18 s.
+  So every `n` improving relaxations the driver also searches the whole
+  parent graph for a cycle (Cherkassky-Goldberg's amortised search): one
+  walk up the parents from each vertex, stamped so no vertex is walked
+  twice, `O(n)` per sweep and `O(1)` per relaxation, so `O(nm)` stands.
+  The same certificate comes back, found after at most `n` more
+  improvements: W_1's whole-graph check now takes 0.85 ms. A cycle whose
+  floating-point sum rounds to 0 or above is not returned (no exact sum
+  would be), and the run goes on.
   Negative loops are checked once the run is over (a reached vertex with
   one is the cycle `[v]`). On a transpose the cycle is reversed back to
   the graph's orientation.
@@ -364,7 +376,8 @@ trait. Part 3's, in order of value per effort:
    graphs would be non-negative ones, where it is a slow Dijkstra.
 
 Stretch, only if time is left: Cherkassky-Goldberg's subtree disassembly
-(detects a cycle without waiting for `hops` to reach `n`); Goldberg-Radzik;
+(the amortised sweep of §4 already catches short cycles early);
+Goldberg-Radzik;
 a GPU Floyd-Warshall in the observatory (WebGPU compute, one dispatch per
 `k`, which `vgpu` already does for the layout).
 

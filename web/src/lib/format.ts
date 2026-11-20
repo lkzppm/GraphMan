@@ -31,8 +31,9 @@ export function formatWeight(value: number): string {
   return text === '-0' ? '0' : text;
 }
 
-/** Bytes in KB, MB, GB or TB. */
+/** Bytes in KB, MB, GB, TB or PB. */
 export function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 5) return `${(bytes / 1024 ** 5).toFixed(2)} PB`;
   if (bytes >= 1024 ** 4) return `${(bytes / 1024 ** 4).toFixed(2)} TB`;
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
   if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;

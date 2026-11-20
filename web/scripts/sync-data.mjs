@@ -28,6 +28,18 @@ if (existsSync(weighted)) {
   console.log('[data] no weighted studies yet; wrote an empty weighted.json');
 }
 
+// The Part 3 study (directed graphs: Bellman-Ford, Floyd-Warshall, all
+// pairs), merged by `graphman study --directed` into
+// studies/directed/results.json.
+const directed = join(web, '..', 'studies', 'directed', 'results.json');
+if (existsSync(directed)) {
+  copyFileSync(directed, join(dataDir, 'directed.json'));
+  console.log('[data] synced studies/directed/results.json');
+} else {
+  writeFileSync(join(dataDir, 'directed.json'), '[]');
+  console.log('[data] no directed studies yet; wrote an empty directed.json');
+}
+
 // The library page's code examples live in crates/graphman/tests/wiki.rs,
 // where `cargo test` proves them; each `// wiki:start <id>` ... `// wiki:end`
 // block is copied here, dedented, for the page to show verbatim.
