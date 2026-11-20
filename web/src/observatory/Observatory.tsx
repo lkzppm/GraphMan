@@ -2223,6 +2223,19 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
 
   /** Floyd-Warshall's row on screen dropped: back to the table and its rounds. */
   const backToTable = () => {
+    // Back from a tree opened as a graph, the row came back without its
+    // table (a parked graph keeps its search, not Floyd-Warshall's tables):
+    // the table is built again and shown whole, as it stood under the row.
+    if (floyd === null) {
+      setTargetInput('');
+      setSelected(0);
+      rendererRef.current?.setSelected(0);
+      rendererRef.current?.setWalk(-1);
+      runFloyd();
+      setFloyd((table) => table && { ...table, round: table.n });
+      setFloydPlaying(false);
+      return;
+    }
     searchRef.current?.result.free();
     searchRef.current = null;
     setSearch(null);
@@ -3487,6 +3500,27 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
       renderer?.setWalk(0);
       setPlaying(true);
     } else renderer?.setWalk(-1);
+  };
+
+  /**
+   * A cell of the dynamic programme's table clicked: its path drawn on the
+   * canvas. In Floyd-Warshall's table the cell (i, j) is the distance from
+   * i to j, so the same table answers i as the origin and j as the
+   * destination; in Bellman-Ford's, a column is a vertex and its path runs
+   * from the origin on screen, read back along the tree as a double click
+   * on that vertex would.
+   */
+  const showCellPath = (from: number, to: number) => {
+    if (from < 1 || to < 1 || from === to) return;
+    if (kind === 'floyd_warshall') {
+      setMode('distance');
+      setRootInput(vertexLabel(from));
+      setTargetInput(vertexLabel(to));
+      runSearch('floyd_warshall', from, to);
+      return;
+    }
+    lastClick.current = null;
+    pickTarget(to);
   };
 
   /**
@@ -4985,14 +5019,22 @@ export default function Observatory({ embed }: { embed?: ObservatoryEmbed } = {}
               hovered={hovered}
               onHover={(v) => rendererRef.current?.setHovered(v || hovered)}
               onSelect={(v) => {
-                if (floydReady()) {
+                // A row or column of the dynamic programme's table is a
+                // vertex: its whole shortest-path tree, as a click on the
+                // vertex shows it with Floyd-Warshall's table loaded (the
+                // table's row, read again; Bellman-Ford, run from it).
+                const s = searchRef.current;
+                if (kind === 'floyd_warshall' || s?.schedule) {
+                  setMode('search');
+                  setTargetInput('');
                   setRootInput(vertexLabel(v));
-                  runSearch('floyd_warshall', v);
+                  runSearch(kind === 'floyd_warshall' ? 'floyd_warshall' : 'bellman_ford', v);
                   return;
                 }
                 setSelected(v);
                 rendererRef.current?.setSelected(v);
               }}
+              onCell={showCellPath}
               onMembers={onMembers}
               closing={stripClosing && !structuresOpen}
               onClosed={() => setStripClosing(false)}

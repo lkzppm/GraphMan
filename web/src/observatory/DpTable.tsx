@@ -195,6 +195,7 @@ export default function DpTable({
   round,
   prepared,
   link,
+  onCell,
 }: {
   t: Strings;
   search: DpSearch;
@@ -204,6 +205,10 @@ export default function DpTable({
   round?: number;
   prepared: Prepared;
   link: Link;
+  /** A cell clicked: the path it stands for, from the origin to the
+      column's vertex (Bellman-Ford) or from row i to column j
+      (Floyd-Warshall). */
+  onCell: (from: number, to: number) => void;
 }) {
   const s = t.structures;
   const tipId = useId();
@@ -376,18 +381,41 @@ export default function DpTable({
               >
                 {r.label}
               </th>
-              {r.cells.map((c) => (
-                <td
-                  key={`${c.key}:${c.value}`}
-                  className={styles.dpCell}
-                  data-mark={c.mark}
-                  data-row={r.mark}
-                  data-changed={c.changed || undefined}
-                  data-infinite={c.value === Infinity || undefined}
-                >
-                  {show(c.value)}
-                </td>
-              ))}
+              {r.cells.map((c) => {
+                // The path the cell is a distance of: from the origin in
+                // Bellman-Ford's table, from the row's vertex in Floyd's.
+                const from = prepared.trace.kind === 'bellman' ? search.root : r.vertex;
+                const to = c.key;
+                const open = from > 0 && from !== to;
+                return (
+                  <td
+                    key={`${c.key}:${c.value}`}
+                    className={styles.dpCell}
+                    data-mark={c.mark}
+                    data-row={r.mark}
+                    data-changed={c.changed || undefined}
+                    data-infinite={c.value === Infinity || undefined}
+                    data-pick={open || undefined}
+                    tabIndex={open ? 0 : undefined}
+                    title={open ? s.dp.showPath(String(from), String(to)) : undefined}
+                    onPointerEnter={() => link.onHover(to)}
+                    onPointerLeave={() => link.onHover(0)}
+                    onClick={open ? () => onCell(from, to) : undefined}
+                    onKeyDown={
+                      open
+                        ? (event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              onCell(from, to);
+                            }
+                          }
+                        : undefined
+                    }
+                  >
+                    {show(c.value)}
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>
