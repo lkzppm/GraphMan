@@ -30,6 +30,21 @@
   flex: 1 1 auto;
 }
 
+/* Part 3's board ends at the window's foot and is centred like the other
+   parts, as wide as the window allows while leaving the rail its margin
+   on the left (and the same on the right): up to 1320 px. */
+.sectionFlush {
+  --container: min(1320px, calc(100vw - 300px));
+  padding-bottom: 0;
+}
+
+/* Without the rail, the margins go too. */
+@media (max-width: 1240px) {
+  .sectionFlush {
+    --container: 1320px;
+  }
+}
+
 /* A part with nothing to show yet: its words rise in when it is picked. */
 .partEmpty {
   padding-top: 64px;
@@ -51,19 +66,39 @@
 }
 
 .menuInner {
-  position: relative;
   display: flex;
-  justify-content: space-between;
-  padding-top: 12px;
+  align-items: center;
+  gap: 20px;
+  padding-top: 10px;
   padding-bottom: 10px;
 }
 
-.menuInner::before {
+/* What the menu is, before its vertices. */
+.menuLabel {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: var(--tracking);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+/* The vertices on their edge: each graph is its vertex alone; its name is
+   the button's accessible name and its tooltip, not printed under it. */
+.menuTrack {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+}
+
+.menuTrack::before {
   content: '';
   position: absolute;
-  left: calc(var(--gutter) + 15px);
-  right: calc(var(--gutter) + 15px);
-  top: 27px;
+  left: 15px;
+  right: 15px;
+  top: 15px;
   height: 1.5px;
   background: var(--border-2);
 }
@@ -74,9 +109,7 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  /* Room for the label, which hangs under the vertex without widening the
-     pick: the vertices then sit at the edge's two ends. */
-  padding: 0 0 21px;
+  padding: 0;
   border: 0;
   background: none;
   color: var(--fg-3);
@@ -126,22 +159,11 @@
 
 .pickName {
   position: absolute;
-  top: 36px;
-  left: 50%;
-  translate: -50% 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
   white-space: nowrap;
-}
-
-/* The two ends' labels line up with the column instead of overhanging it. */
-.pick:first-child .pickName {
-  left: 0;
-  translate: none;
-}
-
-.pick:last-child .pickName {
-  left: auto;
-  right: 0;
-  translate: none;
 }
 
 /* ---- head ----------------------------------------------------------------- */
@@ -1985,5 +2007,161 @@ g[data-apart] .sideLabel {
   .memoryUsed,
   .memorySlack {
     transition: none;
+  }
+}
+
+/* ---- part 3 ---------------------------------------------------------------- */
+
+/* Two chapters side by side: the paths to the target beside the table of
+   five, and in the last chapter the bars beside the verdict. */
+.rowTwo {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 36px;
+  align-items: start;
+}
+
+/* Question 3: the schedules, the sweeps and the searches in three columns. */
+.rowTimes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 36px;
+  align-items: start;
+}
+
+/* The six schedules take the whole row, with room for their passes. */
+.rowTimes > :first-child {
+  grid-column: 1 / -1;
+}
+
+.rowTimes > :first-child .track {
+  padding-right: 280px;
+}
+
+.rowTimes .track,
+.rowTwo .track {
+  padding-right: 200px;
+}
+
+.timesGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.timesLabel {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+/* The one red: a negative cycle, as a line of text or a note. */
+.cycleText {
+  color: var(--cycle);
+}
+
+.cycleNote {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--cycle) 40%, var(--border));
+  border-left: 2px solid var(--cycle);
+  border-radius: var(--radius);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.cycleNote .mono {
+  font-size: 12.5px;
+  color: var(--cycle);
+}
+
+/* The table of five: the diagonal, always 0, in grey. */
+.pairsTable thead th:first-child {
+  width: 52px;
+}
+
+.pairsTable td[data-self] {
+  color: var(--fg-3);
+}
+
+.pairsTable tbody th,
+.pairsTable tbody td {
+  height: 36px;
+}
+
+/* The overview: every graph in one table, its name opening its tab. */
+.overviewScroll {
+  overflow-x: auto;
+}
+
+.overviewTable {
+  min-width: 760px;
+}
+
+.overviewTable thead th:first-child {
+  width: 120px;
+}
+
+.rowOpen {
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: var(--accent);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s var(--ease);
+}
+
+.rowOpen:hover {
+  border-color: var(--accent);
+}
+
+/* All pairs, graph by graph: two bars a graph on the shared scale. */
+.raceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px 36px;
+}
+
+.raceCell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.raceGraph {
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.raceGrid .track {
+  padding-right: 150px;
+}
+
+.verdict {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.verdict .swap {
+  white-space: normal;
+  flex-wrap: wrap;
+}
+
+.verdictLine {
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+
+@media (max-width: 900px) {
+  .rowTwo,
+  .rowTimes {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

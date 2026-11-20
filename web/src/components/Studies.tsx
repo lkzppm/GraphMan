@@ -12,6 +12,7 @@ import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/
 import { logScale } from '@/lib/scale';
 import type {
   DiameterMethod,
+  DirectedStudy,
   GraphStudy,
   Machine,
   Representation,
@@ -22,6 +23,7 @@ import Rail from './Rail';
 import Reveal from './Reveal';
 import { Bars, Chapter, Swap, type Bar } from './studies-kit';
 import StudiesPart2 from './StudiesPart2';
+import StudiesPart3 from './StudiesPart3';
 import styles from './Studies.module.css';
 
 /* The case studies: one sheet per view, the seven questions of the
@@ -36,8 +38,10 @@ import styles from './Studies.module.css';
 
 /** The hash the overview is kept under; a graph is `#grafo-<n>`. */
 const OVERVIEW = 'geral';
-/** The address of Part 2's page. */
+/** The address of Part 2's page, and of Part 3's. */
 const PART_2 = '#parte-2';
+const PART_3 = '#parte-3';
+type Part = 1 | 2 | 3;
 
 /** The representations in the order the bars show them, and their blues. */
 const REPRESENTATIONS: Representation[] = ['adjacency_list', 'csr', 'adjacency_matrix'];
@@ -358,20 +362,24 @@ function meanSheet(studies: GraphStudy[], t: T, scales: Scales): Sheet {
 export default function Studies({
   studies,
   weighted,
+  directed,
 }: {
   studies: GraphStudy[];
   /** Part 2: the weighted course graphs and the collaboration network. */
   weighted: WeightedStudy[];
+  /** Part 3: the directed course graphs. */
+  directed: DirectedStudy[];
 }) {
   const t = useT();
   // The part of the project (the rail on the left), and in Part 1 the view:
   // the overview, or the index of one graph. Both kept in the hash.
-  const [part, setPart] = useState<1 | 2>(1);
+  const [part, setPart] = useState<Part>(1);
   const [view, setView] = useState<number | null>(null);
   useEffect(() => {
     const read = () => {
-      // Part 2 keeps its own views under its prefix (`#parte-2-w3`, ...).
-      setPart(location.hash.startsWith(PART_2) ? 2 : 1);
+      // Parts 2 and 3 keep their own views under their prefix (`#parte-2-w3`,
+      // `#parte-3-w1`, ...).
+      setPart(location.hash.startsWith(PART_3) ? 3 : location.hash.startsWith(PART_2) ? 2 : 1);
       const match = /^#grafo-(\d+)$/.exec(location.hash);
       const i = match ? studies.findIndex((s) => graphNumber(s.name) === match[1]) : -1;
       setView(i >= 0 ? i : null);
@@ -392,11 +400,11 @@ export default function Studies({
     },
     [studies],
   );
-  const choosePart = (next: 1 | 2) => {
+  const choosePart = (next: Part) => {
     if (next === 1) choose(view);
     else {
-      setPart(2);
-      history.replaceState(null, '', PART_2);
+      setPart(next);
+      history.replaceState(null, '', next === 2 ? PART_2 : PART_3);
     }
   };
 
@@ -408,8 +416,8 @@ export default function Studies({
   const last = studies.length;
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      // Part 2 has no graph menu to walk.
-      if (part === 2) return;
+      // Parts 2 and 3 walk their own menus.
+      if (part !== 1) return;
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       const active = document.activeElement;
       const inMenu = active instanceof HTMLElement && tabs.current.includes(active as never);
@@ -462,19 +470,38 @@ export default function Studies({
       ? t.studies.part2.timing.note(formatInt(partTwoRuns), machineOf(weighted))
       : undefined;
 
+  const partThreeRuns = Math.max(
+    0,
+    ...directed.flatMap((study) => study.timings.map((cell) => cell.requested_runs)),
+  );
+  const partThreeNote =
+    partThreeRuns > 0
+      ? t.studies.part3.timing.note(formatInt(partThreeRuns), machineOf(directed))
+      : undefined;
+
   const rail = (
     <Rail
       label={t.studies.parts.label}
       stops={[
         { id: '1', title: t.studies.parts.one, info: partOneNote },
         { id: '2', title: t.studies.parts.two, info: partTwoNote },
+        { id: '3', title: t.studies.parts.three, info: partThreeNote },
       ]}
       infoLabel={t.studies.parts.info}
       active={String(part)}
-      onSelect={(id) => choosePart(id === '2' ? 2 : 1)}
+      onSelect={(id) => choosePart(id === '3' ? 3 : id === '2' ? 2 : 1)}
       numbered={false}
     />
   );
+
+  if (part === 3 && directed.length > 0) {
+    return (
+      <section className={`${styles.section} ${styles.sectionFill} ${styles.sectionFlush}`}>
+        {rail}
+        <StudiesPart3 studies={directed} />
+      </section>
+    );
+  }
 
   if (part === 2 && weighted.length > 0) {
     return (
@@ -486,8 +513,8 @@ export default function Studies({
   }
 
   // A part whose study has not run yet: the page says so.
-  if (part === 2 || studies.length === 0) {
-    const empty = part === 2 ? t.studies.part2 : null;
+  if (part !== 1 || studies.length === 0) {
+    const empty = part === 2 ? t.studies.part2 : part === 3 ? t.studies.part3 : null;
     return (
       <section className={styles.section}>
         {rail}
@@ -528,48 +555,51 @@ export default function Studies({
     <section className={styles.section}>
       {rail}
       <nav className={styles.menu}>
-        <div
-          className={`container ${styles.menuInner}`}
-          role="tablist"
-          aria-label={t.studies.views}
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === null}
-            tabIndex={view === null ? 0 : -1}
-            ref={(el) => {
-              tabs.current[0] = el;
-            }}
-            className={styles.pick}
-            data-active={view === null || undefined}
-            onClick={() => choose(null)}
-          >
-            <span className={`mono ${styles.pickBall}`}>
-              <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
-                <circle cx="5" cy="5" r="3" fill="currentColor" />
-              </svg>
-            </span>
-            <span className={styles.pickName}>{t.studies.overview}</span>
-          </button>
-          {studies.map((s, i) => (
+        <div className={`container ${styles.menuInner}`}>
+          <span className={styles.menuLabel} aria-hidden="true">
+            {t.studies.graphsLabel}
+          </span>
+          <div className={styles.menuTrack} role="tablist" aria-label={t.studies.views}>
             <button
-              key={s.name}
+              title={t.studies.overview}
               type="button"
               role="tab"
-              aria-selected={view === i}
-              tabIndex={view === i ? 0 : -1}
+              aria-selected={view === null}
+              tabIndex={view === null ? 0 : -1}
               ref={(el) => {
-                tabs.current[i + 1] = el;
+                tabs.current[0] = el;
               }}
               className={styles.pick}
-              data-active={view === i || undefined}
-              onClick={() => choose(i)}
+              data-active={view === null || undefined}
+              onClick={() => choose(null)}
             >
-              <span className={`mono ${styles.pickBall}`}>{graphNumber(s.name)}</span>
-              <span className={styles.pickName}>{t.studies.graph(graphNumber(s.name))}</span>
+              <span className={`mono ${styles.pickBall}`}>
+                <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
+                  <circle cx="5" cy="5" r="3" fill="currentColor" />
+                </svg>
+              </span>
+              <span className={styles.pickName}>{t.studies.overview}</span>
             </button>
-          ))}
+            {studies.map((s, i) => (
+              <button
+                title={t.studies.graph(graphNumber(s.name))}
+                key={s.name}
+                type="button"
+                role="tab"
+                aria-selected={view === i}
+                tabIndex={view === i ? 0 : -1}
+                ref={(el) => {
+                  tabs.current[i + 1] = el;
+                }}
+                className={styles.pick}
+                data-active={view === i || undefined}
+                onClick={() => choose(i)}
+              >
+                <span className={`mono ${styles.pickBall}`}>{graphNumber(s.name)}</span>
+                <span className={styles.pickName}>{t.studies.graph(graphNumber(s.name))}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </nav>
       <SheetView sheet={sheet} />

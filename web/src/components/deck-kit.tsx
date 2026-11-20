@@ -33,6 +33,7 @@ export function Bar({
   value,
   ghost,
   off,
+  empty,
   delay,
 }: {
   width: number;
@@ -40,10 +41,18 @@ export function Bar({
   value: ReactNode;
   ghost?: boolean;
   off?: boolean;
+  /** A place with no bar, kept so a sheet can fold it away smoothly. */
+  empty?: boolean;
   delay: number;
 }) {
   return (
-    <span className={styles.barRow} data-ghost={ghost || undefined} data-off={off || undefined}>
+    <span
+      className={styles.barRow}
+      data-ghost={ghost || undefined}
+      data-off={off || undefined}
+      data-placeholder={empty || undefined}
+      aria-hidden={empty || undefined}
+    >
       <span className={styles.track}>
         <span
           className={styles.fill}

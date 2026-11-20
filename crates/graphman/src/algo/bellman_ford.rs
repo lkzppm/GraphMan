@@ -267,6 +267,15 @@ pub fn bellman_ford_into<G: Weighted, S: Schedule, V: Visitor>(
                     tree.reset();
                     return Err(cycle);
                 }
+                // Every `n` improvements, look for a cycle anywhere in the
+                // parent graph: a short negative cycle shows up there long
+                // before any walk around it reaches `n` arcs.
+                if cycles.lowered(n)
+                    && let Some(cycle) = cycles.sweep(graph, tree)
+                {
+                    tree.reset();
+                    return Err(cycle);
+                }
                 schedule.lowered(w, &tree.distance);
             }
         }
@@ -294,15 +303,22 @@ fn report_passes<S: Schedule, V: Visitor>(schedule: &S, seen: &mut usize, visito
     }
 }
 
-/// Reads a negative cycle off the parent pointers once a walk of `n` arcs
-/// shows there is one.
+/// Reads a negative cycle off the parent pointers: once a walk of `n` arcs
+/// shows there is one (`find`), and every `n` improvements anywhere in the
+/// parent graph (`sweep`, Cherkassky and Goldberg's amortised search), so a
+/// short cycle is caught after `O(n)` improvements instead of waiting for a
+/// walk around it to reach `n` arcs. A sweep costs `O(n)` once every `n`
+/// improvements: `O(1)` each, so the bound stays `O(nm)`.
 #[derive(Default)]
 struct CycleFinder {
-    /// The attempt that last visited each vertex.
-    stamp: Vec<u32>,
-    attempt: u32,
-    /// Improvements to wait before the next attempt.
+    /// The walk that last visited each vertex; walks are numbered from 1 and
+    /// never reused, so one sweep tells its own walks from older ones.
+    stamp: Vec<u64>,
+    attempt: u64,
+    /// Improvements to wait before the next `find`.
     wait: usize,
+    /// Improvements since the last sweep.
+    since_sweep: usize,
 }
 
 impl CycleFinder {
@@ -337,22 +353,77 @@ impl CycleFinder {
             self.wait = n;
             return None;
         }
-        // `at` is on the cycle; its parents go round it backwards.
-        let mut cycle = vec![at];
-        let mut previous = tree.parent[at as usize];
-        while previous != at {
-            cycle.push(previous);
-            previous = tree.parent[previous as usize];
+        let cycle = read_cycle(graph, tree, at);
+        if cycle.is_none() {
+            self.wait = n;
         }
-        cycle.reverse();
-        let k = cycle.len();
-        let weight = (0..k)
-            .map(|i| {
-                graph
-                    .weight(cycle[i], cycle[(i + 1) % k])
-                    .expect("a parent is joined to its child by an arc")
-            })
-            .sum();
-        Some(NegativeCycle::new(cycle, weight))
+        cycle
     }
+
+    /// Counts an improvement; true when a sweep is due (every `n`).
+    fn lowered(&mut self, n: usize) -> bool {
+        self.since_sweep += 1;
+        if self.since_sweep < n.max(1) {
+            return false;
+        }
+        self.since_sweep = 0;
+        true
+    }
+
+    /// Looks for a cycle anywhere in the parent graph, `O(n)`: a walk up the
+    /// parents from each vertex stops at a root, at a vertex an earlier walk
+    /// of this sweep already cleared, or at one of its own vertices, which
+    /// closes a cycle (negative, as every cycle of the parent graph is).
+    fn sweep<G: Weighted>(&mut self, graph: &G, tree: &ShortestPathTree) -> Option<NegativeCycle> {
+        let n = graph.vertex_count();
+        if self.stamp.is_empty() {
+            self.stamp = vec![0; n + 1];
+        }
+        let first = self.attempt + 1;
+        for v in 1..=n as Vertex {
+            if self.stamp[v as usize] >= first || tree.parent[v as usize] == NO_VERTEX {
+                continue;
+            }
+            self.attempt += 1;
+            let mut at = v;
+            while at != NO_VERTEX && self.stamp[at as usize] < first {
+                self.stamp[at as usize] = self.attempt;
+                at = tree.parent[at as usize];
+            }
+            if at != NO_VERTEX
+                && self.stamp[at as usize] == self.attempt
+                && let Some(cycle) = read_cycle(graph, tree, at)
+            {
+                return Some(cycle);
+            }
+        }
+        None
+    }
+}
+
+/// The cycle of the parent graph through `at`, in arc order, with its
+/// weight; `None` if rounding left it at zero or above, which no exact sum
+/// would (the run then goes on, and a real cycle keeps falling).
+fn read_cycle<G: Weighted>(
+    graph: &G,
+    tree: &ShortestPathTree,
+    at: Vertex,
+) -> Option<NegativeCycle> {
+    // `at` is on the cycle; its parents go round it backwards.
+    let mut cycle = vec![at];
+    let mut previous = tree.parent[at as usize];
+    while previous != at {
+        cycle.push(previous);
+        previous = tree.parent[previous as usize];
+    }
+    cycle.reverse();
+    let k = cycle.len();
+    let weight = (0..k)
+        .map(|i| {
+            graph
+                .weight(cycle[i], cycle[(i + 1) % k])
+                .expect("a parent is joined to its child by an arc")
+        })
+        .sum();
+    (weight < 0.0).then(|| NegativeCycle::new(cycle, weight))
 }

@@ -237,8 +237,10 @@ white page and rise into view as it is scrolled (`components/Reveal.tsx`,
   questions of the assignment on one screen and nothing else, no title
   and no prose, everything read from `studies/results.json`. A menu stuck
   under the site's nav (blurred white, a hairline under it) lists the
-  views as vertices on one edge: `Geral` first and the default (its
-  vertex holds a dot), then the six graphs; the current view's vertex is
+  views as vertices on one edge after a tracked `GRAFOS:` label: `Geral`
+  first and the default (its vertex holds a dot), then the six graphs.
+  A vertex carries only its number; its name is the button's accessible
+  name and tooltip, not printed under it (all three parts). The current view's vertex is
   filled blue and the view is kept in the hash (`#geral`, `#grafo-3`).
   It is a tablist: left and right walk it from anywhere on the page, and
   with the menu focused up, down, Home and End work too and the focus
@@ -654,6 +656,106 @@ still shows at its middle.
   PageUp-Down and a touch swipe move, Home/End jump, F is full screen (the
   bar fades unless hovered); a thin bar holds prev/next, dots, the counter
   and the hint. The hidden slides are `inert`.
+- **Part 3's deck** (`DeckPart3.tsx`; the cover's pill has a third place,
+  `#part-3`, key 3): eleven slides after the cover. The first six run on
+  one five-vertex sample digraph (six arcs, one negative, outlined dashed
+  as in Part 2), and what they draw is computed from it, never typed in:
+  **Direction** (the file, `EdgeList`, the digraph, `transpose()`, the
+  transpose with every arrowhead turned, three notes); **Bellman-Ford**
+  (the `Schedule` trait and the driver in a code card, beside the queue
+  schedule's run toward vertex 5: grey arcs, each pass ringing what it
+  scans, the estimates swapping in pills, each vertex's arc toward the
+  target lit and moved when it changes, the queue under it, a replay
+  button); **Schedules** (the Frontiers layout: six 168 × 96 figures, a
+  cursor sweeping all cells, two sweeps then `Δ = 0`, lowered cells
+  dropping into a queue, Yen's up and down chains, the same over a
+  shuffle, a closer label jumping to the deque's front); **Negative
+  cycle** (a token lapping a cycle of weight −1 as `hops[1]` climbs, then
+  the cycle in `--cycle` with `Σ = −1`; beside it each course graph's
+  certificates, to the target and anywhere); **Floyd-Warshall** (the
+  Bellman-Ford layout: the sweep enum, the entry point and the round loop
+  in a code card, what the table costs on the course graphs under it;
+  beside it D⁰ to Dⁿ dealt one on another with their values, row and
+  column k washed and lowered cells blue, colliding back into D⁰, which
+  then runs the rounds in place, improved cells flashing; a replay
+  button); **Sweeps** (four 6 × 6 grids, round k outlined, rows pulsing one by
+  one, skipped rows dashed, three rows at once, tiles by phase). Then the
+  four questions from `directed.json`, each saying so while it is empty:
+  the distances to vertex 100 as Part 2's distance grid plus a work
+  column, a cycle reaching the target across the row as the case-study
+  page's ring, its words beside it; the table of
+  five behind a pill with a place per graph (a cycle drawn as the ring
+  over the cells it leaves undefined), spanning its panel, its
+  cells kept across graphs and each new value rising in; mean times on the benchmark
+  sheet with a switch between Bellman-Ford, Floyd-Warshall and the
+  searches (one log scale over every cell of every family; six bar places
+  a row whatever the family, the unused ones folding away so the bars stay
+  centred, and the bars sliding to their new lengths on a switch); all pairs with the faster of the two and
+  the scans per vertex. The six schedules wear the six queue hues, in the
+  queues' order. Every timeline element appears at `--d` and leaves at
+  `--e`; without motion only those marked final show.
+- **Case studies, Part 3** (`StudiesPart3.tsx`, the rail's third stop,
+  `#parte-3`, `#parte-3-w1`): the Part 2 menu and head over a board that
+  fills the window, centred like the other parts and as wide as the window
+  allows while leaving the rail its margin (`--container: min(1320px,
+  100vw − 300px)` on the section, the full 1320 px once the rail hides). The
+  board is two columns; in each, the panels with a natural height (the
+  heatmap, the paths, the race of one graph) keep it and the one drawing
+  that can stretch takes the rest (the overview's columns share the board
+  evenly below 1500 px of window), so it fits a short laptop window
+  (about 1280 × 710; under 860 px of height the head tightens). Each SVG is sized from its box by a
+  `ResizeObserver`, never the other way round. The overview is one chart
+  over the whole board, switched in its heading between time and memory.
+  Time: how each time grows with n (a switch picks one of each, the six
+  schedules, the four sweeps or the all-pairs methods, its thumb measured
+  to the chosen word and sliding there; beside it, for the six schedules,
+  a table view swaps the chart for the heatmap of schedules by graph,
+  coloured by times the graph's best, ×1 palest, ×10 and beyond darkest,
+  by time or by scans). Memory: what the library prices, Floyd-Warshall's
+  table (12 B a cell, as the study records it) and the graph in CSR
+  (4 B an offset, 12 an arc), under a dashed level at the machine's
+  memory; the families fade and go inert. Under the chart Part 2's slider
+  sweeps both axes from log to linear through the same Box-Cox transform,
+  the end words gliding it there; each line's name at its end is its
+  legend, with its fitted exponent, `n¹·³`, lighting the line on hover and
+  hiding it on a click, and the value axis refits to the lines shown. A
+  change of lines (another family, time for memory, a line hidden) glides
+  every point from where it was drawn to its new place over 650 ms, as in
+  Part 2's chart: lines are matched by their place in the list, so each
+  turns into the next set's, its colour blending, one the old set lacked
+  grows out of the line before it, the names ride their ends and a new
+  unit crossfades the ticks; the slider moves everything at once; a
+  hidden line's name stays on the chart, clamped to its edge; ticks mix
+  the named marks, 1-2-5 per decade and round linear steps in each unit,
+  as Part 2's do. A graph's sheet has, on
+  the left, the paths to vertex 100 on one distance ruler (or, under a
+  cycle, the cycle as a ring of its vertices on a true circle, each arc
+  running along it to the next vertex, with its weight inside,
+  centred in the ruler's box with the problem in the ruler's two-line
+  caption), the table of five as a heatmap whose hover outlines the mirror
+  cell and reads the way back (under a cycle, the ring is drawn over the
+  table's cells and the problem leads its caption), so both panels keep
+  their heights from graph to graph; on the right, every schedule, sweep and search on the shared time
+  axis with the other graphs as grey ghosts behind, and the race of this
+  graph alone on an axis fitted to its own times (tweened from graph to
+  graph, ticked at round amounts of each unit) over its verdict, whose measured reason opens from an info
+  button. Every time sits on one log axis: a filled point was
+  measured, a hollow one is an estimate, a red ring stopped at a negative
+  cycle. Bellman-Ford is blue and Floyd-Warshall orange wherever they
+  meet; a family's textbook baseline (rounds, plain) is grey. Hovering any
+  mark shows a translucent tip (the reading, how it was measured, the
+  work) that opens away from the near edges; clicking a mark of another
+  graph opens it. Changing graph never remounts the sheet: marks, ticks
+  and the ruler's dots are placed by CSS transforms and glide to their new
+  places (horizontal lines are a unit line moved and stretched, with a
+  non-scaling stroke), each path row keeps as many dots as the longest
+  path any graph has there and fades the spare ones into the target,
+  numbers run to their new values (an ease-out tween from wherever they
+  are, so a change mid-run turns smoothly), heatmap shades blend, and only
+  what is new (another graph's ghost, a sentence) fades up; a cycle swaps
+  the ruler for its ring by a crossfade. Below 1080 px the panels stack in the questions' order;
+  on a phone the lines' names move into legend chips and the memory
+  column gives way.
 
 ## The canvas
 
