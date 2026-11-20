@@ -1027,6 +1027,7 @@ export const en = {
         bellmanTitle: 'd_k[v]: the estimate of v after pass k',
         floydTitle: 'D_k[i][j]: from i to j through the vertices 1 to k',
         pass: 'pass',
+        showPath: (from: string, to: string) => `Show the path from ${from} to ${to}`,
         passOf: (k: string, total: string) => `pass ${k} of ${total}`,
         roundOf: (k: string, n: string) => `k = ${k} of ${n}`,
         start: 'k = 0: the arcs alone',

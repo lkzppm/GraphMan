@@ -133,6 +133,7 @@ export default function Structures({
   hovered,
   onHover,
   onSelect,
+  onCell,
   onResize,
   maximized,
   onMaximize,
@@ -161,6 +162,9 @@ export default function Structures({
   hovered: number;
   onHover: (v: number) => void;
   onSelect: (v: number) => void;
+  /** A cell of Bellman-Ford's or Floyd-Warshall's table clicked: the
+      path from `from` to `to` it stands for. */
+  onCell: (from: number, to: number) => void;
   onResize: (height: number) => void;
   /** Whether the strip fills the whole column, over the canvas: dragged
       to the column's top. */
@@ -215,6 +219,7 @@ export default function Structures({
         round={table ? (floydRound ?? 0) : undefined}
         prepared={prepared}
         link={link}
+        onCell={onCell}
       />
     ) : (
       <p className={styles.empty}>{floyd ? s.dp.floydTooLarge : s.dp.bellmanTooLarge}</p>
