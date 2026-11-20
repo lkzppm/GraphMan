@@ -230,7 +230,7 @@ export const pt: Dictionary = {
       },
       bellman_ford: {
         title: 'Bellman-Ford',
-        body: 'bellman_ford aceita pesos negativos. É escrito uma vez, como bellman_ford_into sobre uma Schedule (o próximo capítulo), e preenche a mesma ShortestPathTree do Dijkstra, então caminhos, arquivos e desenhos são os mesmos. bellman_ford_to responde à pergunta da disciplina, a distância de cada vértice até um alvo, pela mesma execução a partir do alvo no grafo transposto. Quando um ciclo negativo pode ser alcançado, não há caminho mínimo, e o erro não é um booleano mas o próprio ciclo (NegativeCycle: seus vértices a partir do menor, e seu peso), lido dos ponteiros de pai assim que um passeio de n arcos prova que ele existe. Num grafo não direcionado, uma aresta negativa percorrida ida e volta já é um ciclo assim.',
+        body: 'bellman_ford aceita pesos negativos. É escrito uma vez, como bellman_ford_into sobre uma Schedule (o próximo capítulo), e preenche a mesma ShortestPathTree do Dijkstra, então caminhos, arquivos e desenhos são os mesmos. bellman_ford_to responde à pergunta da disciplina, a distância de cada vértice até um alvo, pela mesma execução a partir do alvo no grafo transposto. Quando um ciclo negativo pode ser alcançado, não há caminho mínimo, e o erro não é um booleano mas o próprio ciclo (NegativeCycle: seus vértices a partir do menor, e seu peso), lido dos ponteiros de pai assim que um passeio de n arcos prova que ele existe, ou antes: a cada n melhorias o grafo de pais inteiro é varrido atrás de um ciclo, e um ciclo curto aparece na hora. Num grafo não direcionado, uma aresta negativa percorrida ida e volta já é um ciclo assim.',
         tree: 'Bellman-Ford a partir de 1: a árvore, cada distância ao lado do vértice',
         cycle: 'com 5 → 3 em -1: o ciclo 2 → 4 → 5 → 3 → 2 pesa -2',
       },
@@ -414,6 +414,7 @@ export const pt: Dictionary = {
       label: 'Partes do trabalho',
       one: 'Parte 1',
       two: 'Parte 2',
+      three: 'Parte 3',
       info: 'Como foi medido',
       method: (runs: string, machine: string) =>
         `Memória: o que cada representação ocupa depois de montada a partir do arquivo lido; uma matriz de bits que não cabe na memória da máquina é recusada antes de ser alocada. BFS e DFS: a média de ${runs} origens aleatórias distintas (uma semente fixa) em cada representação, cada execução cronometrada sozinha, sem leitura nem escrita. Os métodos de diâmetro rodam com um orçamento de tempo: um valor marcado com ≥ é o limite que uma execução interrompida alcançou. ${machine}`,
@@ -518,7 +519,180 @@ export const pt: Dictionary = {
         site; a página se preenche a partir de studies/results.json.
       </>
     ),
+    /** Before the menu of graphs, which names only their vertices. */
+    graphsLabel: 'Grafos:',
     graph: (n: string) => `Grafo ${n}`,
+    part3: {
+      title: 'Parte 3: grafos direcionados',
+      lead: 'Os grafos direcionados da disciplina ainda não foram rodados. Quando forem, graphman study --directed preenche esta página: as distâncias do Bellman-Ford até o vértice 100, a tabela do Floyd-Warshall de cinco vértices, o tempo médio de cada algoritmo, e todos os pares por n Bellman-Fords contra o Floyd-Warshall.',
+      views: 'Visões da Parte 3',
+      pending: 'Ainda não medido.',
+      facts: {
+        arcs: 'arcos',
+        weights: (min: string, max: string, negative: number) =>
+          `pesos de ${min} a ${max}, ${negative === 0 ? 'nenhum negativo' : `${negative.toLocaleString('en-US')} negativos`}`,
+        cycles: (k: number, n: number) =>
+          k === 0
+            ? 'nenhum ciclo negativo em nenhum grafo'
+            : `um ciclo negativo em ${k} de ${n} grafos`,
+      },
+      names: {
+        rounds: 'rodadas',
+        earlyStop: 'parada antecipada',
+        queue: 'fila',
+        yen: 'Yen',
+        randomYen: 'Yen aleatório',
+        slf: 'SLF',
+        plain: 'simples',
+        pruned: 'podada',
+        parallel: 'paralela',
+        blocked: 'em blocos',
+        bfs: 'BFS',
+        dfs: 'DFS',
+        dijkstra: 'Dijkstra',
+        bellmanQueue: 'Bellman-Ford',
+        floydPruned: 'Floyd-Warshall',
+        bellmanAll: 'n × BF',
+        floydAllPruned: 'FW, podada',
+        floydAllParallel: 'FW, paralela',
+        dijkstraAll: 'n × Dijkstra',
+        johnson: 'Johnson',
+      },
+      time: {
+        landmarks: {
+          ms: '1 ms',
+          s: '1 s',
+          min: '1 min',
+          h: '1 h',
+          day: '1 dia',
+          year: '1 ano',
+          millennium: '1000 anos',
+        },
+        days: (v: string) => `${v} dias`,
+        years: (v: string) => `${v} anos`,
+        estimated: (time: string) => `≈ ${time}`,
+      },
+      kinds: {
+        measured: 'medido',
+        estimated: 'estimativa',
+        cycle: 'parou num ciclo negativo',
+        mean: (runs: string, of: string) =>
+          runs === of
+            ? `média de ${runs} execuções`
+            : `média de ${runs} execuções (de ${of}, o orçamento acabou)`,
+        cut: 'estimativa: o orçamento de tempo interrompeu a execução, então a execução inteira é extrapolada do seu ritmo',
+        standIn:
+          'estimativa: a tabela não cabe na memória, então um substituto de 1024 vértices foi medido e escalado por (n / 1024)³',
+        atCycle:
+          'parou num ciclo negativo: este é o tempo que levou para achar um, não uma distância',
+        refused: 'não rodado: um arco negativo',
+      },
+      tip: {
+        graph: (name: string, n: string, m: string) => `${name} · ${n} vértices · ${m} arcos`,
+        work: (passes: string, scans: string) => `${passes} passadas · ${scans} varreduras`,
+        perVertex: (c: string) => `${c} varreduras por vértice`,
+        open: (name: string) => `Clique para abrir ${name}`,
+      },
+      scaling: {
+        title: 'Como o tempo cresce com o grafo',
+        titleMemory: 'Como a memória cresce com o grafo',
+        measureLabel: 'Medir',
+        measure: { time: 'tempo', memory: 'memória' },
+        tableView: 'Visualização em tabela',
+        families: {
+          headline: 'um de cada',
+          bellman: 'Bellman-Ford',
+          floyd: 'Floyd-Warshall',
+          pairs: 'todos os pares',
+        },
+        scale: { label: 'Escala, de linear a logarítmica', linear: 'linear', log: 'log' },
+        familyLabel: 'Quais algoritmos',
+        axis: 'vértices',
+        slope: 'cresce como n elevado a',
+        legend: 'Mostrar ou esconder uma linha',
+        keys: { measured: 'medido', estimated: 'estimativa', cycle: 'parou num ciclo' },
+      },
+      memory: {
+        table: 'Tabela do Floyd-Warshall',
+        graph: 'O grafo (CSR)',
+        ram: (bytes: string) => `a memória da máquina, ${bytes}`,
+        tableNote:
+          'O que o Floyd-Warshall reserva antes do primeiro passo: 12 bytes por célula, n² + n células, no cálculo da biblioteca (o estudo recusa a execução acima da memória).',
+        graphNote:
+          'O próprio grafo como a biblioteca o guarda: 4 bytes por deslocamento, 12 por arco (destino e peso). É tudo de que Bellman-Ford, Dijkstra e BFS precisam além de alguns vetores de tamanho n.',
+        over: (times: string) => `${times}× a memória da máquina`,
+        fits: 'cabe na memória da máquina',
+      },
+      heat: {
+        metric: { time: 'tempo', scans: 'varreduras' },
+        metricLabel: 'Comparar por',
+        best: 'melhor',
+        times: (ratio: string) => `×${ratio}`,
+        cycle: 'ciclo',
+        scale: 'vezes a melhor ordem do grafo',
+        ratio: (ratio: string) => `${ratio} vezes a melhor`,
+      },
+      race: {
+        title: 'Todos os pares: Bellman-Ford contra Floyd-Warshall',
+        faster: (who: string, ratio: string) => `${who} ×${ratio} mais rápido`,
+        bellman: 'BF',
+        floyd: 'FW',
+        noAnswer: 'sem resposta: um ciclo',
+        table: 'Tabela do FW',
+        fits: 'cabe na memória',
+        over: (times: string) => `${times}× a memória`,
+      },
+      target: {
+        title: (t: string) => `Bellman-Ford: a distância até o vértice ${t}`,
+        from: (v: string) => `de ${v}`,
+        hops: (n: number) => (n === 1 ? '1 arco' : `${n} arcos`),
+        unreached: 'sem caminho',
+        vertex: (v: string) => `vértice ${v}`,
+        step: (step: string, of: string) => `arco ${step} de ${of}`,
+        source: (v: string) => `a origem, ${v}`,
+        fromSource: (d: string, v: string) => `${d} desde ${v}`,
+        toTarget: (d: string, t: string) => `${d} até ${t}`,
+        hint: 'cada ponto é um vértice do caminho, na sua distância da origem; passe o mouse para ler',
+        cycle: (t: string, w: string) =>
+          `Um ciclo negativo (peso ${w}) alcança o vértice ${t}: nenhuma distância até ele está definida.`,
+      },
+      pairs: {
+        title: (vertices: string) => `Floyd-Warshall: as distâncias entre ${vertices}`,
+        corner: 'de \\ para',
+        there: (u: string, v: string, d: string) => `${u} → ${v}: ${d}`,
+        back: (u: string, v: string, d: string) => `${v} → ${u}: ${d}`,
+        asymmetry: (ratio: string) => `a volta é ${ratio}× a ida`,
+        asymmetryThere: (ratio: string) => `a ida é ${ratio}× a volta`,
+        same: 'igual nos dois sentidos',
+        byBellman: (bytes: string) =>
+          `Por cinco Bellman-Fords, um por linha: a tabela do Floyd-Warshall precisaria de ${bytes}.`,
+        cycle: (w: string) => `Um ciclo negativo (peso ${w}) deixa estas distâncias indefinidas.`,
+      },
+      timing: {
+        title: 'Tempo médio de cada algoritmo',
+        groups: {
+          bellman: 'Bellman-Ford, seis ordens',
+          floyd: 'Floyd-Warshall, quatro varreduras',
+          searches: 'BFS, DFS e Dijkstra, para escala',
+        },
+        others: 'os outros grafos',
+        passes: (n: string) => `${n} passadas`,
+        refused: 'recusado',
+        atCycle: 'ciclo',
+        note: (runs: string, machine: string) =>
+          `Cada tempo é a média de ${runs} execuções só do algoritmo, sem leitura nem escrita: o Bellman-Ford até o vértice 100 no transposto (construído uma vez, fora do tempo), BFS, DFS e Dijkstra a partir de raízes aleatórias. Cada célula tem um orçamento de tempo; um ponto vazado é uma estimativa, a partir da execução que o orçamento interrompeu ou, para um Floyd-Warshall cuja tabela não cabe, de um digrafo aleatório de 1024 vértices com o mesmo grau de saída médio, escalado por (n / 1024)³. ${machine}`,
+      },
+      allPairs: {
+        bellman: 'O Bellman-Ford a partir de cada vértice',
+        floyd: 'O Floyd-Warshall',
+        whyLabel: 'Por quê',
+        cycleVerdict:
+          'Não há resposta a comparar: os dois param num ciclo negativo, então os tempos medem quanto cada um levou para achá-lo.',
+        verdict: (who: string, ratio: string) => `${who} foi ${ratio} vezes mais rápido.`,
+        why: (c: string, arcs: string, cells: string) =>
+          `Cada Bellman-Ford com fila varreu cerca de ${c} vértices por vértice, então as n execuções examinaram cerca de ${arcs} arcos; o Floyd-Warshall faz ${cells} atualizações, sejam quais forem os arcos, num laço que o cache favorece.`,
+      },
+    },
     representations: {
       adjacency_list: 'Lista de adjacência',
       adjacency_matrix: 'Matriz de adjacência',
@@ -1030,11 +1204,12 @@ export const pt: Dictionary = {
     slides: {
       cover: {
         eyebrow: 'cos 242 · teoria dos grafos · ufrj 2026/2',
-        parts: ['Parte 1', 'Parte 2'],
+        parts: ['Parte 1', 'Parte 2', 'Parte 3'],
         partsLabel: 'Qual parte do trabalho',
         topics: [
           'representações · BFS e DFS · componentes · diâmetro',
           'pesos · Dijkstra · vetor e heap · nomes',
+          'direção · Bellman-Ford · Floyd-Warshall · ciclos negativos',
         ],
         authors: ['Lucas Pacheco', 'Rogério Santana'],
         stack: ['Rust 2024', 'WebAssembly', 'WebGPU · vgpu', 'Next.js', 'Vercel'],
@@ -1337,6 +1512,270 @@ export const pt: Dictionary = {
           pending: 'Preenchido por `graphman study` quando os arquivos da disciplina rodarem.',
         },
         observatory: '10',
+      },
+      part3: {
+        direction: {
+          eyebrow: '01',
+          title: 'Direção é um dado',
+          input: { label: 'entrada', name: 'exemplo.txt', hint: '// u v w: o arco de u para v' },
+          normalise: { name: 'EdgeList', hint: '// (u, v) e (v, u) são dois arcos' },
+          graph: { label: 'G', hint: '// neighbors(v): os arcos que saem de v' },
+          transpose: {
+            name: 'transpose()',
+            hint: '// uma ordenação por contagem da cabeça, O(n + m)',
+          },
+          reverse: { label: 'Gᵀ', hint: '// o mesmo tipo de grafo, cada arco virado' },
+          notes: [
+            {
+              title: 'Um sinalizador, não um tipo',
+              caption: '// Graph::is_directed(); o AnyGraph mantém as suas três variantes',
+            },
+            {
+              title: 'BFS, DFS e Dijkstra sem mudança',
+              caption: '// eles seguem neighbors(), agora os arcos de saída',
+            },
+            {
+              title: 'Arcos de entrada pelo transposto',
+              caption: '// o Bellman-Ford até t é o Bellman-Ford a partir de t em Gᵀ',
+            },
+          ],
+        },
+        bellmanFord: {
+          eyebrow: '02',
+          title: 'Um Bellman-Ford, escrito uma vez',
+          driver: '// o laço é escrito uma vez; uma ordem escolhe o próximo vértice a varrer',
+          toTarget:
+            '// até um alvo: a partir dele, no transposto; o pai é o próximo vértice rumo ao alvo',
+          figure: '// rumo ao vértice 5, passada a passada: a fila guarda só o que baixou',
+          replay: 'Rodar de novo',
+          pass: (k: number) => `passada ${k}`,
+          stop: (passes: number) => `fila vazia · ${passes} passadas`,
+          queue: 'fila',
+        },
+        schedules: {
+          eyebrow: '03',
+          title: 'Seis ordens',
+          groups: ['a disciplina', 'menos passadas'],
+          items: [
+            {
+              name: 'rounds',
+              title: 'n − 1 rodadas',
+              cost: 'n − 1 passadas',
+              caption: '// todo vértice, toda passada: o livro-texto',
+            },
+            {
+              name: 'early-stop',
+              title: 'Parada antecipada',
+              cost: '≤ n − 1 passadas',
+              caption: '// uma passada que não baixa nada encerra (otimização 1)',
+            },
+            {
+              name: 'queue',
+              title: 'Fila',
+              cost: 'O(nm)',
+              caption: '// só o que baixou é varrido de novo (otimização 2)',
+            },
+            {
+              name: 'yen',
+              title: 'Yen',
+              cost: 'O(nm)',
+              caption:
+                '// por número, subindo e descendo: duas varreduras acíclicas por passada, ≤ ⌈n/2⌉ passadas',
+            },
+            {
+              name: 'random-yen',
+              title: 'Yen aleatório',
+              cost: 'O(nm)',
+              caption: '// Yen numa ordem aleatória: um terço das passadas, em média',
+            },
+            {
+              name: 'slf',
+              title: 'Menor rótulo primeiro',
+              cost: 'O(nm)',
+              caption: '// um deque: um vértice mais perto que o da frente passa na frente',
+            },
+          ],
+          ties: '// uma nova ordem de varrer é uma nova Schedule, nunca um segundo Bellman-Ford',
+        },
+        cycle: {
+          eyebrow: '04',
+          title: 'Um ciclo negativo, devolvido',
+          figure:
+            '// um passeio de n arcos, ou uma varredura a cada n melhorias: os pais fecham o ciclo',
+          label: 'Ciclos negativos nos grafos da disciplina',
+          toTarget: (t: string) => `alcançando ${t}`,
+          anywhere: 'em qualquer lugar',
+          none: 'nenhum',
+          weight: (w: string) => `peso ${w}`,
+          arcs: (n: number) => (n === 1 ? '1 arco' : `${n} arcos`),
+          pending:
+            'Preenchido por `graphman study --directed` quando os arquivos da disciplina rodarem.',
+          notes: [
+            {
+              title: 'Uma regra para toda ordem',
+              caption: '// hops[v] = n, ou um ciclo entre os pais a cada n melhorias',
+            },
+            {
+              title: 'O ciclo, não um booleano',
+              caption:
+                '// os pais, seguidos até um se repetir: um certificado que qualquer um confere',
+            },
+            {
+              title: 'O grafo inteiro também',
+              caption: '// Start::Everywhere: todo vértice em 0, uma origem virtual',
+            },
+          ],
+        },
+        floyd: {
+          eyebrow: '05',
+          title: 'Um Floyd-Warshall, escrito uma vez',
+          driver:
+            '// o laço é escrito uma vez, numa tabela n × n; uma varredura só muda a ordem em que visita as células',
+          price: (
+            fits: string,
+            fitsBytes: string,
+            over: string,
+            overBytes: string,
+            memory: string,
+          ) =>
+            `// 12 bytes por célula, orçados antes de alocar: n = ${fits} ocupa ${fitsBytes}; n = ${over} ocuparia ${overBytes}, acima dos ${memory} desta máquina, e é recusada com um erro tipado`,
+          noMachine:
+            '// 12 bytes por célula, orçados antes de alocar: uma tabela maior que a máquina é recusada com um erro tipado',
+          stack: '// a recorrência: n + 1 tabelas, D⁰ a Dⁿ, uma por k',
+          one: '// a rodada k nunca muda a linha k nem a coluna k: uma tabela, atualizada no lugar',
+          replay: 'Rodar de novo',
+        },
+        sweeps: {
+          eyebrow: '06',
+          title: 'Quatro varreduras',
+          items: [
+            {
+              name: 'plain',
+              title: 'Simples',
+              cost: 'n³',
+              caption:
+                '// para k, para i, para j: a linha k fora do laço, o laço interno sem desvios',
+            },
+            {
+              name: 'pruned',
+              title: 'Podada',
+              cost: '≤ n³',
+              caption: '// uma linha com D[i][k] = ∞ não melhora: é pulada',
+            },
+            {
+              name: 'parallel',
+              title: 'Paralela',
+              cost: 'n³ / núcleos',
+              caption: '// as linhas de uma rodada são independentes: o rayon as reparte',
+            },
+            {
+              name: 'blocked',
+              title: 'Em blocos',
+              cost: 'n³, no cache',
+              caption: '// blocos: o da diagonal, sua linha e sua coluna, depois o resto',
+            },
+          ],
+          ties: '// toda varredura dá as mesmas distâncias; o estudo cronometra as quatro',
+        },
+        target: {
+          eyebrow: '07',
+          title: (t: string) => `Bellman-Ford até o vértice ${t}`,
+          label: (t: string) => `Distância até o vértice ${t}`,
+          caption:
+            '// a partir de 10, 20 e 30, pela ordem fila no transposto, e quantos arcos o caminho tem',
+          from: (v: string) => `de ${v}`,
+          work: 'Trabalho',
+          passes: (n: string) => `${n} passadas`,
+          scans: (n: string) => `${n} varreduras`,
+          hops: (n: number) => (n === 1 ? '1 arco' : `${n} arcos`),
+          unreached: 'sem caminho',
+          cycle: (w: string) =>
+            `Um ciclo negativo alcança o alvo (peso ${w}): nenhuma distância está definida.`,
+          key: '// cada ponto é um vértice do caminho, na sua distância da origem',
+          pending:
+            'Preenchido por `graphman study --directed` quando os arquivos da disciplina rodarem.',
+        },
+        pairs: {
+          eyebrow: '08',
+          title: 'Floyd-Warshall, cinco vértices',
+          label: 'Distâncias entre 10, 20, 30, 40 e 50',
+          viewsLabel: 'Grafo',
+          corner: '→',
+          byFloyd: (bytes: string) => `Floyd-Warshall, numa tabela de ${bytes}`,
+          byBellman: (bytes: string) => `Cinco Bellman-Fords: a tabela precisaria de ${bytes}`,
+          cycle: (w: string) => `Um ciclo negativo (peso ${w}) deixa estas distâncias indefinidas.`,
+          notes: [
+            {
+              title: 'Uma linha é uma árvore',
+              caption:
+                '// parent[i][j] = parent[k][j]: a linha i da tabela é a árvore a partir de i',
+            },
+            {
+              title: 'Grande demais, então cinco linhas',
+              caption: '// uma tabela que não cabe é respondida por um Bellman-Ford por linha',
+            },
+          ],
+          pending:
+            'Preenchido por `graphman study --directed` quando os arquivos da disciplina rodarem.',
+        },
+        timing: {
+          eyebrow: '09',
+          title: 'Tempo médio, dez execuções',
+          columns: {
+            graph: 'Grafo',
+            size: 'Tamanho',
+            time: (runs: string) => `Média de ${runs} execuções`,
+            best: 'Mais rápida',
+          },
+          families: {
+            label: 'Algoritmo',
+            bellman: 'Bellman-Ford',
+            floyd: 'Floyd-Warshall',
+            searches: 'Buscas',
+          },
+          legend: {
+            bellman: ['n − 1 rodadas', 'parada antecipada', 'fila', 'Yen', 'Yen aleatório', 'SLF'],
+            floyd: ['simples', 'podada', 'paralela', 'em blocos'],
+            searches: ['BFS', 'DFS', 'Dijkstra'],
+          },
+          arcs: 'arcos',
+          estimated: (time: string) => `≈ ${time}`,
+          refused: 'recusado',
+          atCycle: 'ciclo',
+          machine: (cpu: string, memory: string) =>
+            `${cpu}, ${memory}. Média das execuções, só o algoritmo: o Bellman-Ford até o vértice 100, as buscas a partir de raízes aleatórias. Uma barra tracejada é uma estimativa: o orçamento interrompeu as execuções, ou a tabela não coube e um substituto menor foi cronometrado.`,
+          pending:
+            'Os grafos direcionados da disciplina ainda não foram rodados: `graphman study --directed` preenche esta tabela.',
+          cta: 'Abrir os estudos de caso',
+        },
+        allPairs: {
+          eyebrow: '10',
+          title: 'Todos os pares',
+          legend: [
+            'n Bellman-Fords (fila)',
+            'Floyd-Warshall (podada)',
+            'Floyd-Warshall (paralela)',
+            'n Dijkstras (heap)',
+            'Johnson',
+          ],
+          columns: {
+            graph: 'Grafo',
+            size: 'Tamanho',
+            time: 'Todos os pares, média',
+            winner: 'Mais rápido',
+            why: 'Varreduras por vértice',
+          },
+          winner: (who: string, ratio: string) => `${who} ×${ratio}`,
+          noAnswer: 'um ciclo',
+          bellman: 'BF',
+          floyd: 'FW',
+          why: (c: string) => `c ≈ ${c}`,
+          key: '// n Bellman-Fords com fila examinam cerca de n · c · m arcos, c as varreduras por vértice; o Floyd-Warshall faz n³ atualizações, sejam quais forem os arcos',
+          pending:
+            'Os grafos direcionados da disciplina ainda não foram rodados: `graphman study --directed` preenche esta tabela.',
+          cta: 'Abrir os estudos de caso',
+        },
+        observatory: '11',
       },
     },
   },

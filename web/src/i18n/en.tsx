@@ -232,7 +232,7 @@ export const en = {
       },
       bellman_ford: {
         title: 'Bellman-Ford',
-        body: "bellman_ford takes negative weights. It is written once, as bellman_ford_into over a Schedule (the next chapter), and fills the same ShortestPathTree as Dijkstra, so paths, files and drawings are shared. bellman_ford_to answers the course's question, every vertex's distance to one target, by the same run from the target on the transpose. When a negative cycle can be reached, there is no shortest path, and the error is not a boolean but the cycle itself (NegativeCycle: its vertices from the smallest, and its weight), read off the parent pointers once a walk of n arcs proves there is one. On an undirected graph a negative edge walked back and forth is already such a cycle.",
+        body: "bellman_ford takes negative weights. It is written once, as bellman_ford_into over a Schedule (the next chapter), and fills the same ShortestPathTree as Dijkstra, so paths, files and drawings are shared. bellman_ford_to answers the course's question, every vertex's distance to one target, by the same run from the target on the transpose. When a negative cycle can be reached, there is no shortest path, and the error is not a boolean but the cycle itself (NegativeCycle: its vertices from the smallest, and its weight), read off the parent pointers once a walk of n arcs proves there is one, or sooner: every n improvements the whole parent graph is searched for a cycle, so a short one is caught at once. On an undirected graph a negative edge walked back and forth is already such a cycle.",
         tree: 'Bellman-Ford from 1: the tree, each distance beside its vertex',
         cycle: 'with 5 → 3 at -1: the cycle 2 → 4 → 5 → 3 → 2 weighs -2',
       },
@@ -409,6 +409,7 @@ export const en = {
       label: 'Parts of the project',
       one: 'Part 1',
       two: 'Part 2',
+      three: 'Part 3',
       info: 'How it was measured',
       method: (runs: string, machine: string) =>
         `Memory: what each representation holds once built from the parsed file; a bitset matrix the machine's memory cannot hold is refused before it is allocated. BFS and DFS: the mean of ${runs} distinct random sources (one fixed seed) on each representation, each run timed alone, reading and writing excluded. The diameter methods run against a time budget: a value marked ≥ is the bound a cut run reached. ${machine}`,
@@ -513,7 +514,178 @@ export const en = {
         the page fills itself from studies/results.json.
       </>
     ),
+    /** Before the menu of graphs, which names only their vertices. */
+    graphsLabel: 'Graphs:',
     graph: (n: string) => `Graph ${n}`,
+    part3: {
+      title: 'Part 3: directed graphs',
+      lead: "The course's directed graphs have not been run yet. When they are, graphman study --directed fills this page: Bellman-Ford's distances to vertex 100, Floyd-Warshall's table of five vertices, the mean time of every algorithm, and all pairs by n Bellman-Fords against Floyd-Warshall.",
+      views: 'Part 3 views',
+      pending: 'Not measured yet.',
+      facts: {
+        arcs: 'arcs',
+        weights: (min: string, max: string, negative: number) =>
+          `weights from ${min} to ${max}, ${negative === 0 ? 'none negative' : `${negative.toLocaleString('en-US')} negative`}`,
+        cycles: (k: number, n: number) =>
+          k === 0 ? 'no negative cycle in any graph' : `a negative cycle in ${k} of ${n} graphs`,
+      },
+      names: {
+        rounds: 'rounds',
+        earlyStop: 'early stop',
+        queue: 'queue',
+        yen: 'Yen',
+        randomYen: 'random Yen',
+        slf: 'SLF',
+        plain: 'plain',
+        pruned: 'pruned',
+        parallel: 'parallel',
+        blocked: 'blocked',
+        bfs: 'BFS',
+        dfs: 'DFS',
+        dijkstra: 'Dijkstra',
+        bellmanQueue: 'Bellman-Ford',
+        floydPruned: 'Floyd-Warshall',
+        bellmanAll: 'n × BF',
+        floydAllPruned: 'FW, pruned',
+        floydAllParallel: 'FW, parallel',
+        dijkstraAll: 'n × Dijkstra',
+        johnson: 'Johnson',
+      },
+      time: {
+        landmarks: {
+          ms: '1 ms',
+          s: '1 s',
+          min: '1 min',
+          h: '1 h',
+          day: '1 day',
+          year: '1 year',
+          millennium: '1000 years',
+        },
+        days: (v: string) => `${v} days`,
+        years: (v: string) => `${v} years`,
+        estimated: (time: string) => `≈ ${time}`,
+      },
+      kinds: {
+        measured: 'measured',
+        estimated: 'estimate',
+        cycle: 'stopped at a negative cycle',
+        mean: (runs: string, of: string) =>
+          runs === of
+            ? `mean of ${runs} runs`
+            : `mean of ${runs} runs (of ${of}, the budget ran out)`,
+        cut: 'estimate: the time budget cut the run short, so the whole run is extrapolated from its pace',
+        standIn:
+          'estimate: the table does not fit in memory, so a 1024-vertex stand-in was timed and scaled by (n / 1024)³',
+        atCycle:
+          'stopped at a negative cycle: this is the time it took to find one, not a distance',
+        refused: 'not run: a negative arc',
+      },
+      tip: {
+        graph: (name: string, n: string, m: string) => `${name} · ${n} vertices · ${m} arcs`,
+        work: (passes: string, scans: string) => `${passes} passes · ${scans} vertex scans`,
+        perVertex: (c: string) => `${c} scans per vertex`,
+        open: (name: string) => `Click to open ${name}`,
+      },
+      scaling: {
+        title: 'How the time grows with the graph',
+        titleMemory: 'How the memory grows with the graph',
+        measureLabel: 'Measure',
+        measure: { time: 'time', memory: 'memory' },
+        tableView: 'Table view',
+        families: {
+          headline: 'one of each',
+          bellman: 'Bellman-Ford',
+          floyd: 'Floyd-Warshall',
+          pairs: 'all pairs',
+        },
+        scale: { label: 'Scale, from linear to logarithmic', linear: 'linear', log: 'log' },
+        familyLabel: 'Which algorithms',
+        axis: 'vertices',
+        slope: 'grows as n to the power',
+        legend: 'Show or hide a line',
+        keys: { measured: 'measured', estimated: 'estimate', cycle: 'stopped at a cycle' },
+      },
+      memory: {
+        table: "Floyd-Warshall's table",
+        graph: 'The graph (CSR)',
+        ram: (bytes: string) => `the machine's memory, ${bytes}`,
+        tableNote:
+          'What Floyd-Warshall reserves before its first step: 12 bytes a cell, n² + n cells, priced by the library (the study refuses the run past the memory).',
+        graphNote:
+          'The graph itself as the library stores it: 4 bytes an offset, 12 an arc (head and weight). It is all Bellman-Ford, Dijkstra and BFS need beyond a few arrays of n.',
+        over: (times: string) => `${times}× the machine's memory`,
+        fits: "fits in the machine's memory",
+      },
+      heat: {
+        metric: { time: 'time', scans: 'scans' },
+        metricLabel: 'Compare by',
+        best: 'best',
+        times: (ratio: string) => `×${ratio}`,
+        cycle: 'cycle',
+        scale: 'times the best schedule of the graph',
+        ratio: (ratio: string) => `${ratio} times the best`,
+      },
+      race: {
+        title: 'All pairs: Bellman-Ford against Floyd-Warshall',
+        faster: (who: string, ratio: string) => `${who} ×${ratio} faster`,
+        bellman: 'BF',
+        floyd: 'FW',
+        noAnswer: 'no answer: a cycle',
+        table: "FW's table",
+        fits: 'fits in memory',
+        over: (times: string) => `${times}× the memory`,
+      },
+      target: {
+        title: (t: string) => `Bellman-Ford: the distance to vertex ${t}`,
+        from: (v: string) => `from ${v}`,
+        hops: (n: number) => (n === 1 ? '1 arc' : `${n} arcs`),
+        unreached: 'no path',
+        vertex: (v: string) => `vertex ${v}`,
+        step: (step: string, of: string) => `arc ${step} of ${of}`,
+        source: (v: string) => `the source, ${v}`,
+        fromSource: (d: string, v: string) => `${d} from ${v}`,
+        toTarget: (d: string, t: string) => `${d} to ${t}`,
+        hint: 'each dot is a vertex of the path, placed at its distance from the source; hover one to read it',
+        cycle: (t: string, w: string) =>
+          `A negative cycle (weight ${w}) reaches vertex ${t}: no distance to it is defined.`,
+      },
+      pairs: {
+        title: (vertices: string) => `Floyd-Warshall: the distances between ${vertices}`,
+        corner: 'from \\ to',
+        there: (u: string, v: string, d: string) => `${u} → ${v}: ${d}`,
+        back: (u: string, v: string, d: string) => `${v} → ${u}: ${d}`,
+        asymmetry: (ratio: string) => `the way back is ${ratio}× the way there`,
+        asymmetryThere: (ratio: string) => `the way there is ${ratio}× the way back`,
+        same: 'the same both ways',
+        byBellman: (bytes: string) =>
+          `By five Bellman-Fords, one a row: Floyd-Warshall's table would need ${bytes}.`,
+        cycle: (w: string) => `A negative cycle (weight ${w}) leaves these distances undefined.`,
+      },
+      timing: {
+        title: 'Mean time of every algorithm',
+        groups: {
+          bellman: 'Bellman-Ford, six schedules',
+          floyd: 'Floyd-Warshall, four sweeps',
+          searches: 'BFS, DFS and Dijkstra, for scale',
+        },
+        others: 'the other graphs',
+        passes: (n: string) => `${n} passes`,
+        refused: 'refused',
+        atCycle: 'cycle',
+        note: (runs: string, machine: string) =>
+          `Each time is the mean of ${runs} runs of the algorithm alone, reading and writing excluded: Bellman-Ford to vertex 100 on the transpose (built once, not timed), BFS, DFS and Dijkstra from random roots. Each cell has a time budget; a hollow point is an estimate, from the run the budget cut short, or, for a Floyd-Warshall whose table does not fit, from a 1024-vertex random digraph of the same mean out-degree, scaled by (n / 1024)³. ${machine}`,
+      },
+      allPairs: {
+        bellman: 'Bellman-Ford from every vertex',
+        floyd: 'Floyd-Warshall',
+        whyLabel: 'Why',
+        cycleVerdict:
+          'No answer to compare: both stop at a negative cycle, so their times are how long each took to find one.',
+        verdict: (who: string, ratio: string) => `${who} was ${ratio} times faster.`,
+        why: (c: string, arcs: string, cells: string) =>
+          `Each queue Bellman-Ford scanned about ${c} vertices per vertex, so the n runs examined about ${arcs} arcs; Floyd-Warshall makes ${cells} updates whatever the arcs, in a loop the cache likes.`,
+      },
+    },
     representations: {
       adjacency_list: 'Adjacency list',
       adjacency_matrix: 'Adjacency matrix',
@@ -1023,11 +1195,12 @@ export const en = {
     slides: {
       cover: {
         eyebrow: 'cos 242 · graph theory · ufrj 2026/2',
-        parts: ['Part 1', 'Part 2'],
+        parts: ['Part 1', 'Part 2', 'Part 3'],
         partsLabel: 'Which part of the project',
         topics: [
           'representations · BFS and DFS · components · diameter',
           'weights · Dijkstra · vector and heap · names',
+          'direction · Bellman-Ford · Floyd-Warshall · negative cycles',
         ],
         authors: ['Lucas Pacheco', 'Rogério Santana'],
         stack: ['Rust 2024', 'WebAssembly', 'WebGPU · vgpu', 'Next.js', 'Vercel'],
@@ -1325,6 +1498,260 @@ export const en = {
           pending: 'Filled by `graphman study` once the course files are run.',
         },
         observatory: '10',
+      },
+      part3: {
+        direction: {
+          eyebrow: '01',
+          title: 'Direction is data',
+          input: { label: 'input', name: 'sample.txt', hint: '// u v w: the arc from u to v' },
+          normalise: { name: 'EdgeList', hint: '// (u, v) and (v, u) are two arcs' },
+          graph: { label: 'G', hint: '// neighbors(v): the arcs out of v' },
+          transpose: { name: 'transpose()', hint: '// a counting sort by head, O(n + m)' },
+          reverse: { label: 'Gᵀ', hint: '// the same type of graph, every arc turned' },
+          notes: [
+            {
+              title: 'A flag, not a type',
+              caption: '// Graph::is_directed(); AnyGraph keeps its three variants',
+            },
+            {
+              title: 'BFS, DFS and Dijkstra unchanged',
+              caption: '// they follow neighbors(), now the out-arcs',
+            },
+            {
+              title: 'In-arcs from a transpose',
+              caption: '// Bellman-Ford to t is Bellman-Ford from t on Gᵀ',
+            },
+          ],
+        },
+        bellmanFord: {
+          eyebrow: '02',
+          title: 'One Bellman-Ford, written once',
+          driver: '// the driver is written once; a schedule picks the next vertex to scan',
+          toTarget:
+            '// to a target: from it, on the transpose; a parent is the next vertex toward it',
+          figure: '// toward vertex 5, pass by pass: the queue holds only what went down',
+          replay: 'Run it again',
+          pass: (k: number) => `pass ${k}`,
+          stop: (passes: number) => `empty queue · ${passes} passes`,
+          queue: 'queue',
+        },
+        schedules: {
+          eyebrow: '03',
+          title: 'Six schedules',
+          groups: ['the course', 'fewer passes'],
+          items: [
+            {
+              name: 'rounds',
+              title: 'n − 1 rounds',
+              cost: 'n − 1 passes',
+              caption: '// every vertex, every pass: the textbook',
+            },
+            {
+              name: 'early-stop',
+              title: 'Early stop',
+              cost: '≤ n − 1 passes',
+              caption: '// a pass that lowers nothing ends the run (optimisation 1)',
+            },
+            {
+              name: 'queue',
+              title: 'Queue',
+              cost: 'O(nm)',
+              caption: '// only what went down is scanned again (optimisation 2)',
+            },
+            {
+              name: 'yen',
+              title: 'Yen',
+              cost: 'O(nm)',
+              caption: '// by number, up then down: two acyclic sweeps a pass, ≤ ⌈n/2⌉ passes',
+            },
+            {
+              name: 'random-yen',
+              title: 'Random Yen',
+              cost: 'O(nm)',
+              caption: '// Yen over a random order: a third of the passes, expected',
+            },
+            {
+              name: 'slf',
+              title: 'Small label first',
+              cost: 'O(nm)',
+              caption: '// a deque: a vertex closer than the front goes first',
+            },
+          ],
+          ties: '// a new order of scanning is a new Schedule, never a second Bellman-Ford',
+        },
+        cycle: {
+          eyebrow: '04',
+          title: 'A negative cycle, returned',
+          figure:
+            '// a walk of n arcs, or a sweep every n improvements: the parents close the cycle',
+          label: 'Negative cycles in the course graphs',
+          toTarget: (t: string) => `reaching ${t}`,
+          anywhere: 'anywhere',
+          none: 'none',
+          weight: (w: string) => `weight ${w}`,
+          arcs: (n: number) => (n === 1 ? '1 arc' : `${n} arcs`),
+          pending: 'Filled by `graphman study --directed` once the course files are run.',
+          notes: [
+            {
+              title: 'One rule for every schedule',
+              caption: '// hops[v] = n, or a cycle among the parents every n improvements',
+            },
+            {
+              title: 'The cycle, not a boolean',
+              caption: '// the parents, walked until one repeats: a certificate anyone can check',
+            },
+            {
+              title: 'The whole graph too',
+              caption: '// Start::Everywhere: every vertex at 0, a virtual source',
+            },
+          ],
+        },
+        floyd: {
+          eyebrow: '05',
+          title: 'One Floyd-Warshall, written once',
+          driver:
+            '// the loop is written once, on one n × n table; a sweep only changes the order it visits the cells',
+          price: (
+            fits: string,
+            fitsBytes: string,
+            over: string,
+            overBytes: string,
+            memory: string,
+          ) =>
+            `// 12 bytes a cell, priced before it is allocated: n = ${fits} takes ${fitsBytes}; n = ${over} would take ${overBytes}, over this machine's ${memory}, and is refused with a typed error`,
+          noMachine:
+            '// 12 bytes a cell, priced before it is allocated: a table larger than the machine is refused with a typed error',
+          stack: '// the recurrence: n + 1 tables, D⁰ to Dⁿ, one per k',
+          one: '// round k never changes row k or column k: one table, updated in place',
+          replay: 'Run it again',
+        },
+        sweeps: {
+          eyebrow: '06',
+          title: 'Four sweeps',
+          items: [
+            {
+              name: 'plain',
+              title: 'Plain',
+              cost: 'n³',
+              caption: '// for k, for i, for j: row k hoisted, the inner loop branch-free',
+            },
+            {
+              name: 'pruned',
+              title: 'Pruned',
+              cost: '≤ n³',
+              caption: '// a row with D[i][k] = ∞ cannot improve: skipped',
+            },
+            {
+              name: 'parallel',
+              title: 'Parallel',
+              cost: 'n³ / cores',
+              caption: '// the rows of one round are independent: rayon shares them out',
+            },
+            {
+              name: 'blocked',
+              title: 'Blocked',
+              cost: 'n³, in cache',
+              caption: '// tiles: the diagonal one, its row and column, then the rest',
+            },
+          ],
+          ties: '// every sweep gives the same distances; the study times all four',
+        },
+        target: {
+          eyebrow: '07',
+          title: (t: string) => `Bellman-Ford to vertex ${t}`,
+          label: (t: string) => `Distance to vertex ${t}`,
+          caption:
+            '// from 10, 20 and 30, by the queue schedule on the transpose, and how many arcs it takes',
+          from: (v: string) => `from ${v}`,
+          work: 'Work',
+          passes: (n: string) => `${n} passes`,
+          scans: (n: string) => `${n} scans`,
+          hops: (n: number) => (n === 1 ? '1 arc' : `${n} arcs`),
+          unreached: 'no path',
+          cycle: (w: string) =>
+            `A negative cycle reaches the target (weight ${w}): no distance is defined.`,
+          key: '// each dot is a vertex of the path, at its distance from the source',
+          pending: 'Filled by `graphman study --directed` once the course files are run.',
+        },
+        pairs: {
+          eyebrow: '08',
+          title: 'Floyd-Warshall, five vertices',
+          label: 'Distances between 10, 20, 30, 40 and 50',
+          viewsLabel: 'Graph',
+          corner: '→',
+          byFloyd: (bytes: string) => `Floyd-Warshall, on a table of ${bytes}`,
+          byBellman: (bytes: string) => `Five Bellman-Fords: the table would need ${bytes}`,
+          cycle: (w: string) => `A negative cycle (weight ${w}) leaves these distances undefined.`,
+          notes: [
+            {
+              title: 'A row is a tree',
+              caption: '// parent[i][j] = parent[k][j]: row i of the table is the tree from i',
+            },
+            {
+              title: 'Too large, then five rows',
+              caption: '// a table that does not fit is answered by one Bellman-Ford a row',
+            },
+          ],
+          pending: 'Filled by `graphman study --directed` once the course files are run.',
+        },
+        timing: {
+          eyebrow: '09',
+          title: 'Mean time, ten runs',
+          columns: {
+            graph: 'Graph',
+            size: 'Size',
+            time: (runs: string) => `Mean of ${runs} runs`,
+            best: 'Fastest',
+          },
+          families: {
+            label: 'Algorithm',
+            bellman: 'Bellman-Ford',
+            floyd: 'Floyd-Warshall',
+            searches: 'Searches',
+          },
+          legend: {
+            bellman: ['n − 1 rounds', 'early stop', 'queue', 'Yen', 'random Yen', 'SLF'],
+            floyd: ['plain', 'pruned', 'parallel', 'blocked'],
+            searches: ['BFS', 'DFS', 'Dijkstra'],
+          },
+          arcs: 'arcs',
+          estimated: (time: string) => `≈ ${time}`,
+          refused: 'refused',
+          atCycle: 'cycle',
+          machine: (cpu: string, memory: string) =>
+            `${cpu}, ${memory}. Mean of the runs, the algorithm alone: Bellman-Ford to vertex 100, the searches from random roots. A dashed bar is an estimate: the budget cut the runs short, or the table did not fit and a smaller stand-in was timed.`,
+          pending:
+            "The course's directed graphs have not been run yet: `graphman study --directed` fills this sheet.",
+          cta: 'Open the case studies',
+        },
+        allPairs: {
+          eyebrow: '10',
+          title: 'All pairs',
+          legend: [
+            'n Bellman-Fords (queue)',
+            'Floyd-Warshall (pruned)',
+            'Floyd-Warshall (parallel)',
+            'n Dijkstras (heap)',
+            'Johnson',
+          ],
+          columns: {
+            graph: 'Graph',
+            size: 'Size',
+            time: 'All pairs, mean',
+            winner: 'Faster',
+            why: 'Scans a vertex',
+          },
+          winner: (who: string, ratio: string) => `${who} ×${ratio}`,
+          noAnswer: 'a cycle',
+          bellman: 'BF',
+          floyd: 'FW',
+          why: (c: string) => `c ≈ ${c}`,
+          key: '// n queue Bellman-Fords examine about n · c · m arcs, c the scans a vertex; Floyd-Warshall makes n³ updates whatever the arcs',
+          pending:
+            "The course's directed graphs have not been run yet: `graphman study --directed` fills this sheet.",
+          cta: 'Open the case studies',
+        },
+        observatory: '11',
       },
     },
   },

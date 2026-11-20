@@ -1,0 +1,462 @@
+{
+  "name": "grafo_W_3",
+  "file": "graphs/Part3/grafo_W_3.txt",
+  "directed": true,
+  "vertices": 100000,
+  "edges": 6099941,
+  "self_loops_dropped": 0,
+  "duplicates_dropped": 0,
+  "negative_loops": 0,
+  "parse_ms": 362.508334,
+  "weights": {
+    "min": 0.0,
+    "max": 10.0,
+    "mean": 4.957178525169291,
+    "negative": 0
+  },
+  "representation": "csr",
+  "target": 100,
+  "paths": [
+    {
+      "from": 10,
+      "to": 100,
+      "distance": 4.63,
+      "path": [
+        10,
+        2858,
+        9370,
+        31488,
+        43785,
+        48833,
+        70398,
+        74552,
+        100
+      ],
+      "distances": [
+        4.63,
+        4.58,
+        4.43,
+        4.38,
+        3.79,
+        3.32,
+        2.51,
+        2.28,
+        0.0
+      ]
+    },
+    {
+      "from": 20,
+      "to": 100,
+      "distance": 5.42,
+      "path": [
+        20,
+        2526,
+        8495,
+        13021,
+        15939,
+        20244,
+        36899,
+        74552,
+        100
+      ],
+      "distances": [
+        5.42,
+        4.79,
+        4.47,
+        4.27,
+        3.76,
+        3.4499999999999997,
+        2.55,
+        2.28,
+        0.0
+      ]
+    },
+    {
+      "from": 30,
+      "to": 100,
+      "distance": 4.67,
+      "path": [
+        30,
+        29698,
+        43059,
+        43482,
+        35741,
+        74494,
+        74552,
+        100
+      ],
+      "distances": [
+        4.67,
+        4.55,
+        3.8699999999999997,
+        3.2199999999999998,
+        2.9,
+        2.84,
+        2.28,
+        0.0
+      ]
+    }
+  ],
+  "counts": {
+    "scans": 369967,
+    "lowered": 739177,
+    "passes": 25
+  },
+  "cycle_to_target": null,
+  "cycle_anywhere": null,
+  "pairs": {
+    "vertices": [
+      10,
+      20,
+      30,
+      40,
+      50
+    ],
+    "distances": [
+      [
+        0.0,
+        4.99,
+        5.71,
+        7.49,
+        4.3100000000000005
+      ],
+      [
+        3.48,
+        0.0,
+        6.1899999999999995,
+        8.27,
+        4.319999999999999
+      ],
+      [
+        3.96,
+        5.800000000000001,
+        0.0,
+        8.3,
+        3.17
+      ],
+      [
+        3.58,
+        5.59,
+        6.1,
+        0.0,
+        3.84
+      ],
+      [
+        3.25,
+        5.41,
+        6.119999999999999,
+        8.1,
+        0.0
+      ]
+    ],
+    "method": "bellman-ford",
+    "table_bytes": 120001200000,
+    "refusal": "the all-pairs table of 100000 vertices needs 120001200000 bytes, over the budget of 17179869184 bytes",
+    "negative_cycle": null
+  },
+  "timings": [
+    {
+      "algorithm": "bellman-ford",
+      "variant": "rounds",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 1,
+        "mean_ms": 466384.979416,
+        "median_ms": 466384.979416,
+        "min_ms": 466384.979416,
+        "max_ms": 466384.979416,
+        "stddev_ms": 0.0,
+        "total_ms": 466384.979416
+      },
+      "budget_exhausted": true,
+      "estimated_ms": null,
+      "refusal": null,
+      "counts": {
+        "scans": 2832192511,
+        "lowered": 833085,
+        "passes": 28321
+      }
+    },
+    {
+      "algorithm": "bellman-ford",
+      "variant": "early-stop",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 100.3666999,
+        "median_ms": 100.359708,
+        "min_ms": 99.9855,
+        "max_ms": 100.719625,
+        "stddev_ms": 0.19509965864623466,
+        "total_ms": 1003.666999
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "counts": {
+        "scans": 2100000,
+        "lowered": 833085,
+        "passes": 21
+      }
+    },
+    {
+      "algorithm": "bellman-ford",
+      "variant": "queue",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 61.84041259999999,
+        "median_ms": 61.279624999999996,
+        "min_ms": 60.422583,
+        "max_ms": 64.908834,
+        "stddev_ms": 1.4727341576062754,
+        "total_ms": 618.4041259999999
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "counts": {
+        "scans": 369967,
+        "lowered": 739177,
+        "passes": 25
+      }
+    },
+    {
+      "algorithm": "bellman-ford",
+      "variant": "yen",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 30.591450000000002,
+        "median_ms": 30.5397915,
+        "min_ms": 30.383791,
+        "max_ms": 31.079625,
+        "stddev_ms": 0.19475380355778,
+        "total_ms": 305.91450000000003
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "counts": {
+        "scans": 279435,
+        "lowered": 864087,
+        "passes": 8
+      }
+    },
+    {
+      "algorithm": "bellman-ford",
+      "variant": "random-yen",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 78.49929579999998,
+        "median_ms": 78.3689165,
+        "min_ms": 78.203291,
+        "max_ms": 79.48770900000001,
+        "stddev_ms": 0.38250538077952817,
+        "total_ms": 784.9929579999998
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "counts": {
+        "scans": 451947,
+        "lowered": 1128572,
+        "passes": 11
+      }
+    },
+    {
+      "algorithm": "bellman-ford",
+      "variant": "slf",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 48.4458499,
+        "median_ms": 48.468520999999996,
+        "min_ms": 48.174082999999996,
+        "max_ms": 48.6865,
+        "stddev_ms": 0.16703233328274494,
+        "total_ms": 484.458499
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null,
+      "counts": {
+        "scans": 301085,
+        "lowered": 649411,
+        "passes": 23
+      }
+    },
+    {
+      "algorithm": "floyd-warshall",
+      "variant": "plain",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": null,
+      "budget_exhausted": false,
+      "estimated_ms": 400597811.67656183,
+      "refusal": "the all-pairs table of 100000 vertices needs 120001200000 bytes, over the budget of 17179869184 bytes",
+      "note": "estimated from one run on a random digraph of 1024 vertices and the same mean out-degree, scaled by (n / 1024)³"
+    },
+    {
+      "algorithm": "floyd-warshall",
+      "variant": "pruned",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": null,
+      "budget_exhausted": false,
+      "estimated_ms": 396270072.08764553,
+      "refusal": "the all-pairs table of 100000 vertices needs 120001200000 bytes, over the budget of 17179869184 bytes",
+      "note": "estimated from one run on a random digraph of 1024 vertices and the same mean out-degree, scaled by (n / 1024)³"
+    },
+    {
+      "algorithm": "floyd-warshall",
+      "variant": "parallel",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": null,
+      "budget_exhausted": false,
+      "estimated_ms": 111764374.18907881,
+      "refusal": "the all-pairs table of 100000 vertices needs 120001200000 bytes, over the budget of 17179869184 bytes",
+      "note": "estimated from one run on a random digraph of 1024 vertices and the same mean out-degree, scaled by (n / 1024)³"
+    },
+    {
+      "algorithm": "floyd-warshall",
+      "variant": "blocked",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": null,
+      "budget_exhausted": false,
+      "estimated_ms": 524728636.25735044,
+      "refusal": "the all-pairs table of 100000 vertices needs 120001200000 bytes, over the budget of 17179869184 bytes",
+      "note": "estimated from one run on a random digraph of 1024 vertices and the same mean out-degree, scaled by (n / 1024)³"
+    },
+    {
+      "algorithm": "bfs",
+      "variant": "queue",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 5.4959834,
+        "median_ms": 5.150854,
+        "min_ms": 4.916708,
+        "max_ms": 7.950459,
+        "stddev_ms": 0.9118445981229721,
+        "total_ms": 54.959834
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null
+    },
+    {
+      "algorithm": "dfs",
+      "variant": "iterative",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 13.407725000000003,
+        "median_ms": 13.529687000000001,
+        "min_ms": 13.001541,
+        "max_ms": 13.745667,
+        "stddev_ms": 0.31640732183198417,
+        "total_ms": 134.07725000000002
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null
+    },
+    {
+      "algorithm": "dijkstra",
+      "variant": "heap",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": {
+        "runs": 10,
+        "mean_ms": 24.206545900000002,
+        "median_ms": 24.202875,
+        "min_ms": 23.823708,
+        "max_ms": 24.604208999999997,
+        "stddev_ms": 0.27466234069386536,
+        "total_ms": 242.065459
+      },
+      "budget_exhausted": false,
+      "estimated_ms": null,
+      "refusal": null
+    }
+  ],
+  "all_pairs": [
+    {
+      "algorithm": "bellman-ford-all",
+      "variant": "queue",
+      "requested_runs": 10,
+      "budget_s": 900.0,
+      "timing": null,
+      "budget_exhausted": true,
+      "estimated_ms": 6420353.428927094,
+      "refusal": null,
+      "counts": {
+        "scans": 387977,
+        "lowered": 768730,
+        "passes": 0
+      }
+    },
+    {
+      "algorithm": "floyd-warshall",
+      "variant": "pruned",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": null,
+      "budget_exhausted": false,
+      "estimated_ms": 396270072.08764553,
+      "refusal": "the all-pairs table of 100000 vertices needs 120001200000 bytes, over the budget of 17179869184 bytes",
+      "note": "estimated from one run on a random digraph of 1024 vertices and the same mean out-degree, scaled by (n / 1024)³"
+    },
+    {
+      "algorithm": "floyd-warshall",
+      "variant": "parallel",
+      "requested_runs": 10,
+      "budget_s": 600.0,
+      "timing": null,
+      "budget_exhausted": false,
+      "estimated_ms": 111764374.18907881,
+      "refusal": "the all-pairs table of 100000 vertices needs 120001200000 bytes, over the budget of 17179869184 bytes",
+      "note": "estimated from one run on a random digraph of 1024 vertices and the same mean out-degree, scaled by (n / 1024)³"
+    },
+    {
+      "algorithm": "dijkstra-all",
+      "variant": "heap",
+      "requested_runs": 10,
+      "budget_s": 900.0,
+      "timing": null,
+      "budget_exhausted": true,
+      "estimated_ms": 2341796.6080581793,
+      "refusal": null
+    },
+    {
+      "algorithm": "johnson",
+      "variant": "heap",
+      "requested_runs": 10,
+      "budget_s": 900.0,
+      "timing": null,
+      "budget_exhausted": true,
+      "estimated_ms": 2742555.7425754946,
+      "refusal": null
+    }
+  ],
+  "machine": {
+    "os": "macos",
+    "arch": "aarch64",
+    "cpu": "Apple M5",
+    "total_memory_bytes": 17179869184,
+    "threads": 10
+  },
+  "generated_at_unix": 1795178920
+}
