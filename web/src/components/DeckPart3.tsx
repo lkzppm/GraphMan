@@ -18,6 +18,7 @@ import { logScale } from '@/lib/scale';
 import {
   cellTime,
   findCell,
+  floydCell,
   stoppedAtCycle,
   type AlgorithmTiming,
   type DirectedStudy,
@@ -2057,7 +2058,8 @@ export function Timing({ t, studies }: { t: T; studies: DirectedStudy[] }) {
 
       <div className={`${styles.benchFoot} ${styles.rise}`} style={at(1.3)}>
         <p className={styles.note}>
-          {machine && s.machine(machine.cpu, formatBytes(machine.total_memory_bytes))}
+          {machine &&
+            s.machine(machine.cpu, formatBytes(machine.total_memory_bytes), String(runs || 10))}
         </p>
         <Link href="/studies#parte-3" className={`label ${styles.more}`}>
           {s.cta}
@@ -2125,7 +2127,7 @@ export function AllPairs({ t, studies }: { t: T; studies: DirectedStudy[] }) {
           studies.map((study, i) => {
             const d = 0.3 + i * 0.1;
             const bellman = findCell(study.all_pairs, 'bellman-ford-all', 'queue');
-            const floyd = findCell(study.all_pairs, 'floyd-warshall', 'pruned');
+            const floyd = floydCell(study.all_pairs);
             const bf = cellTime(bellman)?.ms ?? null;
             const fw = cellTime(floyd)?.ms ?? null;
             const cycle = stoppedAtCycle(bellman) || stoppedAtCycle(floyd);

@@ -757,10 +757,19 @@
         "variant": "parallel",
         "requested_runs": 10,
         "budget_s": 600.0,
-        "timing": null,
+        "timing": {
+          "runs": 1,
+          "mean_ms": 1956000.0,
+          "median_ms": 1956000.0,
+          "min_ms": 1956000.0,
+          "max_ms": 1956000.0,
+          "stddev_ms": 0.0,
+          "total_ms": 1956000.0
+        },
         "budget_exhausted": true,
-        "estimated_ms": 1152115.128441987,
-        "refusal": null
+        "estimated_ms": null,
+        "refusal": null,
+        "note": "one complete run, the one that answered question 2, outside the time budget: 32.6 min as logged (studies/directed/grafo_W_2.log.txt)"
       },
       {
         "algorithm": "floyd-warshall",
@@ -866,10 +875,19 @@
         "variant": "parallel",
         "requested_runs": 10,
         "budget_s": 600.0,
-        "timing": null,
+        "timing": {
+          "runs": 1,
+          "mean_ms": 1956000.0,
+          "median_ms": 1956000.0,
+          "min_ms": 1956000.0,
+          "max_ms": 1956000.0,
+          "stddev_ms": 0.0,
+          "total_ms": 1956000.0
+        },
         "budget_exhausted": true,
-        "estimated_ms": 1152115.128441987,
-        "refusal": null
+        "estimated_ms": null,
+        "refusal": null,
+        "note": "one complete run, the one that answered question 2, outside the time budget: 32.6 min as logged (studies/directed/grafo_W_2.log.txt)"
       },
       {
         "algorithm": "dijkstra-all",

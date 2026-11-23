@@ -1,0 +1,53 @@
+
+graphman study grafo_W_2
+  › parsed graphs/Part3/grafo_W_2.txt in 53.38 ms: 25000 vertices, 824964 weighted arcs
+  › built compressed sparse row in 3.17 ms (10.00 MB on the heap)
+  › transposed in 2.06 ms (not timed)
+    d(10, 100)         10.47 in 11 arcs
+    d(20, 100)         8.48 in 6 arcs
+    d(30, 100)         8.71 in 11 arcs
+    negative cycle     none
+  › floyd-warshall (parallel) in 32.6 min
+    from 10            0  11.73  8.14  9.49  7.08
+    from 20            3.84  0  7.03  8.3  4.7
+    from 30            5.79  12.55  0  8.3  6.33
+    from 40            5.05  12.32  5.36  0  5.71
+    from 50            4.48  12.23  7.79  8.26  0
+    bellman-ford rounds 15.3 s over 10 of 10 runs
+    bellman-ford early-stop 0.0113 s over 10 of 10 runs
+    bellman-ford queue 0.0052 s over 10 of 10 runs
+    bellman-ford yen   0.0051 s over 10 of 10 runs
+    bellman-ford random-yen 0.0073 s over 10 of 10 runs
+    bellman-ford slf   0.0043 s over 10 of 10 runs
+    floyd-warshall plain ≈ 1.5 h (estimated, no run within the budget)
+    floyd-warshall pruned ≈ 1610.5 s (estimated, no run within the budget)
+    floyd-warshall parallel ≈ 1152.1 s (estimated, no run within the budget)
+    floyd-warshall blocked ≈ 1537.5 s (estimated, no run within the budget)
+    bfs queue          0.000738 s over 10 of 10 runs
+    dfs iterative      0.0019 s over 10 of 10 runs
+    dijkstra heap      0.0033 s over 10 of 10 runs
+    bellman-ford-all queue 135.0 s over 6 of 10 runs (budget)
+    floyd-warshall pruned ≈ 1610.5 s (estimated, no run within the budget)
+    floyd-warshall parallel ≈ 1152.1 s (estimated, no run within the budget)
+    dijkstra-all heap  81.4 s over 10 of 10 runs
+    johnson heap       89.7 s over 10 of 10 runs
+  ✓ wrote studies/directed/grafo_W_2.json
+  ✓ merged 6 unweighted, 6 weighted and 2 directed studies into studies/RESULTS.md
+     7124.28 real     24381.03 user       190.82 sys
+          7539064832  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             7795984  page reclaims
+                 815  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                2165  voluntary context switches
+            12484775  involuntary context switches
+     233975130675193  instructions retired
+      60719724473268  cycles elapsed
+          7541511928  peak memory footprint

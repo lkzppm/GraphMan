@@ -828,9 +828,21 @@ pub fn markdown(md: &mut String, studies: &[DirectedStudy]) {
                 .find(|t| t.algorithm == a && t.variant == v)
                 .and_then(AlgorithmTiming::mean_or_estimate_ms)
         };
+        // The pruned sweep, unless it is only an estimate and another sweep
+        // was measured.
+        let measured: Vec<&str> = s
+            .all_pairs
+            .iter()
+            .filter(|t| t.algorithm == "floyd-warshall" && t.timing.is_some())
+            .map(|t| t.variant.as_str())
+            .collect();
+        let sweep = match measured.contains(&"pruned") {
+            true => "pruned",
+            false => measured.first().copied().unwrap_or("pruned"),
+        };
         let (Some(bf), Some(fw)) = (
             find("bellman-ford-all", "queue"),
-            find("floyd-warshall", "pruned"),
+            find("floyd-warshall", sweep),
         ) else {
             continue;
         };
