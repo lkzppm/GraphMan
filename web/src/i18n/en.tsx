@@ -657,6 +657,7 @@ export const en = {
       },
       pairs: {
         title: (vertices: string) => `Floyd-Warshall: the distances between ${vertices}`,
+        titleBellman: (vertices: string) => `Bellman-Ford: the distances between ${vertices}`,
         corner: 'from \\ to',
         there: (u: string, v: string, d: string) => `${u} → ${v}: ${d}`,
         back: (u: string, v: string, d: string) => `${v} → ${u}: ${d}`,
