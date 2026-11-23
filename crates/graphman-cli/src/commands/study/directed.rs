@@ -828,18 +828,14 @@ pub fn markdown(md: &mut String, studies: &[DirectedStudy]) {
                 .find(|t| t.algorithm == a && t.variant == v)
                 .and_then(AlgorithmTiming::mean_or_estimate_ms)
         };
-        // The pruned sweep, unless it is only an estimate and another sweep
-        // was measured.
-        let measured: Vec<&str> = s
+        // The fastest sweep measured, or the pruned one's estimate.
+        let sweep = s
             .all_pairs
             .iter()
-            .filter(|t| t.algorithm == "floyd-warshall" && t.timing.is_some())
-            .map(|t| t.variant.as_str())
-            .collect();
-        let sweep = match measured.contains(&"pruned") {
-            true => "pruned",
-            false => measured.first().copied().unwrap_or("pruned"),
-        };
+            .filter(|t| t.algorithm == "floyd-warshall")
+            .filter_map(|t| Some((t.timing.as_ref()?.mean_ms, t.variant.as_str())))
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map_or("pruned", |(_, variant)| variant);
         let (Some(bf), Some(fw)) = (
             find("bellman-ford-all", "queue"),
             find("floyd-warshall", sweep),
