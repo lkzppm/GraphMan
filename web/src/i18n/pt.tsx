@@ -1800,7 +1800,10 @@ export const pt: Dictionary = {
             floyd: 'n³',
             practice: (c: string) => `${c} · n · m`,
           },
-          at: (n: string) => `operações com n = ${n}; passe o mouse no gráfico para mudar`,
+          at: (n: string) =>
+            `operações com n = ${n}; passe o mouse no gráfico para mudar, arraste para mover, role para aproximar`,
+          cross: (n: string) => `n ≈ ${n}`,
+          tools: { zoomIn: 'Aproximar', zoomOut: 'Afastar', reset: 'Voltar ao início' },
           zone: 'n ≤ m: pode ser fortemente conexo',
           notes: {
             worst:

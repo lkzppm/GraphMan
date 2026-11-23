@@ -3562,7 +3562,48 @@
   height: auto;
   max-height: 58vh;
   cursor: crosshair;
-  touch-action: pan-y;
+  touch-action: none;
+  user-select: none;
+}
+
+.curvePlot[data-dragging] {
+  cursor: grabbing;
+}
+
+.curveBox {
+  position: relative;
+  min-width: 0;
+}
+
+/* Over the plot's bottom right corner, clear of the axis. */
+.curveTools {
+  position: absolute;
+  right: 22px;
+  bottom: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.curveTools button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg-2);
+  cursor: pointer;
+  transition:
+    color 0.2s var(--ease),
+    border-color 0.2s var(--ease);
+}
+
+.curveTools button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .curveGrid line {
@@ -3589,6 +3630,22 @@
 .curveCursor {
   stroke: var(--fg-3);
   stroke-dasharray: 3 4;
+}
+
+/* A crossing is hollow; the cursor's readings are filled. */
+.curveCross circle {
+  fill: var(--bg);
+  stroke: var(--fg);
+  stroke-width: 2;
+}
+
+.curveCross text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--fg);
+  stroke: var(--bg);
+  stroke-width: 3px;
+  paint-order: stroke;
 }
 
 .curveLine {

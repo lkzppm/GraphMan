@@ -1776,7 +1776,10 @@ export const en = {
             floyd: 'n³',
             practice: (c: string) => `${c} · n · m`,
           },
-          at: (n: string) => `operations at n = ${n}; move over the plot to change it`,
+          at: (n: string) =>
+            `operations at n = ${n}; move over the plot to change it, drag to pan, scroll to zoom`,
+          cross: (n: string) => `n ≈ ${n}`,
+          tools: { zoomIn: 'Zoom in', zoomOut: 'Zoom out', reset: 'Back to the start' },
           zone: 'n ≤ m: can be strongly connected',
           notes: {
             worst:
