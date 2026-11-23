@@ -213,7 +213,7 @@ Média de 10 execuções, em segundos, com orçamento de 600 s por célula.
 | bellman-ford | SLF | 0,0000678 * | 0,00426 | 0,0484 | 0,545 | 3,97 |
 | floyd-warshall | simples | 0,786 * | ≈ 5.516 † | ≈ 400.598 ‡ | ≈ 3,94 × 10^8 ‡ | ≈ 3,71 × 10^11 ‡ |
 | floyd-warshall | podada | 0,315 * | ≈ 1.611 † | ≈ 396.270 ‡ | ≈ 3,75 × 10^8 ‡ | ≈ 2,07 × 10^11 ‡ |
-| floyd-warshall | paralela (10 núcleos) | 0,311 * | ≈ 1.152 † | ≈ 111.764 ‡ | ≈ 1,11 × 10^8 ‡ | ≈ 8,19 × 10^10 ‡ |
+| floyd-warshall | paralela (10 núcleos) | 0,311 * | 1.956 § | ≈ 111.764 ‡ | ≈ 1,11 × 10^8 ‡ | ≈ 8,19 × 10^10 ‡ |
 | floyd-warshall | em blocos | 0,553 * | ≈ 1.537 † | ≈ 524.729 ‡ | ≈ 5,15 × 10^8 ‡ | ≈ 3,07 × 10^11 ‡ |
 | bfs | BFS | 0,000672 | 0,000738 | 0,00550 | 0,0853 | 0,587 |
 | dfs | DFS | 0,00141 | 0,00185 | 0,0134 | 0,155 | 1,61 |
@@ -232,15 +232,17 @@ Média de 10 rodadas completas, orçamento de 900 s por célula (escalado para o
 | Grafo | n × Bellman-Ford (fila) | Floyd-Warshall (podada) | Floyd-Warshall (paralela) | n × Dijkstra | Johnson | Mais rápido | c |
 |---|---:|---:|---:|---:|---:|---|---:|
 | grafo_W_1 | 7,56 s * | 315 ms * | 311 ms * | recusado | 653 µs * | ciclo nos dois | · |
-| grafo_W_2 | 2,25 min § | ≈ 26,8 min † | ≈ 19,2 min † | 81,4 s | 89,7 s | BF, 11,9× | 3,24 |
+| grafo_W_2 | 2,25 min § | ≈ 26,8 min † | 32,6 min § | 81,4 s | 89,7 s | BF, 14,5× | 3,24 |
 | grafo_W_3 | ≈ 107 min † | ≈ 4,6 dias ‡ | ≈ 31,0 h ‡ | ≈ 39,0 min † | ≈ 45,7 min † | BF, 61,7× | 3,88 |
 | grafo_W_4 | ≈ 11,5 dias † | ≈ 4.337 dias ‡ | ≈ 1.287 dias ‡ | ≈ 4,7 dias † | ≈ 5,7 dias † | BF, 375,6× | 3,96 |
 | grafo_W_5 | ≈ 565 dias † | ≈ 6.546 anos ‡ | ≈ 2.596 anos ‡ | ≈ 536 dias † | ≈ 548 dias † | BF, 4.232,2× | 2,74 |
 
 Os `n` Bellman-Fords foram mais eficientes. Em `grafo_W_2`, o único em que as
-duas abordagens têm resposta e a tabela cabe na memória, foram 11,9 vezes
-mais rápidos: 135 s contra cerca de 27 min do Floyd-Warshall podado (19 min
-com os 10 núcleos); nos maiores, a vantagem estimada cresce para 62, 376 e
+duas abordagens têm resposta e a tabela cabe na memória, foram 14,5 vezes
+mais rápidos: 135 s contra 32,6 min de uma execução inteira da varredura
+paralela, a única medida até o fim (a estimativa de 19 min, extrapolada das
+primeiras rodadas, ficou abaixo do real: as varreduras que pulam linhas
+aceleram no início); nos maiores, a vantagem estimada cresce para 62, 376 e
 4.232 vezes. O motivo é a esparsidade: o Floyd-Warshall faz `n³`
 atualizações, sejam quais forem os arcos (1,6 × 10¹³ em `grafo_W_2`),
 enquanto `n` Bellman-Fords com fila examinam cerca de `n · c · m` arcos, com
