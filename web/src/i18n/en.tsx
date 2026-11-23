@@ -1758,7 +1758,37 @@ export const en = {
             "The course's directed graphs have not been run yet: `graphman study --directed` fills this sheet.",
           cta: 'Open the case studies',
         },
-        observatory: '11',
+        curves: {
+          eyebrow: '11',
+          title: 'All pairs, as curves',
+          modes: { label: "Bellman-Ford's cost", worst: 'worst case', practice: 'queue, measured' },
+          arcs: 'arcs, m',
+          axis: 'vertices, n',
+          plot: 'Operations of each all-pairs algorithm by number of vertices',
+          names: {
+            bellman: 'n Bellman-Fords',
+            dijkstra: 'n Dijkstras (heap)',
+            floyd: 'Floyd-Warshall',
+          },
+          formulas: {
+            bellman: 'n² · m',
+            dijkstra: 'n (n + m) log₂ n',
+            floyd: 'n³',
+            practice: (c: string) => `${c} · n · m`,
+          },
+          at: (n: string) =>
+            `operations at n = ${n}; move over the plot to change it, drag to pan, scroll to zoom`,
+          cross: (n: string) => `n ≈ ${n}`,
+          tools: { zoomIn: 'Zoom in', zoomOut: 'Zoom out', reset: 'Back to the start' },
+          zone: 'n ≤ m: can be strongly connected',
+          notes: {
+            worst:
+              '// counts without the constants. n Bellman-Fords and Floyd-Warshall cross at n = m; to the right there are fewer arcs than vertices, and the digraph is not strongly connected. Dijkstra needs non-negative weights',
+            practice: (c: string, graph: string) =>
+              `// the queue stays far from the worst case: ${c} scans a vertex on ${graph}, so n Bellman-Fords examine about ${c} · n · m arcs. It assumes the same c for every n, and counts without the constants`,
+          },
+        },
+        observatory: '12',
       },
     },
   },

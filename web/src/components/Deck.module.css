@@ -3476,3 +3476,187 @@
     animation: none !important;
   }
 }
+
+/* ---- part 3: all pairs as curves ---------------------------------------- */
+
+.curves {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  align-items: center;
+  gap: 0 40px;
+}
+
+.curveSwitch {
+  grid-template-columns: repeat(2, 1fr);
+  margin-bottom: 26px;
+}
+
+.curveSwitch .scaleThumb {
+  width: calc((100% - 4px) / 2);
+}
+
+.curvePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.curveSlider {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 22px;
+}
+
+.curveSlider input {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.curveCaption {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.curveList {
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.curveList li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  font-size: 14px;
+  transition: background 0.25s var(--ease);
+}
+
+.curveList li + li {
+  border-top: 1px solid var(--border);
+}
+
+.curveList li[data-least] {
+  background: var(--accent-muted);
+}
+
+.curveList i {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  font-style: normal;
+  color: var(--fg-3);
+}
+
+.curveList b {
+  font-weight: 500;
+}
+
+.curvePlot {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 58vh;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.curvePlot[data-dragging] {
+  cursor: grabbing;
+}
+
+.curveBox {
+  position: relative;
+  min-width: 0;
+}
+
+/* Over the plot's bottom right corner, clear of the axis. */
+.curveTools {
+  position: absolute;
+  right: 22px;
+  bottom: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.curveTools button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg-2);
+  cursor: pointer;
+  transition:
+    color 0.2s var(--ease),
+    border-color 0.2s var(--ease);
+}
+
+.curveTools button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.curveGrid line {
+  stroke: var(--border);
+}
+
+.curveGrid text,
+.curveAxis {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--fg-3);
+}
+
+.curveZone rect {
+  fill: var(--accent-muted);
+  opacity: 0.6;
+}
+
+.curveZone text {
+  font-size: 11px;
+  fill: var(--accent);
+}
+
+.curveCursor {
+  stroke: var(--fg-3);
+  stroke-dasharray: 3 4;
+}
+
+/* A crossing is hollow; the cursor's readings are filled. */
+.curveCross circle {
+  fill: var(--bg);
+  stroke: var(--fg);
+  stroke-width: 2;
+}
+
+.curveCross text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--fg);
+  stroke: var(--bg);
+  stroke-width: 3px;
+  paint-order: stroke;
+}
+
+.curveLine {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+@media (max-width: 900px) {
+  .curves {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+}
