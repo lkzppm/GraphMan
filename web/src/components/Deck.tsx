@@ -38,6 +38,7 @@ import {
   Target,
   Timing as TimingPart3,
 } from './DeckPart3';
+import { Curves } from './DeckCurves';
 import { formatBytes, formatCompact, formatInt, formatMs, graphNumber } from '@/lib/format';
 import { logScale } from '@/lib/scale';
 import type {
@@ -152,6 +153,7 @@ export default function Deck({
             <Pairs key="pairs" t={t} studies={directed} />,
             <TimingPart3 key="timing" t={t} studies={directed} />,
             <AllPairs key="all-pairs" t={t} studies={directed} />,
+            <Curves key="curves" t={t} studies={directed} />,
             <TryIt key="try" t={t} eyebrow={p.slides.part3.observatory} />,
           ];
   const count = slides.length;
