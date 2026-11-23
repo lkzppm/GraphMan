@@ -664,6 +664,7 @@ export const pt: Dictionary = {
       },
       pairs: {
         title: (vertices: string) => `Floyd-Warshall: as distâncias entre ${vertices}`,
+        titleBellman: (vertices: string) => `Bellman-Ford: as distâncias entre ${vertices}`,
         corner: 'de \\ para',
         there: (u: string, v: string, d: string) => `${u} → ${v}: ${d}`,
         back: (u: string, v: string, d: string) => `${v} → ${u}: ${d}`,
