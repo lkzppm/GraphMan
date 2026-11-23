@@ -341,6 +341,14 @@ export function findCell(
   );
 }
 
+/** The Floyd-Warshall cell the all-pairs comparison reads: the pruned sweep,
+    unless it is only an estimate and another sweep was measured. */
+export function floydCell(cells: AlgorithmTiming[]): AlgorithmTiming | undefined {
+  const pruned = findCell(cells, 'floyd-warshall', 'pruned');
+  if (pruned?.timing) return pruned;
+  return cells.find((c) => c.algorithm === 'floyd-warshall' && c.timing) ?? pruned;
+}
+
 /** The Part 3 graphs, smallest first. */
 export const directedStudies: DirectedStudy[] = (directedResults as DirectedStudy[])
   .slice()

@@ -576,7 +576,9 @@ export const en = {
         mean: (runs: string, of: string) =>
           runs === of
             ? `mean of ${runs} runs`
-            : `mean of ${runs} runs (of ${of}, the budget ran out)`,
+            : runs === '1'
+              ? `one whole run (of ${of}, the time budget left no room for the others)`
+              : `mean of ${runs} runs (of ${of}, the budget ran out)`,
         cut: 'estimate: the time budget cut the run short, so the whole run is extrapolated from its pace',
         standIn:
           'estimate: the table does not fit in memory, so a 1024-vertex stand-in was timed and scaled by (n / 1024)³',
@@ -677,7 +679,7 @@ export const en = {
         refused: 'refused',
         atCycle: 'cycle',
         note: (runs: string, machine: string) =>
-          `Each time is the mean of ${runs} runs of the algorithm alone, reading and writing excluded: Bellman-Ford to vertex 100 on the transpose (built once, not timed), BFS, DFS and Dijkstra from random roots. Each cell has a time budget; a hollow point is an estimate, from the run the budget cut short, or, for a Floyd-Warshall whose table does not fit, from a 1024-vertex random digraph of the same mean out-degree, scaled by (n / 1024)³. ${machine}`,
+          `Each time is the mean of ${runs} runs of the algorithm alone, reading and writing excluded: Bellman-Ford to vertex 100 on the transpose (built once, not timed), BFS, DFS and Dijkstra from random roots. Each cell has a time budget; a hollow point is an estimate, from the run the budget cut short, or, for a Floyd-Warshall whose table does not fit, from a 1024-vertex random digraph of the same mean out-degree, scaled by (n / 1024)³. An estimate from a run cut short assumes every round costs the same and tends to fall below the real time on the sweeps that skip rows: on W2 the parallel one, estimated at 19 min, took 32.6 min measured over one whole run. ${machine}`,
       },
       allPairs: {
         bellman: 'Bellman-Ford from every vertex',
@@ -1723,8 +1725,8 @@ export const en = {
           estimated: (time: string) => `≈ ${time}`,
           refused: 'refused',
           atCycle: 'cycle',
-          machine: (cpu: string, memory: string) =>
-            `${cpu}, ${memory}. Mean of the runs, the algorithm alone: Bellman-Ford to vertex 100, the searches from random roots. A dashed bar is an estimate: the budget cut the runs short, or the table did not fit and a smaller stand-in was timed.`,
+          machine: (cpu: string, memory: string, runs: string) =>
+            `${cpu}, ${memory}. Mean of the runs, the algorithm alone: Bellman-Ford to vertex 100, the searches from random roots. A dashed bar is an estimate: the budget cut the runs short, or the table did not fit and a smaller stand-in was timed. k/${runs}: only k runs finished.`,
           pending:
             "The course's directed graphs have not been run yet: `graphman study --directed` fills this sheet.",
           cta: 'Open the case studies',
