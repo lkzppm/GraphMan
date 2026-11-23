@@ -341,12 +341,13 @@ export function findCell(
   );
 }
 
-/** The Floyd-Warshall cell the all-pairs comparison reads: the pruned sweep,
-    unless it is only an estimate and another sweep was measured. */
+/** The Floyd-Warshall cell the all-pairs comparison reads: the fastest sweep
+    measured, or the pruned one's estimate when none was. */
 export function floydCell(cells: AlgorithmTiming[]): AlgorithmTiming | undefined {
-  const pruned = findCell(cells, 'floyd-warshall', 'pruned');
-  if (pruned?.timing) return pruned;
-  return cells.find((c) => c.algorithm === 'floyd-warshall' && c.timing) ?? pruned;
+  const measured = cells
+    .filter((c) => c.algorithm === 'floyd-warshall' && c.timing)
+    .sort((a, b) => (a.timing?.mean_ms ?? 0) - (b.timing?.mean_ms ?? 0));
+  return measured[0] ?? findCell(cells, 'floyd-warshall', 'pruned');
 }
 
 /** The Part 3 graphs, smallest first. */

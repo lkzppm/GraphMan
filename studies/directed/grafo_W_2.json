@@ -318,10 +318,19 @@
       "variant": "pruned",
       "requested_runs": 10,
       "budget_s": 600.0,
-      "timing": null,
+      "timing": {
+        "runs": 1,
+        "mean_ms": 4861616.243249999,
+        "median_ms": 4861616.243249999,
+        "min_ms": 4861616.243249999,
+        "max_ms": 4861616.243249999,
+        "stddev_ms": 0.0,
+        "total_ms": 4861616.243249999
+      },
       "budget_exhausted": true,
-      "estimated_ms": 1610510.216294547,
-      "refusal": null
+      "estimated_ms": null,
+      "refusal": null,
+      "note": "one complete run of 2026-11-23, 81.0 min, on a machine in use (battery for most of it, memory short, builds and a dev server beside it): studies/directed/grafo_W_2.pruned.log.txt"
     },
     {
       "algorithm": "floyd-warshall",
@@ -436,10 +445,19 @@
       "variant": "pruned",
       "requested_runs": 10,
       "budget_s": 600.0,
-      "timing": null,
+      "timing": {
+        "runs": 1,
+        "mean_ms": 4861616.243249999,
+        "median_ms": 4861616.243249999,
+        "min_ms": 4861616.243249999,
+        "max_ms": 4861616.243249999,
+        "stddev_ms": 0.0,
+        "total_ms": 4861616.243249999
+      },
       "budget_exhausted": true,
-      "estimated_ms": 1610510.216294547,
-      "refusal": null
+      "estimated_ms": null,
+      "refusal": null,
+      "note": "one complete run of 2026-11-23, 81.0 min, on a machine in use (battery for most of it, memory short, builds and a dev server beside it): studies/directed/grafo_W_2.pruned.log.txt"
     },
     {
       "algorithm": "floyd-warshall",

@@ -679,7 +679,7 @@ export const en = {
         refused: 'refused',
         atCycle: 'cycle',
         note: (runs: string, machine: string) =>
-          `Each time is the mean of ${runs} runs of the algorithm alone, reading and writing excluded: Bellman-Ford to vertex 100 on the transpose (built once, not timed), BFS, DFS and Dijkstra from random roots. Each cell has a time budget; a hollow point is an estimate, from the run the budget cut short, or, for a Floyd-Warshall whose table does not fit, from a 1024-vertex random digraph of the same mean out-degree, scaled by (n / 1024)³. An estimate from a run cut short assumes every round costs the same and tends to fall below the real time on the sweeps that skip rows: on W2 the parallel one, estimated at 19 min, took 32.6 min measured over one whole run. ${machine}`,
+          `Each time is the mean of ${runs} runs of the algorithm alone, reading and writing excluded: Bellman-Ford to vertex 100 on the transpose (built once, not timed), BFS, DFS and Dijkstra from random roots. Each cell has a time budget; a hollow point is an estimate, from the run the budget cut short, or, for a Floyd-Warshall whose table does not fit, from a 1024-vertex random digraph of the same mean out-degree, scaled by (n / 1024)³. An estimate from a run cut short assumes every round costs the same and tends to fall below the real time on the sweeps that skip rows: on W2 the parallel one, estimated at 19 min, took 32.6 min, and the pruned one, estimated at 27 min, took 81 min (one whole run each; the pruned one on a machine in use). W2's blocked estimate carries the same bias. ${machine}`,
       },
       allPairs: {
         bellman: 'Bellman-Ford from every vertex',

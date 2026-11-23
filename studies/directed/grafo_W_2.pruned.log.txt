@@ -1,0 +1,36 @@
+=== pruned start Mon Nov 23 10:46:24 -03 2026 budget 5016 s
+
+graphman study grafo_W_2
+  › parsed graphs/Part3/grafo_W_2.txt in 58.40 ms: 25000 vertices, 824964 weighted arcs
+  ! no earlier study at fw_pruned/directed/grafo_W_2.json: the sections not run stay empty
+  › built compressed sparse row in 3.99 ms (10.00 MB on the heap)
+  › transposed in 3.53 ms (not timed)
+    bellman-ford queue 0.0073 s over 1 of 1 runs
+    floyd-warshall pruned 1.4 h over 1 of 1 runs
+    bfs queue          0.0315 s over 1 of 1 runs
+    dfs iterative      0.0038 s over 1 of 1 runs
+    dijkstra heap      0.0396 s over 1 of 1 runs
+  ✓ wrote fw_pruned/directed/grafo_W_2.json
+  ✓ merged 0 unweighted, 0 weighted and 1 directed studies into fw_pruned/RESULTS.md
+     4862.05 real      4001.51 user       729.33 sys
+          7502086144  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+           271389479  page reclaims
+                 960  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+               54401  voluntary context switches
+             3263643  involuntary context switches
+     113667262653671  instructions retired
+      16434345474972  cycles elapsed
+          7540414176  peak memory footprint
+=== pruned end Mon Nov 23 12:07:26 -03 2026
+total = 5120.00M  used = 4366.06M  free = 753.94M  (encrypted)
+=== blocked start Mon Nov 23 12:07:26 -03 2026 budget 154 s
+no time left
