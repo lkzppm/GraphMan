@@ -16,6 +16,7 @@ import { formatBytes, formatCompact, formatInt, formatMs, formatWeight } from '@
 import {
   cellTime,
   findCell,
+  floydCell,
   stoppedAtCycle,
   type AlgorithmTiming,
   type DirectedStudy,
@@ -2042,7 +2043,12 @@ function RaceChart({
               const marks = rows[row];
               const there = marks.filter((r): r is Reading => r !== null);
               const bf = marks[0];
-              const fw = marks[1];
+              // The mark of the cell `floydCell` compares.
+              const fwAt = Math.max(
+                1,
+                marks.findIndex((r) => r && r.cell === floydCell(study.all_pairs)),
+              );
+              const fw = marks[fwAt];
               const cycle = there.some((r) => r.kind === 'cycle');
               const dim = selected !== null && selected !== study;
               const bytes = study.pairs?.table_bytes ?? null;
@@ -2088,7 +2094,7 @@ function RaceChart({
                     <HLine
                       instant
                       x1={P(row, 0)}
-                      x2={P(row, 1)}
+                      x2={P(row, fwAt)}
                       y={y}
                       className={styles.raceGap}
                       data-cycle={cycle || undefined}
@@ -2106,7 +2112,7 @@ function RaceChart({
                           );
                       // Centred over the gap, but kept clear of both columns.
                       const half = words.length * 3.4;
-                      const mid = (P(row, 0) + P(row, 1)) / 2;
+                      const mid = (P(row, 0) + P(row, fwAt)) / 2;
                       const x = Math.min(M.l + iw - half, Math.max(M.l + half, mid));
                       const who = bf.ms < fw.ms ? w.race.bellman : w.race.floyd;
                       return (
@@ -2203,12 +2209,12 @@ function RaceChart({
   );
 }
 
-/** Which of n Bellman-Fords and Floyd-Warshall (pruned) was faster, by how
+/** Which of n Bellman-Fords and Floyd-Warshall (`floydCell`) was faster, by how
     much, and the measured scans per vertex behind it. */
 function allPairsVerdict(w: Words, study: DirectedStudy) {
   const a = w.allPairs;
   const bellman = findCell(study.all_pairs, 'bellman-ford-all', 'queue');
-  const floyd = findCell(study.all_pairs, 'floyd-warshall', 'pruned');
+  const floyd = floydCell(study.all_pairs);
   if (stoppedAtCycle(bellman) || stoppedAtCycle(floyd)) return { long: a.cycleVerdict, why: null };
   const bf = cellTime(bellman)?.ms;
   const fw = cellTime(floyd)?.ms;

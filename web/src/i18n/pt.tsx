@@ -583,7 +583,9 @@ export const pt: Dictionary = {
         mean: (runs: string, of: string) =>
           runs === of
             ? `média de ${runs} execuções`
-            : `média de ${runs} execuções (de ${of}, o orçamento acabou)`,
+            : runs === '1'
+              ? `uma execução inteira (de ${of}, o orçamento de tempo não deu para as outras)`
+              : `média de ${runs} execuções (de ${of}, o orçamento acabou)`,
         cut: 'estimativa: o orçamento de tempo interrompeu a execução, então a execução inteira é extrapolada do seu ritmo',
         standIn:
           'estimativa: a tabela não cabe na memória, então um substituto de 1024 vértices foi medido e escalado por (n / 1024)³',
@@ -684,7 +686,7 @@ export const pt: Dictionary = {
         refused: 'recusado',
         atCycle: 'ciclo',
         note: (runs: string, machine: string) =>
-          `Cada tempo é a média de ${runs} execuções só do algoritmo, sem leitura nem escrita: o Bellman-Ford até o vértice 100 no transposto (construído uma vez, fora do tempo), BFS, DFS e Dijkstra a partir de raízes aleatórias. Cada célula tem um orçamento de tempo; um ponto vazado é uma estimativa, a partir da execução que o orçamento interrompeu ou, para um Floyd-Warshall cuja tabela não cabe, de um digrafo aleatório de 1024 vértices com o mesmo grau de saída médio, escalado por (n / 1024)³. ${machine}`,
+          `Cada tempo é a média de ${runs} execuções só do algoritmo, sem leitura nem escrita: o Bellman-Ford até o vértice 100 no transposto (construído uma vez, fora do tempo), BFS, DFS e Dijkstra a partir de raízes aleatórias. Cada célula tem um orçamento de tempo; um ponto vazado é uma estimativa, a partir da execução que o orçamento interrompeu ou, para um Floyd-Warshall cuja tabela não cabe, de um digrafo aleatório de 1024 vértices com o mesmo grau de saída médio, escalado por (n / 1024)³. Uma estimativa de uma execução interrompida supõe que toda rodada custa o mesmo e tende a ficar abaixo do tempo real nas varreduras que pulam linhas: no W2, a paralela, estimada em 19 min, levou 32,6 min medidos em uma execução inteira. ${machine}`,
       },
       allPairs: {
         bellman: 'O Bellman-Ford a partir de cada vértice',
@@ -1747,8 +1749,8 @@ export const pt: Dictionary = {
           estimated: (time: string) => `≈ ${time}`,
           refused: 'recusado',
           atCycle: 'ciclo',
-          machine: (cpu: string, memory: string) =>
-            `${cpu}, ${memory}. Média das execuções, só o algoritmo: o Bellman-Ford até o vértice 100, as buscas a partir de raízes aleatórias. Uma barra tracejada é uma estimativa: o orçamento interrompeu as execuções, ou a tabela não coube e um substituto menor foi cronometrado.`,
+          machine: (cpu: string, memory: string, runs: string) =>
+            `${cpu}, ${memory}. Média das execuções, só o algoritmo: o Bellman-Ford até o vértice 100, as buscas a partir de raízes aleatórias. Uma barra tracejada é uma estimativa: o orçamento interrompeu as execuções, ou a tabela não coube e um substituto menor foi cronometrado. k/${runs}: só k execuções terminaram.`,
           pending:
             'Os grafos direcionados da disciplina ainda não foram rodados: `graphman study --directed` preenche esta tabela.',
           cta: 'Abrir os estudos de caso',
