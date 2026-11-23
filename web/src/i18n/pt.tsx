@@ -1782,7 +1782,34 @@ export const pt: Dictionary = {
             'Os grafos direcionados da disciplina ainda não foram rodados: `graphman study --directed` preenche esta tabela.',
           cta: 'Abrir os estudos de caso',
         },
-        observatory: '11',
+        curves: {
+          eyebrow: '11',
+          title: 'Todos os pares, em curvas',
+          modes: { label: 'Custo do Bellman-Ford', worst: 'pior caso', practice: 'fila, medida' },
+          arcs: 'arcos, m',
+          axis: 'vértices, n',
+          plot: 'Operações de cada algoritmo de todos os pares por número de vértices',
+          names: {
+            bellman: 'n Bellman-Fords',
+            dijkstra: 'n Dijkstras (heap)',
+            floyd: 'Floyd-Warshall',
+          },
+          formulas: {
+            bellman: 'n² · m',
+            dijkstra: 'n (n + m) log₂ n',
+            floyd: 'n³',
+            practice: (c: string) => `${c} · n · m`,
+          },
+          at: (n: string) => `operações com n = ${n}; passe o mouse no gráfico para mudar`,
+          zone: 'n ≤ m: pode ser fortemente conexo',
+          notes: {
+            worst:
+              '// contagens sem as constantes. n Bellman-Fords e Floyd-Warshall se cruzam em n = m; à direita há menos arcos que vértices, e o digrafo não é fortemente conexo. O Dijkstra exige pesos não negativos',
+            practice: (c: string, graph: string) =>
+              `// a fila não chega ao pior caso: ${c} varreduras por vértice no ${graph}, então n Bellman-Fords examinam cerca de ${c} · n · m arcos. Supõe o mesmo c para todo n, e contagens sem as constantes`,
+          },
+        },
+        observatory: '12',
       },
     },
   },
