@@ -340,7 +340,7 @@ Mean over 10 runs, the algorithm alone. Bellman-Ford runs to the target of quest
 | Graph | Vertices | Arcs | bellman-ford (rounds) | bellman-ford (early-stop) | bellman-ford (queue) | bellman-ford (yen) | bellman-ford (random-yen) | bellman-ford (slf) | floyd-warshall (plain) | floyd-warshall (pruned) | floyd-warshall (parallel) | floyd-warshall (blocked) | bfs (queue) | dfs (iterative) | dijkstra (heap) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | grafo_W_1 | 25000 | 549953 | 0.000316 s | 0.000328 s | 0.000255 s | 0.000243 s | 0.000273 s | 0.000068 s | 0.7865 s | 0.3147 s | 0.3113 s | 0.5532 s | 0.000672 s | 0.0014 s | refused |
-| grafo_W_2 | 25000 | 824964 | 15.3 s | 0.0113 s | 0.0052 s | 0.0051 s | 0.0073 s | 0.0043 s | ≈ 1.5 h | ≈ 1610.5 s | 1956.0 s (1 of 10 runs) | ≈ 1537.5 s | 0.000738 s | 0.0019 s | 0.0033 s |
+| grafo_W_2 | 25000 | 824964 | 15.3 s | 0.0113 s | 0.0052 s | 0.0051 s | 0.0073 s | 0.0043 s | ≈ 1.5 h | 1.4 h (1 of 10 runs) | 1956.0 s (1 of 10 runs) | ≈ 1537.5 s | 0.000738 s | 0.0019 s | 0.0033 s |
 | grafo_W_3 | 100000 | 6099941 | 466.4 s (1 of 10 runs) | 0.1004 s | 0.0618 s | 0.0306 s | 0.0785 s | 0.0484 s | ≈ 4.6 days (does not fit) | ≈ 4.6 days (does not fit) | ≈ 1.3 days (does not fit) | ≈ 6.1 days (does not fit) | 0.0055 s | 0.0134 s | 0.0242 s |
 | grafo_W_4 | 1000000 | 30999978 | ≈ 8.8 h | 0.9756 s | 0.7243 s | 0.4268 s | 0.9865 s | 0.5451 s | ≈ 4564.4 days (does not fit) | ≈ 4336.8 days (does not fit) | ≈ 1287.1 days (does not fit) | ≈ 5965.1 days (does not fit) | 0.0853 s | 0.1553 s | 0.2906 s |
 | grafo_W_5 | 10000000 | 39999995 | ≈ 28.0 days | 7.5902 s | 4.5218 s | 4.2805 s | 7.1737 s | 3.9678 s | ≈ 4294573.3 days (does not fit) | ≈ 2390753.0 days (does not fit) | ≈ 948028.1 days (does not fit) | ≈ 3549267.4 days (does not fit) | 0.5871 s | 1.6060 s | 4.0846 s |
@@ -350,12 +350,12 @@ Mean over 10 runs, the algorithm alone. Bellman-Ford runs to the target of quest
 | Graph | Vertices | Arcs | bellman-ford-all (queue) | floyd-warshall (pruned) | floyd-warshall (parallel) | dijkstra-all (heap) | johnson (heap) |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | grafo_W_1 | 25000 | 549953 | 7.5602 s | 0.3147 s | 0.3113 s | refused | 0.000653 s |
-| grafo_W_2 | 25000 | 824964 | 135.0 s (6 of 10 runs) | ≈ 1610.5 s | 1956.0 s (1 of 10 runs) | 81.4 s | 89.7 s |
+| grafo_W_2 | 25000 | 824964 | 135.0 s (6 of 10 runs) | 1.4 h (1 of 10 runs) | 1956.0 s (1 of 10 runs) | 81.4 s | 89.7 s |
 | grafo_W_3 | 100000 | 6099941 | ≈ 1.8 h | ≈ 4.6 days (does not fit) | ≈ 1.3 days (does not fit) | ≈ 2341.8 s | ≈ 2742.6 s |
 | grafo_W_4 | 1000000 | 30999978 | ≈ 11.5 days | ≈ 4336.8 days (does not fit) | ≈ 1287.1 days (does not fit) | ≈ 4.7 days | ≈ 5.7 days |
 | grafo_W_5 | 10000000 | 39999995 | ≈ 564.9 days | ≈ 2390753.0 days (does not fit) | ≈ 948028.1 days (does not fit) | ≈ 536.3 days | ≈ 548.3 days |
 
-- **grafo_W_1**: Floyd-Warshall is 24.0× faster. `n` queue Bellman-Fords examine about `n · c · m` arcs (here `c` ≈ 0.128 scans per vertex and run, `m` = 549953), Floyd-Warshall makes `n³` = 1.56e13 updates in a cache-friendly loop.
+- **grafo_W_1**: Floyd-Warshall is 24.3× faster. `n` queue Bellman-Fords examine about `n · c · m` arcs (here `c` ≈ 0.128 scans per vertex and run, `m` = 549953), Floyd-Warshall makes `n³` = 1.56e13 updates in a cache-friendly loop.
 - **grafo_W_2**: Bellman-Ford from every vertex is 14.5× faster. `n` queue Bellman-Fords examine about `n · c · m` arcs (here `c` ≈ 3.236 scans per vertex and run, `m` = 824964), Floyd-Warshall makes `n³` = 1.56e13 updates in a cache-friendly loop.
 - **grafo_W_3**: Bellman-Ford from every vertex is 61.7× faster. `n` queue Bellman-Fords examine about `n · c · m` arcs (here `c` ≈ 3.880 scans per vertex and run, `m` = 6099941), Floyd-Warshall makes `n³` = 1.00e15 updates in a cache-friendly loop.
 - **grafo_W_4**: Bellman-Ford from every vertex is 375.6× faster. `n` queue Bellman-Fords examine about `n · c · m` arcs (here `c` ≈ 3.962 scans per vertex and run, `m` = 30999978), Floyd-Warshall makes `n³` = 1.00e18 updates in a cache-friendly loop.
