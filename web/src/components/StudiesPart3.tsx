@@ -2593,7 +2593,9 @@ function PairsPanel({ study }: { study: DirectedStudy }) {
   return (
     <Chapter
       index={2}
-      title={w.pairs.title(vs.join(', '))}
+      title={(pairs.method === 'floyd-warshall' ? w.pairs.title : w.pairs.titleBellman)(
+        vs.join(', '),
+      )}
       delay={0.1}
       className={`${styles.panel} ${styles.pairsPanel}`}
     >
